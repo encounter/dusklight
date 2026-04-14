@@ -1269,6 +1269,14 @@ int dComIfGd_setShadow(u32 param_0, s8 param_1, J3DModel* param_2, cXyz* param_3
                        dKy_tevstr_c* param_9, s16 param_10, f32 param_11, TGXTexObj* param_12);
 
 #if TARGET_PC
+inline dSv_randomizer_c& dComIfG_getRandomizer() {
+    return g_dComIfG_gameInfo.info.mRandomizer;
+}
+
+inline BOOL dComIfG_isRandomizer() {
+    return g_dComIfG_gameInfo.info.mRandomizer.mActive;
+}
+
 void dComIfGs_setupRandomizerSave();
 #endif
 

@@ -10,6 +10,10 @@
 #include "JSystem/JHostIO/JORReflexible.h"
 #include "dusk/endian.h"
 
+#if TARGET_PC
+#include <unordered_map>
+#endif
+
 static const int DEFAULT_SELECT_ITEM_INDEX = 0;
 static const int MAX_SELECT_ITEM = 4;
 static const int SELECT_ITEM_NUM = 2;
@@ -929,6 +933,17 @@ public:
     /* 0x8 */ s8 m_no;
 };
 
+#if TARGET_PC
+class dSv_randomizer_c {
+public:
+    BOOL mActive{false};
+    std::unordered_map<std::string, std::unordered_map<u8, u8>> mTreasureChestOverrides{};
+    std::unordered_map<std::string, std::unordered_map<u8, u8>> mPoeOverrides{};
+
+    void clear();
+};
+#endif
+
 class dSv_info_c {
 public:
     void init();
@@ -1010,6 +1025,9 @@ public:
     /* 0xF30 */ s64 mSaveTotalTime;
 #if DEBUG
     /* 0xF80 */ flagFile_c mFlagFile;
+#endif
+#if TARGET_PC
+    /* 0xF38 */ dSv_randomizer_c mRandomizer;
 #endif
 };  // Size: 0xF38
 

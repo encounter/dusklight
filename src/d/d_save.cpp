@@ -1528,6 +1528,12 @@ dSv_memory2_c* dSv_save_c::getSave2(int i_stage2No) {
     return &mSave2[i_stage2No];
 }
 
+void dSv_randomizer_c::clear() {
+    mTreasureChestOverrides.clear();
+    mPoeOverrides.clear();
+    mActive = FALSE;
+}
+
 void dSv_info_c::getSave(int i_stageNo) {
     JUT_ASSERT(4133, 0 <= i_stageNo && i_stageNo < dSv_save_c::STAGE_MAX);
     mMemory = mSavedata.getSave(i_stageNo);
