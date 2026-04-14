@@ -269,9 +269,275 @@ static void (*item_func_ptr[256])() = {
     item_func_noentry,
 };
 
+#if TARGET_PC
+static void (*item_func_ptr_randomizer[256])() = {
+    item_func_HEART,
+    item_func_GREEN_RUPEE,
+    item_func_BLUE_RUPEE,
+    item_func_YELLOW_RUPEE,
+    item_func_RED_RUPEE,
+    item_func_PURPLE_RUPEE,
+    item_func_ORANGE_RUPEE,
+    item_func_SILVER_RUPEE,
+    item_func_S_MAGIC,
+    item_func_L_MAGIC,
+    item_func_BOMB_5,
+    item_func_BOMB_10,
+    item_func_BOMB_20,
+    item_func_BOMB_30,
+    item_func_ARROW_10,
+    item_func_ARROW_20,
+    item_func_ARROW_30,
+    item_func_ARROW_1,
+    item_func_PACHINKO_SHOT,
+    item_func_FOOLISH_ITEM,
+    item_func_ORDON_PORTAL,
+    item_func_SOUTH_FARON_PORTAL,
+    item_func_WATER_BOMB_5,
+    item_func_WATER_BOMB_10,
+    item_func_WATER_BOMB_20,
+    item_func_WATER_BOMB_30,
+    item_func_BOMB_INSECT_5,
+    item_func_BOMB_INSECT_10,
+    item_func_BOMB_INSECT_20,
+    item_func_BOMB_INSECT_30,
+    item_func_RECOVER_FAILY,
+    item_func_TRIPLE_HEART,
+    item_func_SMALL_KEY,
+    item_func_KAKERA_HEART,
+    item_func_UTUWA_HEART,
+    item_func_MAP,
+    item_func_COMPUS,
+    item_func_DUNGEON_EXIT,
+    item_func_BOSS_KEY,
+    item_func_DUNGEON_BACK,
+    item_func_SWORD,
+    item_func_MASTER_SWORD,
+    item_func_WOOD_SHIELD,
+    item_func_SHIELD,
+    item_func_HYLIA_SHIELD,
+    item_func_TKS_LETTER,
+    item_func_WEAR_CASUAL,
+    item_func_WEAR_KOKIRI,
+    item_func_ARMOR,
+    item_func_WEAR_ZORA,
+    item_func_MAGIC_LV1,
+    item_func_DUNGEON_EXIT_2,
+    item_func_WALLET_LV1,
+    item_func_WALLET_LV2,
+    item_func_WALLET_LV3,
+    item_func_noentry,
+    item_func_noentry,
+    item_func_UPPER_ZORAS_RIVER_PORTAL,
+    item_func_CASTLE_TOWN_PORTAL,
+    item_func_GERUDO_DESERT_PORTAL,
+    item_func_NORTH_FARON_PORTAL,
+    item_func_ZORAS_JEWEL,
+    item_func_HAWK_EYE,
+    item_func_WOOD_STICK,
+    item_func_BOOMERANG,
+    item_func_SPINNER,
+    item_func_IRONBALL,
+    item_func_BOW,
+    item_func_HOOKSHOT,
+    item_func_HVY_BOOTS,
+    item_func_COPY_ROD,
+    item_func_W_HOOKSHOT,
+    item_func_KANTERA,
+    item_func_LIGHT_SWORD,
+    item_func_FISHING_ROD_1,
+    item_func_PACHINKO,
+    item_func_COPY_ROD_2,
+    item_func_KAKARIKO_GORGE_PORTAL,
+    item_func_KAKARIKO_VILLAGE_PORTAL,
+    item_func_BOMB_BAG_LV2,
+    item_func_BOMB_BAG_LV1,
+    item_func_BOMB_IN_BAG,
+    item_func_DEATH_MOUNTAIN_PORTAL,
+    item_func_LIGHT_ARROW,
+    item_func_ARROW_LV1,
+    item_func_ARROW_LV2,
+    item_func_ARROW_LV3,
+    item_func_ZORAS_DOMAIN_PORTAL,
+    item_func_LURE_ROD,
+    item_func_BOMB_ARROW,
+    item_func_HAWK_ARROW,
+    item_func_BEE_ROD,
+    item_func_JEWEL_ROD,
+    item_func_WORM_ROD,
+    item_func_JEWEL_BEE_ROD,
+    item_func_JEWEL_WORM_ROD,
+    item_func_EMPTY_BOTTLE,
+    item_func_RED_BOTTLE,
+    item_func_GREEN_BOTTLE,
+    item_func_BLUE_BOTTLE,
+    item_func_MILK_BOTTLE,
+    item_func_HALF_MILK_BOTTLE,
+    item_func_OIL_BOTTLE,
+    item_func_WATER_BOTTLE,
+    item_func_OIL_BOTTLE2,
+    item_func_RED_BOTTLE2,
+    item_func_UGLY_SOUP,
+    item_func_HOT_SPRING,
+    item_func_FAIRY_BOTTLE,
+    item_func_HOT_SPRING2,
+    item_func_OIL2,
+    item_func_OIL,
+    item_func_NORMAL_BOMB,
+    item_func_WATER_BOMB,
+    item_func_POKE_BOMB,
+    item_func_FAIRY_DROP,
+    item_func_WORM,
+    item_func_DROP_BOTTLE,
+    item_func_BEE_CHILD,
+    item_func_CHUCHU_RARE,
+    item_func_CHUCHU_RED,
+    item_func_CHUCHU_BLUE,
+    item_func_CHUCHU_GREEN,
+    item_func_CHUCHU_YELLOW,
+    item_func_CHUCHU_PURPLE,
+    item_func_LV1_SOUP,
+    item_func_LV2_SOUP,
+    item_func_LV3_SOUP,
+    item_func_LETTER,
+    item_func_BILL,
+    item_func_WOOD_STATUE,
+    item_func_IRIAS_PENDANT,
+    item_func_HORSE_FLUTE,
+    item_func_FOREST_SMALL_KEY,
+    item_func_MINES_SMALL_KEY,
+    item_func_LAKEBED_SMALL_KEY,
+    item_func_ARBITERS_SMALL_KEY,
+    item_func_SNOWPEAK_SMALL_KEY,
+    item_func_TEMPLE_OF_TIME_SMALL_KEY,
+    item_func_CITY_SMALL_KEY,
+    item_func_PALACE_SMALL_KEY,
+    item_func_HYRULE_SMALL_KEY,
+    item_func_CAMP_SMALL_KEY,
+    item_func_LAKE_HYLIA_PORTAL,
+    item_func_RAFRELS_MEMO,
+    item_func_ASHS_SCRIBBLING,
+    item_func_FOREST_BOSS_KEY,
+    item_func_LAKEBED_BOSS_KEY,
+    item_func_ARBITERS_BOSS_KEY,
+    item_func_TEMPLE_OF_TIME_BOSS_KEY,
+    item_func_CITY_BOSS_KEY,
+    item_func_PALACE_BOSS_KEY,
+    item_func_HYRULE_BOSS_KEY,
+    item_func_FOREST_COMPASS,
+    item_func_MINES_COMPASS,
+    item_func_LAKEBED_COMPASS,
+    item_func_CHUCHU_YELLOW2,
+    item_func_OIL_BOTTLE3,
+    item_func_SHOP_BEE_CHILD,
+    item_func_CHUCHU_BLACK,
+    item_func_LIGHT_DROP,
+    item_func_DROP_CONTAINER,
+    item_func_DROP_CONTAINER02,
+    item_func_DROP_CONTAINER03,
+    item_func_FILLED_CONTAINER,
+    item_func_MIRROR_PIECE_2,
+    item_func_MIRROR_PIECE_3,
+    item_func_MIRROR_PIECE_4,
+    item_func_ARBITERS_COMPASS,
+    item_func_SNOWPEAK_COMPASS,
+    item_func_TEMPLE_OF_TIME_COMPASS,
+    item_func_CITY_COMPASS,
+    item_func_PALACE_COMPASS,
+    item_func_HYRULE_COMPASS,
+    item_func_MIRROR_CHAMBER_PORTAL,
+    item_func_SNOWPEAK_PORTAL,
+    item_func_SMELL_YELIA_POUCH,
+    item_func_SMELL_PUMPKIN,
+    item_func_SMELL_POH,
+    item_func_SMELL_FISH,
+    item_func_SMELL_CHILDREN,
+    item_func_SMELL_MEDICINE,
+    item_func_FOREST_MAP,
+    item_func_MINES_MAP,
+    item_func_LAKEBED_MAP,
+    item_func_ARBITERS_MAP,
+    item_func_SNOWPEAK_MAP,
+    item_func_TEMPLE_OF_TIME_MAP,
+    item_func_CITY_MAP,
+    item_func_PALACE_MAP,
+    item_func_HYRULE_MAP,
+    item_func_SACRED_GROVE_PORTAL,
+    item_func_M_BEETLE,
+    item_func_F_BEETLE,
+    item_func_M_BUTTERFLY,
+    item_func_F_BUTTERFLY,
+    item_func_M_STAG_BEETLE,
+    item_func_F_STAG_BEETLE,
+    item_func_M_GRASSHOPPER,
+    item_func_F_GRASSHOPPER,
+    item_func_M_NANAFUSHI,
+    item_func_F_NANAFUSHI,
+    item_func_M_DANGOMUSHI,
+    item_func_F_DANGOMUSHI,
+    item_func_M_MANTIS,
+    item_func_F_MANTIS,
+    item_func_M_LADYBUG,
+    item_func_F_LADYBUG,
+    item_func_M_SNAIL,
+    item_func_F_SNAIL,
+    item_func_M_DRAGONFLY,
+    item_func_F_DRAGONFLY,
+    item_func_M_ANT,
+    item_func_F_ANT,
+    item_func_M_MAYFLY,
+    item_func_F_MAYFLY,
+    item_func_FUSED_SHADOW_1,
+    item_func_FUSED_SHADOW_2,
+    item_func_FUSED_SHADOW_3,
+    item_func_MIRROR_PIECE_1,
+    item_func_noentry,
+    item_func_noentry,
+    item_func_noentry,
+    item_func_noentry,
+    item_func_POU_SPIRIT,
+    item_func_ENDING_BLOW,
+    item_func_SHIELD_ATTACK,
+    item_func_BACK_SLICE,
+    item_func_HELM_SPLITTER,
+    item_func_MORTAL_DRAW,
+    item_func_JUMP_STRIKE,
+    item_func_GREAT_SPIN,
+    item_func_ELDIN_BRIDGE_PORTAL,
+    item_func_ANCIENT_DOCUMENT,
+    item_func_AIR_LETTER,
+    item_func_ANCIENT_DOCUMENT2,
+    item_func_LV7_DUNGEON_EXIT,
+    item_func_LINKS_SAVINGS,
+    item_func_SMALL_KEY2,
+    item_func_POU_FIRE1,
+    item_func_POU_FIRE2,
+    item_func_POU_FIRE3,
+    item_func_POU_FIRE4,
+    item_func_BOSSRIDER_KEY,
+    item_func_TOMATO_PUREE,
+    item_func_TASTE,
+    item_func_LV5_BOSS_KEY,
+    item_func_SURFBOARD,
+    item_func_KANTERA2,
+    item_func_L2_KEY_PIECES1,
+    item_func_L2_KEY_PIECES2,
+    item_func_L2_KEY_PIECES3,
+    item_func_KEY_OF_CARAVAN,
+    item_func_LV2_BOSS_KEY,
+    item_func_KEY_OF_FILONE,
+    item_func_noentry,
+};
+#endif
+
+
 inline void getItemFunc(u8 i_itemNo) {
     dComIfGs_onItemFirstBit(i_itemNo);
+#if TARGET_PC
+    (dComIfG_isRandomizer() ? item_func_ptr_randomizer : item_func_ptr)[i_itemNo]();
+#else
     item_func_ptr[i_itemNo]();
+#endif
 }
 
 void execItemGet(u8 i_itemNo) {
@@ -537,6 +803,268 @@ static int (*item_getcheck_func_ptr[256])() = {
     item_getcheck_func_noentry,
 };
 
+#if TARGET_PC
+static int (*item_getcheck_func_ptr_randomizer[256])() = {
+    item_getcheck_func_HEART,
+    item_getcheck_func_GREEN_RUPEE,
+    item_getcheck_func_BLUE_RUPEE,
+    item_getcheck_func_YELLOW_RUPEE,
+    item_getcheck_func_RED_RUPEE,
+    item_getcheck_func_PURPLE_RUPEE,
+    item_getcheck_func_ORANGE_RUPEE,
+    item_getcheck_func_SILVER_RUPEE,
+    item_getcheck_func_S_MAGIC,
+    item_getcheck_func_L_MAGIC,
+    item_getcheck_func_BOMB_5,
+    item_getcheck_func_BOMB_10,
+    item_getcheck_func_BOMB_20,
+    item_getcheck_func_BOMB_30,
+    item_getcheck_func_ARROW_10,
+    item_getcheck_func_ARROW_20,
+    item_getcheck_func_ARROW_30,
+    item_getcheck_func_ARROW_1,
+    item_getcheck_func_PACHINKO_SHOT,
+    item_getcheck_func_noentry,
+    item_getcheck_func_noentry,
+    item_getcheck_func_noentry,
+    item_getcheck_func_WATER_BOMB_5,
+    item_getcheck_func_WATER_BOMB_10,
+    item_getcheck_func_WATER_BOMB_20,
+    item_getcheck_func_WATER_BOMB_30,
+    item_getcheck_func_BOMB_INSECT_5,
+    item_getcheck_func_BOMB_INSECT_10,
+    item_getcheck_func_BOMB_INSECT_20,
+    item_getcheck_func_BOMB_INSECT_30,
+    item_getcheck_func_RECOVER_FAILY,
+    item_getcheck_func_TRIPLE_HEART,
+    item_getcheck_func_SMALL_KEY,
+    item_getcheck_func_KAKERA_HEART,
+    item_getcheck_func_UTUWA_HEART,
+    item_getcheck_func_MAP,
+    item_getcheck_func_COMPUS,
+    item_getcheck_func_DUNGEON_EXIT,
+    item_getcheck_func_BOSS_KEY,
+    item_getcheck_func_DUNGEON_BACK,
+    item_getcheck_func_SWORD,
+    item_getcheck_func_MASTER_SWORD,
+    item_getcheck_func_WOOD_SHIELD,
+    item_getcheck_func_SHIELD,
+    item_getcheck_func_HYLIA_SHIELD,
+    item_getcheck_func_TKS_LETTER,
+    item_getcheck_func_WEAR_CASUAL,
+    item_getcheck_func_WEAR_KOKIRI,
+    item_getcheck_func_ARMOR,
+    item_getcheck_func_WEAR_ZORA,
+    item_getcheck_func_MAGIC_LV1,
+    item_getcheck_func_DUNGEON_EXIT_2,
+    item_getcheck_func_WALLET_LV1,
+    item_getcheck_func_WALLET_LV2,
+    item_getcheck_func_WALLET_LV3,
+    item_getcheck_func_noentry,
+    item_getcheck_func_noentry,
+    item_getcheck_func_noentry,
+    item_getcheck_func_noentry,
+    item_getcheck_func_noentry,
+    item_getcheck_func_noentry,
+    item_getcheck_func_ZORAS_JEWEL,
+    item_getcheck_func_HAWK_EYE,
+    item_getcheck_func_WOOD_STICK,
+    item_getcheck_func_BOOMERANG,
+    item_getcheck_func_SPINNER,
+    item_getcheck_func_IRONBALL,
+    item_getcheck_func_BOW,
+    item_getcheck_func_HOOKSHOT,
+    item_getcheck_func_HVY_BOOTS,
+    item_getcheck_func_COPY_ROD,
+    item_getcheck_func_W_HOOKSHOT,
+    item_getcheck_func_KANTERA,
+    item_getcheck_func_LIGHT_SWORD,
+    item_getcheck_func_FISHING_ROD_1,
+    item_getcheck_func_PACHINKO,
+    item_getcheck_func_COPY_ROD_2,
+    item_getcheck_func_noentry,
+    item_getcheck_func_noentry,
+    item_getcheck_func_BOMB_BAG_LV2,
+    item_getcheck_func_BOMB_BAG_LV1,
+    item_getcheck_func_BOMB_IN_BAG,
+    item_getcheck_func_noentry,
+    item_getcheck_func_LIGHT_ARROW,
+    item_getcheck_func_ARROW_LV1,
+    item_getcheck_func_ARROW_LV2,
+    item_getcheck_func_ARROW_LV3,
+    item_getcheck_func_noentry,
+    item_getcheck_func_LURE_ROD,
+    item_getcheck_func_BOMB_ARROW,
+    item_getcheck_func_HAWK_ARROW,
+    item_getcheck_func_BEE_ROD,
+    item_getcheck_func_JEWEL_ROD,
+    item_getcheck_func_WORM_ROD,
+    item_getcheck_func_JEWEL_BEE_ROD,
+    item_getcheck_func_JEWEL_WORM_ROD,
+    item_getcheck_func_EMPTY_BOTTLE,
+    item_getcheck_func_RED_BOTTLE,
+    item_getcheck_func_GREEN_BOTTLE,
+    item_getcheck_func_BLUE_BOTTLE,
+    item_getcheck_func_MILK_BOTTLE,
+    item_getcheck_func_HALF_MILK_BOTTLE,
+    item_getcheck_func_OIL_BOTTLE,
+    item_getcheck_func_WATER_BOTTLE,
+    item_getcheck_func_OIL_BOTTLE2,
+    item_getcheck_func_RED_BOTTLE2,
+    item_getcheck_func_UGLY_SOUP,
+    item_getcheck_func_HOT_SPRING,
+    item_getcheck_func_FAIRY_BOTTLE,
+    item_getcheck_func_HOT_SPRING2,
+    item_getcheck_func_OIL2,
+    item_getcheck_func_OIL,
+    item_getcheck_func_NORMAL_BOMB,
+    item_getcheck_func_WATER_BOMB,
+    item_getcheck_func_POKE_BOMB,
+    item_getcheck_func_FAIRY_DROP,
+    item_getcheck_func_WORM,
+    item_getcheck_func_DROP_BOTTLE,
+    item_getcheck_func_BEE_CHILD,
+    item_getcheck_func_CHUCHU_RARE,
+    item_getcheck_func_CHUCHU_RED,
+    item_getcheck_func_CHUCHU_BLUE,
+    item_getcheck_func_CHUCHU_GREEN,
+    item_getcheck_func_CHUCHU_YELLOW,
+    item_getcheck_func_CHUCHU_PURPLE,
+    item_getcheck_func_LV1_SOUP,
+    item_getcheck_func_LV2_SOUP,
+    item_getcheck_func_LV3_SOUP,
+    item_getcheck_func_LETTER,
+    item_getcheck_func_BILL,
+    item_getcheck_func_WOOD_STATUE,
+    item_getcheck_func_IRIAS_PENDANT,
+    item_getcheck_func_HORSE_FLUTE,
+    item_getcheck_func_noentry,
+    item_getcheck_func_noentry,
+    item_getcheck_func_noentry,
+    item_getcheck_func_noentry,
+    item_getcheck_func_noentry,
+    item_getcheck_func_noentry,
+    item_getcheck_func_noentry,
+    item_getcheck_func_noentry,
+    item_getcheck_func_noentry,
+    item_getcheck_func_noentry,
+    item_getcheck_func_noentry,
+    item_getcheck_func_RAFRELS_MEMO,
+    item_getcheck_func_ASHS_SCRIBBLING,
+    item_getcheck_func_noentry,
+    item_getcheck_func_noentry,
+    item_getcheck_func_noentry,
+    item_getcheck_func_noentry,
+    item_getcheck_func_noentry,
+    item_getcheck_func_noentry,
+    item_getcheck_func_noentry,
+    item_getcheck_func_noentry,
+    item_getcheck_func_noentry,
+    item_getcheck_func_noentry,
+    item_getcheck_func_CHUCHU_YELLOW2,
+    item_getcheck_func_OIL_BOTTLE3,
+    item_getcheck_func_SHOP_BEE_CHILD,
+    item_getcheck_func_CHUCHU_BLACK,
+    item_getcheck_func_LIGHT_DROP,
+    item_getcheck_func_DROP_CONTAINER,
+    item_getcheck_func_DROP_CONTAINER02,
+    item_getcheck_func_DROP_CONTAINER03,
+    item_getcheck_func_FILLED_CONTAINER,
+    item_getcheck_func_MIRROR_PIECE_2,
+    item_getcheck_func_MIRROR_PIECE_3,
+    item_getcheck_func_MIRROR_PIECE_4,
+    item_getcheck_func_noentry,
+    item_getcheck_func_noentry,
+    item_getcheck_func_noentry,
+    item_getcheck_func_noentry,
+    item_getcheck_func_noentry,
+    item_getcheck_func_noentry,
+    item_getcheck_func_noentry,
+    item_getcheck_func_noentry,
+    item_getcheck_func_SMELL_YELIA_POUCH,
+    item_getcheck_func_SMELL_PUMPKIN,
+    item_getcheck_func_SMELL_POH,
+    item_getcheck_func_SMELL_FISH,
+    item_getcheck_func_SMELL_CHILDREN,
+    item_getcheck_func_SMELL_MEDICINE,
+    item_getcheck_func_noentry,
+    item_getcheck_func_noentry,
+    item_getcheck_func_noentry,
+    item_getcheck_func_noentry,
+    item_getcheck_func_noentry,
+    item_getcheck_func_noentry,
+    item_getcheck_func_noentry,
+    item_getcheck_func_noentry,
+    item_getcheck_func_noentry,
+    item_getcheck_func_noentry,
+    item_getcheck_func_M_BEETLE,
+    item_getcheck_func_F_BEETLE,
+    item_getcheck_func_M_BUTTERFLY,
+    item_getcheck_func_F_BUTTERFLY,
+    item_getcheck_func_M_STAG_BEETLE,
+    item_getcheck_func_F_STAG_BEETLE,
+    item_getcheck_func_M_GRASSHOPPER,
+    item_getcheck_func_F_GRASSHOPPER,
+    item_getcheck_func_M_NANAFUSHI,
+    item_getcheck_func_F_NANAFUSHI,
+    item_getcheck_func_M_DANGOMUSHI,
+    item_getcheck_func_F_DANGOMUSHI,
+    item_getcheck_func_M_MANTIS,
+    item_getcheck_func_F_MANTIS,
+    item_getcheck_func_M_LADYBUG,
+    item_getcheck_func_F_LADYBUG,
+    item_getcheck_func_M_SNAIL,
+    item_getcheck_func_F_SNAIL,
+    item_getcheck_func_M_DRAGONFLY,
+    item_getcheck_func_F_DRAGONFLY,
+    item_getcheck_func_M_ANT,
+    item_getcheck_func_F_ANT,
+    item_getcheck_func_M_MAYFLY,
+    item_getcheck_func_F_MAYFLY,
+    item_getcheck_func_FUSED_SHADOW_1,
+    item_getcheck_func_FUSED_SHADOW_2,
+    item_getcheck_func_FUSED_SHADOW_3,
+    item_getcheck_func_MIRROR_PIECE_1,
+    item_getcheck_func_noentry,
+    item_getcheck_func_noentry,
+    item_getcheck_func_noentry,
+    item_getcheck_func_noentry,
+    item_getcheck_func_POU_SPIRIT,
+    item_getcheck_func_ENDING_BLOW,
+    item_getcheck_func_SHIELD_ATTACK,
+    item_getcheck_func_BACK_SLICE,
+    item_getcheck_func_HELM_SPLITTER,
+    item_getcheck_func_MORTAL_DRAW,
+    item_getcheck_func_JUMP_STRIKE,
+    item_getcheck_func_GREAT_SPIN,
+    item_getcheck_func_noentry,
+    item_getcheck_func_ANCIENT_DOCUMENT,
+    item_getcheck_func_AIR_LETTER,
+    item_getcheck_func_ANCIENT_DOCUMENT2,
+    item_getcheck_func_LV7_DUNGEON_EXIT,
+    item_getcheck_func_LINKS_SAVINGS,
+    item_getcheck_func_SMALL_KEY2,
+    item_getcheck_func_POU_FIRE1,
+    item_getcheck_func_POU_FIRE2,
+    item_getcheck_func_POU_FIRE3,
+    item_getcheck_func_POU_FIRE4,
+    item_getcheck_func_BOSSRIDER_KEY,
+    item_getcheck_func_TOMATO_PUREE,
+    item_getcheck_func_TASTE,
+    item_getcheck_func_LV5_BOSS_KEY,
+    item_getcheck_func_SURFBOARD,
+    item_getcheck_func_KANTERA2,
+    item_getcheck_func_L2_KEY_PIECES1,
+    item_getcheck_func_L2_KEY_PIECES2,
+    item_getcheck_func_L2_KEY_PIECES3,
+    item_getcheck_func_KEY_OF_CARAVAN,
+    item_getcheck_func_LV2_BOSS_KEY,
+    item_getcheck_func_KEY_OF_FILONE,
+    item_getcheck_func_noentry,
+};
+
+#endif
+
 inline int getCheckItemFunc(u8 i_itemNo) {
     return item_getcheck_func_ptr[i_itemNo]();
 }
@@ -626,6 +1154,30 @@ void item_func_ARROW_1() {
 void item_func_PACHINKO_SHOT() {
     dComIfGp_setItemPachinkoNumCount(50);
 }
+
+#if TARGET_PC
+void item_func_FOOLISH_ITEM() {
+    /*
+    Pasting rando code until framework is implemented
+    // Failsafe: Make sure the count does not somehow exceed 100
+        rando::customItems::FoolishItems* foolishItemsPtr = rando::gRandomizer->getFoolishItemsPtr();
+        const uint32_t triggerCount = foolishItemsPtr->getTriggerCount();
+        if (triggerCount < 100)
+        {
+            foolishItemsPtr->setTriggerCount(static_cast<uint8_t>(triggerCount + 1));
+        }
+    */
+}
+
+void item_func_ORDON_PORTAL() {
+    dComIfGs_onStageSwitch(0x0, 0x34); // Unlock Ordon Portal
+}
+
+void item_func_SOUTH_FARON_PORTAL() {
+    dComIfGs_onStageSwitch(0x2, 0x47); // Unlock S Faron Portal
+}
+
+#endif
 
 void item_func_WATER_BOMB_5() {
     addBombCount(dItemNo_WATER_BOMB_e, 5);
@@ -740,6 +1292,13 @@ void item_func_ARMOR() {}
 void item_func_WEAR_ZORA() {}
 
 void item_func_MAGIC_LV1() {
+#if TARGET_PC
+    if (dComIfG_isRandomizer()) {
+        dComIfGs_onEventBit(0xD04); // Can transform at will
+        dComIfGs_onEventBit(0x501); // Midna Charge Unlocked
+        return;
+    }
+#endif
     dComIfGp_setItemMagicCount(16);
     dComIfGp_setItemMaxMagicCount(16);
 }
@@ -754,11 +1313,86 @@ void item_func_WALLET_LV1() {
 
 void item_func_WALLET_LV2() {
     dComIfGs_setWalletSize(BIG_WALLET);
+#if TARGET_PC
+    if (dComIfG_isRandomizer()) {
+        // TODO rando
+        // Putting rando code here until the framework gets built:
+        /*
+        Basically we fill the wallet if desired and then we change the color of the rupee icon to red
+        libtp::tp::J2DWindow::J2DWindow* windowPtr =
+                libtp::tp::d_meter2_info::g_meter2_info.mMeterClass->mpMeterDraw->mpBigHeart->mWindow;
+
+            if (seedPtr->walletsAreAutoFilled())
+            {
+                plrStatusAPtr->currentRupees = mod::user_patch::walletValues[seedPtr->getHeaderPtr()->getWalletSize()][1];
+            }
+
+            if (!windowPtr)
+            {
+                return;
+            }
+
+            for (uint32_t rupee = 0x1038; rupee <= 0x1044; rupee += 0x4)
+            {
+                *reinterpret_cast<uint32_t*>(reinterpret_cast<uint32_t>(windowPtr) + rupee) = 0xff0000ff;
+            }
+        */
+    }
+#endif
 }
 
 void item_func_WALLET_LV3() {
     dComIfGs_setWalletSize(GIANT_WALLET);
+#if TARGET_PC
+    // TODO rando
+    if (dComIfG_isRandomizer()) {
+        // Putting rando code here until the framework gets built:
+        /*
+        Basically we fill the wallet if desired and then we change the color of the rupee icon to red
+        libtp::tp::J2DWindow::J2DWindow* windowPtr =
+                libtp::tp::d_meter2_info::g_meter2_info.mMeterClass->mpMeterDraw->mpBigHeart->mWindow;
+
+            if (seedPtr->walletsAreAutoFilled())
+            {
+                plrStatusAPtr->currentRupees = mod::user_patch::walletValues[seedPtr->getHeaderPtr()->getWalletSize()][2];
+            }
+
+            if (!windowPtr)
+            {
+                return;
+            }
+
+            for (uint32_t rupee = 0x1038; rupee <= 0x1044; rupee += 0x4)
+            {
+                *reinterpret_cast<uint32_t*>(reinterpret_cast<uint32_t>(windowPtr) + rupee) = 0xff00ffff;
+            }
+        */
+    }
+#endif
 }
+
+#if TARGET_PC
+void item_func_UPPER_ZORAS_RIVER_PORTAL() {
+    dComIfGs_onStageSwitch(0x4, 0x17); // Talked to Iza before portal
+    dComIfGs_onStageSwitch(0x4, 0x37); // Talked to Iza after portal
+    dComIfGs_onStageSwitch(0x4, 0x15); // Unlock UZR Portal
+    dComIfGs_onEventBit(0xB80); // Declined to help Iza
+    dComIfGs_onEventBit(0x1304); // Talked to Iza before UZR portal
+    dComIfGs_onEventBit(0xB02); // Iza 1 Minigame Unlocked
+}
+
+void item_func_CASTLE_TOWN_PORTAL() {
+    dComIfGs_onStageSwitch(0x6, 0x3); // Unlock Castle Town Portal
+}
+
+void item_func_GERUDO_DESERT_PORTAL() {
+    dComIfGs_onStageSwitch(0xA, 0x15); // Unlock Desrt Portal
+}
+
+void item_func_NORTH_FARON_PORTAL() {
+    dComIfGs_onStageSwitch(0x2, 0x2); // Unlock N Faron Portal
+}
+#endif
 
 void item_func_ZORAS_JEWEL() {
     if (item_getcheck_func_FISHING_ROD_1()) {
@@ -836,8 +1470,23 @@ void item_func_PACHINKO() {
 }
 
 void item_func_COPY_ROD_2() {
+#if TARGET_PC
+    if (dComIfG_isRandomizer())
+        dComIfGs_onEventBit(0x2580); // Power up dominion rod
+    else
+#endif
     dComIfGs_setItem(SLOT_8, dItemNo_COPY_ROD_e);
 }
+
+#if TARGET_PC
+void item_func_KAKARIKO_GORGE_PORTAL() {
+    dComIfGs_onStageSwitch(0x6, 0x15); // Unlock Gorge Portal
+}
+
+void item_func_KAKARIKO_VILLAGE_PORTAL() {
+    dComIfGs_onStageSwitch(0x3, 0x1F); // Unlock Kak Portal
+}
+#endif
 
 void item_func_BOMB_BAG_LV2() {}
 
@@ -848,6 +1497,12 @@ void item_func_BOMB_BAG_LV1() {
 void item_func_BOMB_IN_BAG() {
     dComIfGs_setEmptyBombBag(dItemNo_NORMAL_BOMB_e, 30);
 }
+
+#if TARGET_PC
+void item_func_DEATH_MOUNTAIN_PORTAL() {
+    dComIfGs_onStageSwitch(0x3, 0x15); // Unlock DM Portal
+}
+#endif
 
 void item_func_LIGHT_ARROW() {
     dComIfGs_setItem(SLOT_4, dItemNo_LIGHT_ARROW_e);
@@ -867,6 +1522,12 @@ void item_func_ARROW_LV3() {
     dComIfGs_setArrowNum(100);
     dComIfGs_setArrowMax(100);
 }
+
+#if TARGET_PC
+void item_func_ZORAS_DOMAIN_PORTAL() {
+    dComIfGs_onStageSwitch(0x4, 0x2); // Unlock ZD Portal
+}
+#endif
 
 void item_func_LURE_ROD() {}
 
@@ -1024,34 +1685,168 @@ void item_func_LV3_SOUP() {
 }
 
 void item_func_LETTER() {
+#if TARGET_PC
+    if (dComIfG_isRandomizer()) {
+        if (dComIfGs_getItem(SLOT_21, true) != dItemNo_Randomizer_HORSE_FLUTE_e)
+            dComIfGs_setItem(SLOT_21, dItemNo_Randomizer_LETTER_e);
+    } else
+#endif
     dComIfGs_setItem(SLOT_21, dItemNo_LETTER_e);
 }
 
 void item_func_BILL() {
+#if TARGET_PC
+    if (dComIfG_isRandomizer()) {
+        if (dComIfGs_getItem(SLOT_21, true) != dItemNo_Randomizer_HORSE_FLUTE_e)
+            dComIfGs_setItem(SLOT_21, dItemNo_Randomizer_BILL_e);
+    } else
+#endif
     dComIfGs_setItem(SLOT_21, dItemNo_BILL_e);
 }
 
 void item_func_WOOD_STATUE() {
     /* dSv_event_flag_c::F_283 - Hyrule Field - Get wood carving */
     dComIfGs_onEventBit(dSv_event_flag_c::saveBitLabels[283]);
+#if TARGET_PC
+    if (dComIfG_isRandomizer()) {
+        if (dComIfGs_getItem(SLOT_21, true) != dItemNo_Randomizer_HORSE_FLUTE_e)
+            dComIfGs_setItem(SLOT_21, dItemNo_Randomizer_WOOD_STATUE_e);
+    } else
+#endif
     dComIfGs_setItem(SLOT_21, dItemNo_WOOD_STATUE_e);
 }
 
 void item_func_IRIAS_PENDANT() {
+#if TARGET_PC
+    if (dComIfG_isRandomizer()) {
+        if (dComIfGs_getItem(SLOT_21, true) != dItemNo_Randomizer_HORSE_FLUTE_e)
+            dComIfGs_setItem(SLOT_21, dItemNo_Randomizer_IRIAS_PENDANT_e);
+    } else
+#endif
     dComIfGs_setItem(SLOT_21, dItemNo_IRIAS_PENDANT_e);
 }
 
 void item_func_HORSE_FLUTE() {
+#if TARGET_PC
+    if (dComIfG_isRandomizer()) {
+        if (dComIfGs_getItem(SLOT_21, true) != dItemNo_Randomizer_NONE_e)
+            dComIfGs_setItem(SLOT_21, dItemNo_Randomizer_HORSE_FLUTE_e);
+    } else
+#endif
     dComIfGs_setItem(SLOT_21, dItemNo_HORSE_FLUTE_e);
 }
 
+#if TARGET_PC
+void item_func_FOREST_SMALL_KEY() {
+    u8 currentKeys = dComIfGs_getKeyNum(0x10);
+    dComIfGs_setKeyNum(0x10, currentKeys + 1);
+}
+
+void item_func_MINES_SMALL_KEY() {
+    u8 currentKeys = dComIfGs_getKeyNum(0x11);
+    dComIfGs_setKeyNum(0x11, currentKeys + 1);
+}
+
+void item_func_LAKEBED_SMALL_KEY() {
+    u8 currentKeys = dComIfGs_getKeyNum(0x12);
+    dComIfGs_setKeyNum(0x12, currentKeys + 1);
+}
+
+void item_func_ARBITERS_SMALL_KEY() {
+    u8 currentKeys = dComIfGs_getKeyNum(0x13);
+    dComIfGs_setKeyNum(0x13, currentKeys + 1);
+}
+
+void item_func_SNOWPEAK_SMALL_KEY() {
+    u8 currentKeys = dComIfGs_getKeyNum(0x14);
+    dComIfGs_setKeyNum(0x14, currentKeys + 1);
+}
+
+void item_func_TEMPLE_OF_TIME_SMALL_KEY() {
+    u8 currentKeys = dComIfGs_getKeyNum(0x15);
+    dComIfGs_setKeyNum(0x15, currentKeys + 1);
+}
+
+void item_func_CITY_SMALL_KEY() {
+    u8 currentKeys = dComIfGs_getKeyNum(0x16);
+    dComIfGs_setKeyNum(0x16, currentKeys + 1);
+}
+
+void item_func_PALACE_SMALL_KEY() {
+    u8 currentKeys = dComIfGs_getKeyNum(0x17);
+    dComIfGs_setKeyNum(0x17, currentKeys + 1);
+}
+
+void item_func_HYRULE_SMALL_KEY() {
+    u8 currentKeys = dComIfGs_getKeyNum(0x18);
+    dComIfGs_setKeyNum(0x18, currentKeys + 1);
+}
+
+void item_func_CAMP_SMALL_KEY() {
+    u8 currentKeys = dComIfGs_getKeyNum(0xA);
+    dComIfGs_setKeyNum(0xA, currentKeys + 1);
+}
+
+void item_func_LAKE_HYLIA_PORTAL() {
+    dComIfGs_onStageSwitch(0x4, 0xA); // Unlock Lake Portal
+}
+#endif
+
 void item_func_RAFRELS_MEMO() {
+#if TARGET_PC
+    if (dComIfG_isRandomizer())
+        dComIfGs_setItem(SLOT_7, dItemNo_Randomizer_RAFRELS_MEMO_e);
+    else
+#endif
     dComIfGs_setItem(SLOT_19, dItemNo_RAFRELS_MEMO_e);
 }
 
 void item_func_ASHS_SCRIBBLING() {
     dComIfGs_setItem(SLOT_19, dItemNo_ASHS_SCRIBBLING_e);
 }
+
+#if TARGET_PC
+
+void item_func_FOREST_BOSS_KEY() {
+    dComIfGs_onDungeonItemBossKey(0x10);
+}
+
+void item_func_LAKEBED_BOSS_KEY() {
+    dComIfGs_onDungeonItemBossKey(0x12);
+}
+
+void item_func_ARBITERS_BOSS_KEY() {
+    dComIfGs_onDungeonItemBossKey(0x13);
+}
+
+void item_func_TEMPLE_OF_TIME_BOSS_KEY() {
+    dComIfGs_onDungeonItemBossKey(0x15);
+}
+
+void item_func_CITY_BOSS_KEY() {
+    dComIfGs_onDungeonItemBossKey(0x16);
+}
+
+void item_func_PALACE_BOSS_KEY() {
+    dComIfGs_onDungeonItemBossKey(0x17);
+}
+
+void item_func_HYRULE_BOSS_KEY() {
+    dComIfGs_onDungeonItemBossKey(0x18);
+}
+
+void item_func_FOREST_COMPASS() {
+    dComIfGs_onDungeonItemCompass(0x10);
+}
+
+void item_func_MINES_COMPASS() {
+    dComIfGs_onDungeonItemCompass(0x11);
+}
+
+void item_func_LAKEBED_COMPASS() {
+    dComIfGs_onDungeonItemCompass(0x12);
+}
+#endif
 
 void item_func_CHUCHU_YELLOW2() {
     dComIfGs_setEmptyBottleItemIn(dItemNo_CHUCHU_YELLOW_e);
@@ -1081,15 +1876,105 @@ void item_func_DROP_CONTAINER02() {
 
 void item_func_DROP_CONTAINER03() {
     dComIfGs_onLightDropGetFlag(LANAYRU_VESSEL);
+#if TARGET_PC
+    if (dComIfG_isRandomizer()) {
+        dComIfGs_onEventBit(0x1E80); // Malo Mart Fundraising Starts
+    }
+#endif
 }
 
 void item_func_FILLED_CONTAINER() {}
 
-void item_func_MIRROR_PIECE_2() {}
+void item_func_MIRROR_PIECE_2() {
+#if TARGET_PC
+    if (dComIfG_isRandomizer()) {
+        dComIfGs_onCollectMirror(1);
+        // TODO rando
+        /*
+        Adding rando code until framework is implemented
+        // Check if the requirement for the HC barrier is set to shards, and if so, set the flag
+        rando::gRandomizer->checkSetHCBarrierFlag(rando::HC_Mirror_Shards, 2);
 
-void item_func_MIRROR_PIECE_3() {}
+        // Check if the requirement for the HC BK is set to shards, and if so, set the flag
+        rando::gRandomizer->checkSetHCBkFlag(rando::HC_BK_Mirror_Shards, 2);
+        */
+    }
+#endif
+}
 
-void item_func_MIRROR_PIECE_4() {}
+void item_func_MIRROR_PIECE_3() {
+#if TARGET_PC
+    if (dComIfG_isRandomizer()) {
+        dComIfGs_onCollectMirror(2);
+        // TODO rando
+        /*
+        Adding rando code until framework is implemented
+        // Check if the requirement for the HC barrier is set to shards, and if so, set the flag
+        rando::gRandomizer->checkSetHCBarrierFlag(rando::HC_Mirror_Shards, 3);
+
+        // Check if the requirement for the HC BK is set to shards, and if so, set the flag
+        rando::gRandomizer->checkSetHCBkFlag(rando::HC_BK_Mirror_Shards, 3);
+        */
+    }
+#endif
+}
+
+void item_func_MIRROR_PIECE_4() {
+#if TARGET_PC
+    if (dComIfG_isRandomizer()) {
+        dComIfGs_onCollectMirror(3);
+        // TODO rando
+        /*
+        Adding rando code until framework is implemented
+        // If the player has the palace requirement set to Mirror Shards.
+        if (headerPtr->getPalaceRequirements() == rando::PalaceEntryRequirements::PoT_Mirror_Shards)
+        {
+            events::setSaveFileEventFlag(libtp::data::flags::FIXED_THE_MIRROR_OF_TWILIGHT);
+        }
+
+        // Check if the requirement for the HC barrier is set to shards, and if so, set the flag
+        rando::gRandomizer->checkSetHCBarrierFlag(rando::HC_Mirror_Shards, 4);
+
+        // Check if the requirement for the HC BK is set to shards, and if so, set the flag
+        rando::gRandomizer->checkSetHCBkFlag(rando::HC_BK_Mirror_Shards, 4);
+        */
+    }
+#endif
+}
+
+#if TARGET_PC
+void item_func_ARBITERS_COMPASS() {
+    dComIfGs_onDungeonItemCompass(0x13);
+}
+
+void item_func_SNOWPEAK_COMPASS() {
+    dComIfGs_onDungeonItemCompass(0x14);
+}
+
+void item_func_TEMPLE_OF_TIME_COMPASS() {
+    dComIfGs_onDungeonItemCompass(0x15);
+}
+
+void item_func_CITY_COMPASS() {
+    dComIfGs_onDungeonItemCompass(0x16);
+}
+
+void item_func_PALACE_COMPASS() {
+    dComIfGs_onDungeonItemCompass(0x17);
+}
+
+void item_func_HYRULE_COMPASS() {
+    dComIfGs_onDungeonItemCompass(0x18);
+}
+
+void item_func_MIRROR_CHAMBER_PORTAL() {
+    dComIfGs_onStageSwitch(0xA, 0x28); // Unlock MC Portal
+}
+
+void item_func_SNOWPEAK_PORTAL() {
+    dComIfGs_onStageSwitch(0x8, 0x15); // Unlock Snowpeak Portal
+}
+#endif
 
 void item_func_SMELL_YELIA_POUCH() {}
 
@@ -1102,6 +1987,48 @@ void item_func_SMELL_FISH() {}
 void item_func_SMELL_CHILDREN() {}
 
 void item_func_SMELL_MEDICINE() {}
+
+#if TARGET_PC
+void item_func_FOREST_MAP() {
+    dComIfGs_onDungeonItemMap(0x10);
+}
+
+void item_func_MINES_MAP() {
+    dComIfGs_onDungeonItemMap(0x11);
+}
+
+void item_func_LAKEBED_MAP() {
+    dComIfGs_onDungeonItemMap(0x12);
+}
+
+void item_func_ARBITERS_MAP() {
+    dComIfGs_onDungeonItemMap(0x13);
+}
+
+void item_func_SNOWPEAK_MAP() {
+    dComIfGs_onDungeonItemMap(0x14);
+}
+
+void item_func_TEMPLE_OF_TIME_MAP() {
+    dComIfGs_onDungeonItemMap(0x15);
+}
+
+void item_func_CITY_MAP() {
+    dComIfGs_onDungeonItemMap(0x16);
+}
+
+void item_func_PALACE_MAP() {
+    dComIfGs_onDungeonItemMap(0x17);
+}
+
+void item_func_HYRULE_MAP() {
+    dComIfGs_onDungeonItemMap(0x18);
+}
+
+void item_func_SACRED_GROVE_PORTAL() {
+    dComIfGs_onStageSwitch(0x7, 0x64); // Unlock Grove Portal
+}
+#endif
 
 void item_func_M_BEETLE() {}
 
@@ -1151,17 +2078,144 @@ void item_func_M_MAYFLY() {}
 
 void item_func_F_MAYFLY() {}
 
-void item_func_POU_SPIRIT() {}
+#if TARGET_PC
+
+void item_func_FUSED_SHADOW_1() {
+    dComIfGs_onCollectCrystal(0);
+    /*
+    Adding rando code until framework is implemented
+    // Check if the requirement for the HC barrier is set to shadows, and if so, set the flag
+    rando::gRandomizer->checkSetHCBarrierFlag(rando::HC_Fused_Shadows, 1);
+
+    // Check if the requirement for the HC BK is set to shadows, and if so, set the flag
+    rando::gRandomizer->checkSetHCBkFlag(rando::HC_BK_Fused_Shadows, 1);
+    */
+}
+
+void item_func_FUSED_SHADOW_2() {
+    if (dComIfG_isRandomizer()) {
+        dComIfGs_onCollectCrystal(1);
+        /*
+        Adding rando code until framework is implemented
+        // Check if the requirement for the HC barrier is set to shadows, and if so, set the flag
+        rando::gRandomizer->checkSetHCBarrierFlag(rando::HC_Fused_Shadows, 2);
+
+        // Check if the requirement for the HC BK is set to shadows, and if so, set the flag
+        rando::gRandomizer->checkSetHCBkFlag(rando::HC_BK_Fused_Shadows, 2);
+        */
+    }
+}
+
+void item_func_FUSED_SHADOW_3() {
+    if (dComIfG_isRandomizer()) {
+        dComIfGs_onCollectCrystal(2);
+        /*
+        Adding rando code until framework is implemented
+        // If the player has the palace requirement set to Fused Shadows.
+        if (headerPtr->getPalaceRequirements() == rando::PalaceEntryRequirements::PoT_Fused_Shadows)
+        {
+            events::setSaveFileEventFlag(libtp::data::flags::FIXED_THE_MIRROR_OF_TWILIGHT);
+        }
+
+        // Check if the requirement for the HC barrier is set to shadows, and if so, set the flag
+        rando::gRandomizer->checkSetHCBarrierFlag(rando::HC_Fused_Shadows, 3);
+
+        // Check if the requirement for the HC BK is set to shadows, and if so, set the flag
+        rando::gRandomizer->checkSetHCBkFlag(rando::HC_BK_Fused_Shadows, 3);
+        */
+    }
+}
+
+void item_func_MIRROR_PIECE_1() {
+
+    if (dComIfG_isRandomizer()) {
+        dComIfGs_onCollectMirror(0);
+        // TODO rando
+        /*
+        Adding rando code until framework is implemented
+        // Check if the requirement for the HC barrier is set to shards, and if so, set the flag
+        rando::gRandomizer->checkSetHCBarrierFlag(rando::HC_Mirror_Shards, 1);
+
+        // Check if the requirement for the HC BK is set to shards, and if so, set the flag
+        rando::gRandomizer->checkSetHCBkFlag(rando::HC_BK_Mirror_Shards, 1);
+        */
+    }
+
+}
+#endif
+
+void item_func_POU_SPIRIT() {
+#if TARGET_PC
+    if (dComIfG_isRandomizer()) {
+        dComIfGs_addPohSpiritNum();
+        // TODO rando
+        /*
+        Adding rando code until framework is implemented
+        // Check if the HC barrier requires poes and if we have enough poe souls to set the flag.
+        randoPtr->checkSetHCBarrierFlag(rando::HC_Poe_Souls, *poeCountPtr);
+
+        // Check if the HC bk check requires poes and if we have enough poe souls to unlock the check.
+        randoPtr->checkSetHCBkFlag(rando::HC_BK_Poe_Souls, *poeCountPtr);
+        */
+    }
+#endif
+}
+
+#if TARGET_PC
+void item_func_ENDING_BLOW() {
+    dComIfGs_onEventBit(0x2904);
+}
+
+void item_func_SHIELD_ATTACK() {
+    dComIfGs_onEventBit(0x2908);
+}
+
+void item_func_BACK_SLICE() {
+    dComIfGs_onEventBit(0x2902);
+}
+
+void item_func_HELM_SPLITTER() {
+    dComIfGs_onEventBit(0x2901);
+}
+
+void item_func_MORTAL_DRAW() {
+    dComIfGs_onEventBit(0x2A80);
+}
+
+void item_func_JUMP_STRIKE() {
+    dComIfGs_onEventBit(0x29A40);
+}
+
+void item_func_GREAT_SPIN() {
+    dComIfGs_onEventBit(0x2A20);
+}
+
+void item_func_ELDIN_BRIDGE_PORTAL() {
+    dComIfGs_onStageSwitch(0x6, 0x63); // Unlock Eldin Bridge Portal
+}
+#endif
 
 void item_func_ANCIENT_DOCUMENT() {
     dComIfGs_setItem(SLOT_22, dItemNo_ANCIENT_DOCUMENT_e);
 }
 
 void item_func_AIR_LETTER() {
+#if TARGET_PC
+    if (dComIfG_isRandomizer()) {
+        u8 letterCount = dComIfGs_getAncientDocumentNum();
+        dComIfGs_setAncientDocumentNum(letterCount + 1);
+    } else
+#endif
     dComIfGs_setItem(SLOT_22, dItemNo_AIR_LETTER_e);
 }
 
 void item_func_ANCIENT_DOCUMENT2() {
+#if TARGET_PC
+    if (dComIfG_isRandomizer()) {
+        dComIfGs_onEventBit(0x3B08); // Repaired Cannon at Lake
+        dComIfGs_setAncientDocumentNum(6);
+    }
+#endif
     dComIfGs_setItem(SLOT_22, dItemNo_ANCIENT_DOCUMENT2_e);
 }
 
@@ -1174,6 +2228,11 @@ void item_func_LINKS_SAVINGS() {
 }
 
 void item_func_SMALL_KEY2() {
+#if TARGET_PC
+    if (dComIfG_isRandomizer())
+        dComIfGs_onStageSwitch(0x2, 0x14); // Unlock North Faron Gate
+    else
+#endif
     dComIfGp_setItemKeyNumCount(1);
 }
 
@@ -1185,13 +2244,45 @@ void item_func_POU_FIRE3() {}
 
 void item_func_POU_FIRE4() {}
 
-void item_func_BOSSRIDER_KEY() {}
+void item_func_BOSSRIDER_KEY() {
+#if TARGET_PC
+    if (dComIfG_isRandomizer()) {
+        dComIfGs_onStageSwitch(0x3, 0x69); // Started Escort
+        dComIfGs_onStageSwitch(0x3, 0x65); // Followed Rutella to Graveyard
+        dComIfGs_onEventBit(0x840); // Started Zora Escort
+        dComIfGs_onEventBit(0x810); // Completed Zora Escort
+    }
+#endif
+}
 
-void item_func_TOMATO_PUREE() {}
+void item_func_TOMATO_PUREE() {
+#if TARGET_PC
+    if (dComIfG_isRandomizer()) {
+        dComIfGs_onEventBit(0x480); // Told Yeta about Pumpkin
+        dComIfGs_onEventBit(0x2); // Yeto put Pumpkin in Soup
+        dComIfGs_onEventBit(0x1440); // SPR Lobby Door Unlocked
+        dComIfGs_onStageSwitch(0x14, 0x12); // Unlock North Door
+    }
+#endif
+}
 
-void item_func_TASTE() {}
+void item_func_TASTE() {
+#if TARGET_PC
+    if (dComIfG_isRandomizer()) {
+        dComIfGs_onEventBit(0x120); // Told Yeta about Cheese
+        dComIfGs_onEventBit(0x1); // Yeto put Pumpkin in Soup
+        dComIfGs_onEventBit(0x1420); // SPR Lobby west Door Unlocked
+        dComIfGs_onStageSwitch(0x14, 0x13); // Unlock West Door
+    }
+#endif
+}
 
 void item_func_LV5_BOSS_KEY() {
+#if TARGET_PC
+    if (dComIfG_isRandomizer())
+        dComIfGs_onDungeonItemBossKey(0x14);
+    else
+#endif
     dComIfGs_onDungeonItemBossKey();
 }
 
@@ -1208,10 +2299,21 @@ void item_func_L2_KEY_PIECES3() {}
 void item_func_KEY_OF_CARAVAN() {}
 
 void item_func_LV2_BOSS_KEY() {
+#if TARGET_PC
+    if (dComIfG_isRandomizer()) {
+        dComIfGs_onDungeonItemBossKey(0x11);
+        execItemGet(dItemNo_Randomizer_L2_KEY_PIECES3_e);
+    } else
+#endif
     dComIfGs_onDungeonItemBossKey();
 }
 
 void item_func_KEY_OF_FILONE() {
+#if TARGET_PC
+    if (dComIfG_isRandomizer())
+        dComIfGs_onStageSwitch(0x2, 0xC); // Unlock Coro Gate
+    else
+#endif
     dComIfGp_setItemKeyNumCount(1);
 }
 
@@ -1410,6 +2512,10 @@ int item_getcheck_func_WEAR_ZORA() {
 }
 
 int item_getcheck_func_MAGIC_LV1() {
+#if TARGET_PC
+    if (dComIfG_isRandomizer())
+        return dComIfGs_isItemFirstBit(dItemNo_Randomizer_MAGIC_LV1_e);
+#endif
     return -1;
 }
 
@@ -1422,10 +2528,18 @@ int item_getcheck_func_WALLET_LV1() {
 }
 
 int item_getcheck_func_WALLET_LV2() {
+#if TARGET_PC
+    if (dComIfG_isRandomizer())
+        return dComIfGs_isItemFirstBit(dItemNo_Randomizer_WALLET_LV2_e);
+#endif
     return -1;
 }
 
 int item_getcheck_func_WALLET_LV3() {
+#if TARGET_PC
+    if (dComIfG_isRandomizer())
+        return dComIfGs_isItemFirstBit(dItemNo_Randomizer_WALLET_LV3_e);
+#endif
     return -1;
 }
 
@@ -1689,24 +2803,50 @@ int item_getcheck_func_LV3_SOUP() {
 }
 
 int item_getcheck_func_LETTER() {
+#if TARGET_PC
+    if (dComIfG_isRandomizer())
+        return dComIfGs_isItemFirstBit(dItemNo_Randomizer_LETTER_e);
+#endif
     return dComIfGs_getItem(SLOT_21, true) == dItemNo_LETTER_e ? TRUE : FALSE;
 }
 
 int item_getcheck_func_BILL() {
+#if TARGET_PC
+    if (dComIfG_isRandomizer())
+        return dComIfGs_isItemFirstBit(dItemNo_Randomizer_BILL_e);
+#endif
     return dComIfGs_getItem(SLOT_21, true) == dItemNo_BILL_e ? TRUE : FALSE;
 }
 
 int item_getcheck_func_WOOD_STATUE() {
+#if TARGET_PC
+    if (dComIfG_isRandomizer())
+        return dComIfGs_isItemFirstBit(dItemNo_Randomizer_WOOD_STATUE_e);
+#endif
     return dComIfGs_getItem(SLOT_21, true) == dItemNo_WOOD_STATUE_e ? TRUE : FALSE;
 }
 
 int item_getcheck_func_IRIAS_PENDANT() {
+#if TARGET_PC
+    if (dComIfG_isRandomizer())
+        return dComIfGs_isItemFirstBit(dItemNo_Randomizer_IRIAS_PENDANT_e);
+#endif
     return dComIfGs_getItem(SLOT_21, true) == dItemNo_IRIAS_PENDANT_e ? TRUE : FALSE;
 }
 
 int item_getcheck_func_HORSE_FLUTE() {
+#if TARGET_PC
+    if (dComIfG_isRandomizer())
+        return dComIfGs_isItemFirstBit(dItemNo_Randomizer_HORSE_FLUTE_e);
+#endif
     return dComIfGs_getItem(SLOT_22, true) == dItemNo_HORSE_FLUTE_e ? TRUE : FALSE;
 }
+
+#if TARGET_PC
+int item_getcheck_func_CAMP_SMALL_KEY() {
+    return dComIfGs_isItemFirstBit(dItemNo_Randomizer_CAMP_SMALL_KEY_e);
+}
+#endif
 
 int item_getcheck_func_RAFRELS_MEMO() {
     return dComIfGs_getItem(SLOT_19, true) == dItemNo_RAFRELS_MEMO_e ? TRUE : FALSE;
@@ -1753,14 +2893,26 @@ int item_getcheck_func_FILLED_CONTAINER() {
 }
 
 int item_getcheck_func_MIRROR_PIECE_2() {
+#if TARGET_PC
+    if (dComIfG_isRandomizer())
+        return dComIfGs_isItemFirstBit(dItemNo_Randomizer_MIRROR_PIECE_2_e);
+#endif
     return -1;
 }
 
 int item_getcheck_func_MIRROR_PIECE_3() {
+#if TARGET_PC
+    if (dComIfG_isRandomizer())
+        return dComIfGs_isItemFirstBit(dItemNo_Randomizer_MIRROR_PIECE_3_e);
+#endif
     return -1;
 }
 
 int item_getcheck_func_MIRROR_PIECE_4() {
+#if TARGET_PC
+    if (dComIfG_isRandomizer())
+        return dComIfGs_isItemFirstBit(dItemNo_Randomizer_MIRROR_PIECE_4_e);
+#endif
     return -1;
 }
 
@@ -1884,9 +3036,57 @@ int item_getcheck_func_F_MAYFLY() {
     return dComIfGs_isItemFirstBit(dItemNo_F_MAYFLY_e);
 }
 
+#if TARGET_PC
+int item_getcheck_func_FUSED_SHADOW_1() {
+    return dComIfGs_isItemFirstBit(dItemNo_Randomizer_FUSED_SHADOW_1_e);
+}
+
+int item_getcheck_func_FUSED_SHADOW_2() {
+    return dComIfGs_isItemFirstBit(dItemNo_Randomizer_FUSED_SHADOW_2_e);
+}
+
+int item_getcheck_func_FUSED_SHADOW_3() {
+    return dComIfGs_isItemFirstBit(dItemNo_Randomizer_FUSED_SHADOW_3_e);
+}
+
+int item_getcheck_func_MIRROR_PIECE_1() {
+    return dComIfGs_isItemFirstBit(dItemNo_Randomizer_MIRROR_PIECE_1_e);
+}
+#endif
+
 int item_getcheck_func_POU_SPIRIT() {
     return dComIfGs_getPohSpiritNum();
 }
+
+#if TARGET_PC
+int item_getcheck_func_ENDING_BLOW() {
+    return dComIfGs_isItemFirstBit(dItemNo_Randomizer_ENDING_BLOW_e);
+}
+
+int item_getcheck_func_SHIELD_ATTACK() {
+    return dComIfGs_isItemFirstBit(dItemNo_Randomizer_SHIELD_ATTACK_e);
+}
+
+int item_getcheck_func_BACK_SLICE() {
+    return dComIfGs_isItemFirstBit(dItemNo_Randomizer_BACK_SLICE_e);
+}
+
+int item_getcheck_func_HELM_SPLITTER() {
+    return dComIfGs_isItemFirstBit(dItemNo_Randomizer_HELM_SPLITTER_e);
+}
+
+int item_getcheck_func_MORTAL_DRAW() {
+    return dComIfGs_isItemFirstBit(dItemNo_Randomizer_MORTAL_DRAW_e);
+}
+
+int item_getcheck_func_JUMP_STRIKE() {
+    return dComIfGs_isItemFirstBit(dItemNo_Randomizer_JUMP_STRIKE_e);
+}
+
+int item_getcheck_func_GREAT_SPIN() {
+    return dComIfGs_isItemFirstBit(dItemNo_Randomizer_GREAT_SPIN_e);
+}
+#endif
 
 int item_getcheck_func_ANCIENT_DOCUMENT() {
     return dComIfGs_getItem(SLOT_22, true) == dItemNo_ANCIENT_DOCUMENT_e ? TRUE : FALSE;
@@ -1929,6 +3129,10 @@ int item_getcheck_func_POU_FIRE4() {
 }
 
 int item_getcheck_func_BOSSRIDER_KEY() {
+#if TARGET_PC
+    if (dComIfG_isRandomizer())
+        return dComIfGs_isItemFirstBit(dItemNo_Randomizer_BOSSRIDER_KEY_e);
+#endif
     return -1;
 }
 

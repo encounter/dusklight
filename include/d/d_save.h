@@ -426,7 +426,11 @@ public:
     u8 getPohNum() const { return mPohNum; }
 
     void addPohNum() {
+#if TARGET_PC
+        if (mPohNum < 0x3D) {
+#else
         if (mPohNum < 0xFF) {
+#endif
             mPohNum++;
         }
     }
