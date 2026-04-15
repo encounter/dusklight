@@ -1616,6 +1616,14 @@ u8 dMenu_Ring_c::getItemNum(u8 i_slotNo) {
     case dItemNo_PACHINKO_e:
         ret = dComIfGs_getPachinkoNum();
         break;
+#if TARGET_PC
+    case dItemNo_Randomizer_ANCIENT_DOCUMENT_e:
+    case dItemNo_Randomizer_AIR_LETTER_e:
+    case dItemNo_Randomizer_ANCIENT_DOCUMENT2_e:
+        if (dComIfG_isRandomizer())
+            ret = dComIfGs_getAncientDocumentNum();
+        break;
+#endif
     }
     return ret;
 }
@@ -1655,6 +1663,14 @@ u8 dMenu_Ring_c::getItemMaxNum(u8 i_slotNo) {
     case dItemNo_PACHINKO_e:
         ret = dComIfGs_getPachinkoMax();
         break;
+#if TARGET_PC
+    case dItemNo_Randomizer_ANCIENT_DOCUMENT_e:
+    case dItemNo_Randomizer_AIR_LETTER_e:
+    case dItemNo_Randomizer_ANCIENT_DOCUMENT2_e:
+        if (dComIfG_isRandomizer())
+            ret = 6;
+        break;
+#endif
     }
     return ret;
 }

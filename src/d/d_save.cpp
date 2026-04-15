@@ -12,6 +12,10 @@
 #include "d/d_meter2_info.h"
 #include "d/d_save.h"
 #include "d/d_save_init.h"
+#if TARGET_PC
+#include "d/actor/d_a_alink.h"
+#include "d/d_stage.h"
+#endif
 #include "f_op/f_op_scene_mng.h"
 #include <cstdio>
 #include <cstring>
@@ -1199,16 +1203,86 @@ BOOL dSv_memBit_c::isItem(int i_no) const {
 
 void dSv_memBit_c::onDungeonItem(int i_no) {
     JUT_ASSERT(2969, 0 <= i_no && i_no < DSV_MEMBIT_ENUM_MAX);
+#if TARGET_PC
+    // Don't use the stage life collection flag for rando
+    if (dComIfG_isRandomizer() && i_no == STAGE_LIFE) {
+        return;
+    }
+#endif
     mDungeonItem |= (u8)(1 << i_no);
 }
 
 void dSv_memBit_c::offDungeonItem(int i_no) {
     JUT_ASSERT(2983, 0 <= i_no && i_no < DSV_MEMBIT_ENUM_MAX);
+#if TARGET_PC
+    // Don't use the stage life collection flag for rando
+    if (dComIfG_isRandomizer() && i_no == STAGE_LIFE) {
+        return;
+    }
+#endif
     mDungeonItem &= (u8)~(u8)(1 << i_no);
 }
 
 s32 dSv_memBit_c::isDungeonItem(int i_no) const {
     JUT_ASSERT(2998, 0 <= i_no && i_no < DSV_MEMBIT_ENUM_MAX);
+#if TARGET_PC
+    if (dComIfG_isRandomizer()) {
+        // Don't use the stage life collection flag for rando
+        if (i_no == STAGE_LIFE) {
+            return FALSE;
+        }
+
+        switch(i_no) {
+            case STAGE_BOSS_ENEMY:
+            {
+                // If we are in a dungeon or fighting a midboss, we don't want the boss being defeated to affect the gameplay.
+                // Note, technically you could go through and patch all of the actors that cause the issues, but that's over
+                // 80 different calls and I don't want to deal with all that research rn - lunar
+                static const char* dungeonStages[] = {
+                    "D_MN05",
+                    "D_MN05B",
+                    "D_MN04",
+                    "D_MN04B",
+                    "D_MN01",
+                    "D_MN01B",
+                    "D_MN10",
+                    "D_MN10B",
+                    "D_MN11",
+                    "D_MN11B",
+                    "D_MN06",
+                    "D_MN06B",
+                    "D_MN07",
+                    "D_MN07B",
+                    "D_MN08",
+                    "D_MN08B",
+                    "D_MN08C"};
+                uint32_t totalDungeonStages = sizeof(dungeonStages) / sizeof(dungeonStages[0]);
+                for (uint32_t i = 0; i < totalDungeonStages; i++)
+                {
+                    if (daAlink_c::checkStageName(dungeonStages[i]))
+                    {
+                        return false;
+                    }
+                }
+                break;
+            }
+            case STAGE_BOSS_ENEMY_2:
+            {
+                // If we are in the early rooms of FT, we don't want Ook being defeated to affect gameplay
+                if (daAlink_c::checkStageName("D_MN05"))
+                {
+                    if (dComIfGp_roomControl_getStayNo() < 4)
+                    {
+                        return false;
+                    }
+                }
+                break;
+            }
+            default:
+                break;
+        }
+    }
+#endif
     return mDungeonItem & (u8)(1 << i_no) ? TRUE : FALSE;
 }
 
