@@ -203,6 +203,9 @@ public:
     void setTime(f32 i_time) { mTime = i_time; }
     u16 getDate() const { return mDate; }
     void setDate(u16 i_date) { mDate = i_date; }
+#if TARGET_PC
+    u8 getDarkClearLV() const { return mDarkClearLevelFlag; }
+#endif
 
     /* 0x00 */ BE(OSTime) mDateIpl;
     /* 0x08 */ u8 mTransformLevelFlag;
@@ -276,6 +279,9 @@ public:
     bool isFieldDataExistFlag() const { return mFieldDataExistFlag ? true : false; }
     void offFieldDataExistFlag() { mFieldDataExistFlag = false; }
     void onFieldDataExistFlag() { mFieldDataExistFlag = true; }
+#if TARGET_PC
+    void setRegionBit(u8 region) { mRegion |= region;}
+#endif
 
 #if TARGET_PC
     /* 0x00 */ BE(Vec) mPos;

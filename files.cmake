@@ -1381,6 +1381,9 @@ set(DUSK_FILES
         src/dusk/OSThread.cpp
         src/dusk/OSMutex.cpp
         # Randomizer files
+        src/dusk/randomizer/game/flags.h
+        src/dusk/randomizer/game/stages.cpp
+        src/dusk/randomizer/game/stages.h
         src/dusk/randomizer/game/tools.cpp
         src/dusk/randomizer/game/tools.h
         src/dusk/randomizer/game/verify_item_functions.cpp

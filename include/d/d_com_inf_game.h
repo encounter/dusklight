@@ -1432,6 +1432,12 @@ inline BOOL dComIfGs_isDarkClearLV(int i_no) {
     return g_dComIfG_gameInfo.info.getPlayer().getPlayerStatusB().isDarkClearLV(i_no);
 }
 
+#if TARGET_PC
+inline u8 dComIfGs_getDarkClearLV() {
+    return g_dComIfG_gameInfo.info.getPlayer().getPlayerStatusB().getDarkClearLV();
+}
+#endif
+
 inline void dComIfGs_onTransformLV(int i_no) {
     g_dComIfG_gameInfo.info.getPlayer().getPlayerStatusB().onTransformLV(i_no);
 }
@@ -1508,6 +1514,12 @@ inline BOOL dComIfGs_isRegionBit(int i_region) {
 inline void dComIfGs_onRegionBit(int i_region) {
     g_dComIfG_gameInfo.info.getPlayer().getPlayerFieldLastStayInfo().onRegionBit(i_region);
 }
+
+#if TARGET_PC
+inline void dComIfGs_setRegionBit(u8 i_region) {
+    g_dComIfG_gameInfo.info.getPlayer().getPlayerFieldLastStayInfo().setRegionBit(i_region);
+}
+#endif
 
 inline void dComIfGs_setPlayerFieldLastStayInfo(const char* i_stage, cXyz& i_pos, s16 i_angle,
                                                 s8 i_point, u8 i_region) {
