@@ -1021,13 +1021,26 @@ void daAlink_c::setGetItemFace(u16 i_itemNo) {
         || i_itemNo == dItemNo_ANCIENT_DOCUMENT2_e
         || i_itemNo == dItemNo_DROP_CONTAINER_e
         || i_itemNo == dItemNo_DROP_CONTAINER02_e
+#if TARGET_PC
+        // Rando items for facial expressions
+        || (dComIfG_isRandomizer() && i_itemNo == dItemNo_Randomizer_WOOD_STICK_e)
+        || (dComIfG_isRandomizer() && i_itemNo == dItemNo_Randomizer_SWORD_e)
+        || (dComIfG_isRandomizer() && i_itemNo == dItemNo_Randomizer_SHIELD_e)
+        || (dComIfG_isRandomizer() && i_itemNo == dItemNo_Randomizer_MASTER_SWORD_e)
+        || (dComIfG_isRandomizer() && i_itemNo == dItemNo_Randomizer_LIGHT_SWORD_e)
+        || (dComIfG_isRandomizer() && i_itemNo == dItemNo_Randomizer_MAGIC_LV1_e)
+#endif
         || i_itemNo == dItemNo_DROP_CONTAINER03_e)
     {
         setFaceBasicBck(dRes_ID_ALANM_BCK_FI_e);
     } else if (i_itemNo == dItemNo_DUNGEON_EXIT_e || i_itemNo == dItemNo_LV7_DUNGEON_EXIT_e) {
         setFaceBasicTexture(FTANM_K_A);
         setFaceBasicBck(dRes_ID_ALANM_BCK_FK_e);
+#if TARGET_PC
+    } else if (i_itemNo == dItemNo_TOMATO_PUREE_e || i_itemNo == dItemNo_TASTE_e || (dComIfG_isRandomizer() && i_itemNo == dItemNo_Randomizer_FOOLISH_ITEM_e)) {
+#else
     } else if (i_itemNo == dItemNo_TOMATO_PUREE_e || i_itemNo == dItemNo_TASTE_e) {
+#endif
         setFaceBasicBck(dRes_ID_ALANM_BCK_FJ_e);
     }
 }
