@@ -72,8 +72,8 @@
 #include "tracy/Tracy.hpp"
 
 #if RANDOMIZER_ONLY
-#include "dusk/randomizer/randomizer.hpp"
-#include "dusk/randomizer/test/test.hpp"
+#include "dusk/randomizer/generator/randomizer.hpp"
+#include "dusk/randomizer/generator/test/test.hpp"
 #endif
 
 // --- GLOBALS ---
