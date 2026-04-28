@@ -344,10 +344,6 @@ namespace dusk {
         if (showMenu && ImGui::BeginMainMenuBar()) {
             m_menuGame.draw();
             m_menuRandomizer.draw();
-            if (m_focusMenuBar) {
-                FocusLastMenuBarItem();
-                m_focusMenuBar = false;
-            }
             m_menuTools.draw();
 
             const auto fpsLabel =
