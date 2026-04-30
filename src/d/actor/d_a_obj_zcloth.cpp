@@ -11,6 +11,10 @@
 #include "d/d_a_itembase_static.h"
 #include "f_pc/f_pc_name.h"
 
+#if TARGET_PC
+#include "dusk/randomizer/game/verify_item_functions.h"
+#endif
+
 void daObjZCloth_c::initBaseMtx() {
     mpModel->setBaseScale(scale);
     setBaseMtx();
@@ -32,6 +36,27 @@ int daObjZCloth_c::Create() {
 int daObjZCloth_c::create() {
     fopAcM_ct(this, daObjZCloth_c);
     m_itemNo = 0x31;
+#if TARGET_PC
+    // Override the item id in randomizer
+    if (randomizer_IsActive()) {
+        m_itemNo = verifyProgressiveItem(randomizer_getItemAtLocation("Rutelas Blessing"));
+        // TODO: Set rotation/height/scale depending on the item (low prio, can figure this out later)
+        scale.setall(1.5f);
+        switch (m_itemNo) {
+        case dItemNo_Randomizer_WOOD_STICK_e:
+            shape_angle.x = 0x4000;
+            break;
+        case dItemNo_Randomizer_MASTER_SWORD_e:
+        case dItemNo_Randomizer_LIGHT_SWORD_e:
+            shape_angle.x = 0x4000;
+            current.pos.z -= 40.0f;
+            scale.setall(1.0f);
+            break;
+        default:
+            break;
+        }
+    }
+#endif
     int phase = dComIfG_resLoad(&mPhase, dItem_data::getFieldArc(m_itemNo));
     if (phase == cPhs_COMPLEATE_e) {
         if (!fopAcM_entrySolidHeap(this, (heapCallbackFunc)CheckFieldItemCreateHeap, 0x2fb0)) {

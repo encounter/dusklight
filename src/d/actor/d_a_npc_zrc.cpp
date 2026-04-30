@@ -10,6 +10,9 @@
 #include "SSystem/SComponent/c_math.h"
 #include "JSystem/J3DGraphBase/J3DMaterial.h"
 #include "Z2AudioLib/Z2Instances.h"
+#if TARGET_PC
+#include "dusk/randomizer/game/verify_item_functions.h"
+#endif
 
 enum Event_Cut_Nums {
     /* 0x2 */ NUM_EVT_CUTS_e = 0x2,
@@ -1685,6 +1688,11 @@ BOOL daNpc_zrC_c::ECut_earringGet(int i_staffID) {
         case 40: {
             int item_no = 0;
             if (mFlow.getEventId(&item_no) == 1) {
+#if TARGET_PC
+                if (randomizer_IsActive()) {
+                    item_no = verifyProgressiveItem(randomizer_getItemAtLocation("Gift From Ralis"));
+                }
+#endif
                 mItemID = fopAcM_createItemForPresentDemo(&current.pos, item_no,
                                                           0, -1, -1, NULL, NULL);
             }
