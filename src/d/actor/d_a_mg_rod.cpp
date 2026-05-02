@@ -26,6 +26,7 @@
 #include <cstring>
 
 #if TARGET_PC
+#include "dusk/randomizer/game/tools.h"
 #include "dusk/randomizer/game/verify_item_functions.h"
 #include "dusk/version.hpp"
 #endif
@@ -2905,6 +2906,14 @@ static void lure_heart(dmg_rod_class* i_this) {
             if (obj_life != NULL) {
                 fopAcM_delete(obj_life);
                 fopAcM_onItem(obj_life, 0x80);
+#if TARGET_PC
+                if (randomizer_IsActive()) {
+                    // Call the item get function for the ranodmized item instead
+                    u16 key = (getStageID() << 8) | 0x80;
+                    u8 itemId = verifyProgressiveItem(randomizer_GetContext().mFreestandingItemOverrides[key]);
+                    execItemGet(itemId);
+                } else
+#endif
                 execItemGet(dItemNo_KAKERA_HEART_e);
                 u8 eventReg = dComIfGs_getEventReg(0xECFF);
                 eventReg |= (u8)0x40;
