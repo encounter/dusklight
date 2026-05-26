@@ -1,0 +1,198 @@
+*, *:before, *:after {
+    box-sizing: border-box;
+}
+
+body {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    font-family: "Fira Sans Condensed";
+    font-weight: bold;
+    color: rgba(248, 244, 232, 90%);
+    z-index: 2;
+    filter: opacity(0);
+    transition: filter 0.16s linear-in-out;
+}
+
+body[open] {
+    filter: opacity(1);
+}
+
+button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    decorator: none;
+    padding: 0;
+    border: 1dp rgba(255, 255, 255, 22%);
+    background-color: rgba(22, 24, 28, 48%);
+    color: rgba(248, 244, 232, 90%);
+    text-align: center;
+    /* backdrop-filter: blur(7dp); */
+    box-shadow: 0 6dp 18dp rgba(0, 0, 0, 28%);
+    transform: scale(1);
+    transform-origin: center;
+    transition: background-color border-color filter opacity transform 0.08s linear-in-out;
+}
+
+button.pressed,
+button.active {
+    background-color: rgba(63, 78, 90, 68%);
+    border-color: rgba(255, 255, 255, 48%);
+    filter: brightness(1.18);
+}
+
+button.pressed {
+    transform: scale(0.94);
+}
+
+button span {
+    display: block;
+    line-height: 1;
+    pointer-events: none;
+}
+
+.touch-control {
+    position: absolute;
+}
+
+.l-target {
+    left: 24dp;
+    top: 18dp;
+}
+
+.l-target.active {
+    background-color: rgba(57, 116, 133, 74%);
+    border-color: rgba(128, 222, 234, 72%);
+}
+
+.trigger {
+    width: 78dp;
+    height: 46dp;
+    border-radius: 23dp;
+    font-size: 22dp;
+}
+
+.r-trigger {
+    right: 24dp;
+    top: 18dp;
+}
+
+.z-trigger {
+    right: 24dp;
+    top: 72dp;
+    background-color: rgba(118, 79, 158, 58%);
+    border-color: rgba(203, 170, 255, 36%);
+}
+
+.z-trigger.pressed {
+    background-color: rgba(139, 91, 187, 82%);
+    border-color: rgba(220, 194, 255, 70%);
+}
+
+top-actions {
+    position: absolute;
+    left: 50%;
+    top: 18dp;
+    width: 328dp;
+    height: 46dp;
+    margin-left: -164dp;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.utility {
+    position: relative;
+    width: 72dp;
+    height: 44dp;
+    margin-left: 5dp;
+    margin-right: 5dp;
+    border-radius: 22dp;
+    font-size: 16dp;
+    opacity: 0.55;
+}
+
+.utility.pressed {
+    opacity: 1;
+}
+
+face-cluster {
+    position: absolute;
+    right: 28dp;
+    bottom: 28dp;
+    width: 236dp;
+    height: 184dp;
+}
+
+.face {
+    width: 58dp;
+    height: 58dp;
+    border-radius: 29dp;
+    font-size: 24dp;
+}
+
+.face.a {
+    right: 34dp;
+    top: 74dp;
+    width: 74dp;
+    height: 74dp;
+    border-radius: 37dp;
+    font-size: 31dp;
+    background-color: rgba(34, 112, 123, 62%);
+}
+
+.face.b {
+    left: 48dp;
+    top: 106dp;
+    background-color: rgba(161, 61, 66, 58%);
+}
+
+.face.x {
+    right: 0;
+    top: 10dp;
+    background-color: rgba(83, 115, 151, 56%);
+}
+
+.face.y {
+    left: 82dp;
+    top: 16dp;
+    background-color: rgba(113, 91, 150, 54%);
+}
+
+touch-stick {
+    display: none;
+    position: absolute;
+    width: 124dp;
+    height: 124dp;
+    border-radius: 62dp;
+    background-color: rgba(18, 20, 24, 35%);
+    border: 1dp rgba(255, 255, 255, 20%);
+    /* backdrop-filter: blur(7dp); */
+    box-shadow: 0 8dp 24dp rgba(0, 0, 0, 24%);
+}
+
+touch-stick.active {
+    display: block;
+}
+
+stick-ring {
+    position: absolute;
+    left: 18dp;
+    top: 18dp;
+    width: 88dp;
+    height: 88dp;
+    border-radius: 44dp;
+    border: 1dp rgba(255, 255, 255, 18%);
+}
+
+stick-knob {
+    position: absolute;
+    width: 48dp;
+    height: 48dp;
+    border-radius: 24dp;
+    background-color: rgba(238, 236, 226, 55%);
+    border: 1dp rgba(255, 255, 255, 45%);
+}

@@ -944,6 +944,8 @@ SettingsWindow::SettingsWindow(bool prelaunch) : mPrelaunch(prelaunch) {
                 .helpText = "Allow inputs even when the game window is not focused.",
                 .onChange = [](bool value) { aurora_set_background_input(value); },
             });
+        addOption("Touch Controls", getSettings().game.enableTouchControls,
+            "Show a virtual GameCube controller overlay for touch screens.");
 
         leftPane.add_section("Camera");
         addOption("Free Camera", getSettings().game.freeCamera,

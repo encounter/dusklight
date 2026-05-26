@@ -14,6 +14,7 @@
 #include "dusk/action_bindings.h"
 #include "dusk/gyro.h"
 #include "dusk/mouse.h"
+#include "dusk/touch_camera.h"
 #endif
 
 bool daAlink_c::checkNoSubjectModeCamera() {
@@ -170,6 +171,31 @@ BOOL daAlink_c::setBodyAngleToCamera() {
 
             if (checkNotItemSinkLimit() && sp8 > 0 && sp8 > mBodyAngle.x) {
                 sp8 = mBodyAngle.x;
+            }
+        }
+
+        if (dusk::getSettings().game.enableTouchControls && checkGyroAimContext()) {
+            f32 touchYawDp = 0.0f;
+            f32 touchPitchDp = 0.0f;
+            if (dusk::touch_camera::consume_delta(touchYawDp, touchPitchDp)) {
+                f32 touch_scale = dusk::getSettings().game.freeCameraSensitivity;
+                if (checkWolfEyeUp()) {
+                    touch_scale *= 0.6f;
+                }
+
+                if (dComIfGp_checkPlayerStatus0(0, 0x200000)) {
+                    touch_scale /= dComIfGp_getCameraZoomScale(field_0x317c);
+                }
+
+                const f32 yaw_degrees = -touchYawDp * dusk::touch_camera::YAW_DEGREES_PER_DP * touch_scale;
+                const f32 pitch_degrees = touchPitchDp * dusk::touch_camera::PITCH_DEGREES_PER_DP * touch_scale;
+
+                shape_angle.y = shape_angle.y + cM_deg2s(yaw_degrees);
+                sp8 = sp8 + cM_deg2s(pitch_degrees);
+
+                if (checkNotItemSinkLimit() && sp8 > 0 && sp8 > mBodyAngle.x) {
+                    sp8 = mBodyAngle.x;
+                }
             }
         }
 #endif

@@ -7,7 +7,7 @@ namespace dusk::ui {
 
 class Document {
 public:
-    Document(const Rml::String& source);
+    explicit Document(const Rml::String& source, bool passive = false);
     virtual ~Document();
 
     Document(const Document&) = delete;
@@ -43,6 +43,9 @@ public:
     bool pending_close() const { return mPendingClose; }
     bool closed() const { return mClosed; }
 
+    bool handle_nav_event(Rml::Event& event);
+    void toggle_cursor_if_gyro(bool);
+
 protected:
     virtual bool handle_nav_command(Rml::Event& event, NavCommand cmd);
 
@@ -50,6 +53,7 @@ protected:
     std::vector<std::unique_ptr<ScopedEventListener> > mListeners;
     bool mPendingClose = false;
     bool mClosed = false;
+    bool mPassive = false;
 };
 
 }  // namespace dusk::ui

@@ -34,6 +34,7 @@
 #include "dusk/action_bindings.h"
 #include "dusk/mouse.h"
 #include "dusk/settings.h"
+#include "dusk/touch_camera.h"
 #include "imgui.h"
 #endif
 
@@ -7499,6 +7500,12 @@ static constexpr s16 FLYCAM_ROLL_SPEED = 256;
 static ImVec2 sFlyCamLastMousePos = {-1.f, -1.f};
 
 #if TARGET_PC
+static bool touchCameraAimActive() {
+    daAlink_c* link = daAlink_getAlinkActorClass();
+    return link != nullptr && link->checkGyroAimContext() &&
+           dComIfGp_checkCameraAttentionStatus(link->field_0x317c, 0x10);
+}
+
 bool dCamera_c::executeDebugFlyCam() {
     if (!dusk::getSettings().game.debugFlyCam) {
         if (mDebugFlyCam.initialized) {
@@ -7645,6 +7652,13 @@ bool dCamera_c::canUseFreeCam() {
 }
 
 bool dCamera_c::freeCamera() {
+    f32 touchYawDp = 0.0f;
+    f32 touchPitchDp = 0.0f;
+    bool touchCameraMoved = false;
+    if (!touchCameraAimActive()) {
+        touchCameraMoved = dusk::touch_camera::consume_delta(touchYawDp, touchPitchDp);
+    }
+
     if (canUseFreeCam() && mGear == 1) {
         mGear = 0;
     }
@@ -7658,6 +7672,16 @@ bool dCamera_c::freeCamera() {
     if (!mCamParam.mManualMode) {
         mCamParam.freeXAngle = mViewCache.mDirection.mAzimuth.Degree();
         mCamParam.freeYAngle = mViewCache.mDirection.mInclination.Degree();
+    }
+
+    if (touchCameraMoved) {
+        mCamParam.mManualMode = 1;
+        const f32 yawInput = dusk::getSettings().game.invertCameraXAxis ? -touchYawDp : touchYawDp;
+        const f32 pitchInput = touchPitchDp * (dusk::getSettings().game.invertCameraYAxis ? -1.0f : 1.0f);
+        mCamParam.freeXAngle += yawInput * dusk::getSettings().game.freeCameraSensitivity *
+                                 dusk::touch_camera::YAW_DEGREES_PER_DP;
+        mCamParam.freeYAngle += pitchInput * dusk::getSettings().game.freeCameraSensitivity *
+                                 dusk::touch_camera::PITCH_DEGREES_PER_DP;
     }
 
     cXyz camMovement = {mPadInfo.mCStick.mLastPosX, mPadInfo.mCStick.mLastPosY, 0.0f};

@@ -32,6 +32,12 @@ bool isActionBound(ActionBinds action, u32 port);
 
 void updateActionBindings();
 
+void setVirtualActionBind(ActionBinds action, u32 port, bool pressed, bool available = true);
+
+void clearVirtualActionBind(ActionBinds action, u32 port);
+
+void clearAllVirtualActionBinds();
+
 bool getActionBindTrig(ActionBinds action, u32 port);
 
 bool getActionBindHold(ActionBinds action, u32 port);

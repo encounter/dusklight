@@ -1445,6 +1445,7 @@ set(DUSK_FILES
         src/dusk/stubs.cpp
         include/dusk/texture_replacements.hpp
         src/dusk/texture_replacements.cpp
+        src/dusk/touch_camera.cpp
         src/dusk/update_check.cpp
         src/dusk/update_check.hpp
         #src/dusk/m_Do_ext_dusk.cpp
@@ -1511,6 +1512,8 @@ set(DUSK_FILES
         src/dusk/ui/string_button.hpp
         src/dusk/ui/tab_bar.cpp
         src/dusk/ui/tab_bar.hpp
+        src/dusk/ui/touch_controls.cpp
+        src/dusk/ui/touch_controls.hpp
         src/dusk/ui/ui.cpp
         src/dusk/ui/ui.hpp
         src/dusk/ui/warp.cpp

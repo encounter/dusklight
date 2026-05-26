@@ -1,7 +1,18 @@
 #include "dusk/settings.h"
 #include "dusk/config.hpp"
 
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
+
 namespace dusk {
+
+#if defined(TARGET_ANDROID) || defined(__ANDROID__) || \
+    (defined(__APPLE__) && TARGET_OS_IOS && !TARGET_OS_MACCATALYST)
+static constexpr bool kDefaultTouchControls = true;
+#else
+static constexpr bool kDefaultTouchControls = false;
+#endif
 
 UserSettings g_userSettings = {
     .video = {
@@ -90,6 +101,7 @@ UserSettings g_userSettings = {
         .mouseCameraSensitivity {"game.mouseCameraSensitivity", 1.0f},
         .invertMouseY {"game.invertMouseY", false},
         .freeCamera {"game.freeCamera", false},
+        .enableTouchControls {"game.enableTouchControls", kDefaultTouchControls},
         .invertCameraXAxis {"game.invertCameraXAxis", false},
         .invertCameraYAxis {"game.invertCameraYAxis", false},
         .invertFirstPersonXAxis {"game.invertFirstPersonXAxis", false},
@@ -300,6 +312,7 @@ void registerSettings() {
     Register(g_userSettings.game.mouseCameraSensitivity);
     Register(g_userSettings.game.invertMouseY);
     Register(g_userSettings.game.freeCamera);
+    Register(g_userSettings.game.enableTouchControls);
     Register(g_userSettings.game.debugFlyCam);
     Register(g_userSettings.game.debugFlyCamLockEvents);
     Register(g_userSettings.game.allowBackgroundInput);
