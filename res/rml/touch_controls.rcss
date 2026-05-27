@@ -96,27 +96,68 @@ top-actions {
     position: absolute;
     left: 50%;
     top: 18dp;
-    width: 328dp;
+    width: 230dp;
     height: 46dp;
-    margin-left: -164dp;
+    margin-left: -115dp;
     display: flex;
     align-items: center;
     justify-content: center;
+    border: 1dp rgba(255, 255, 255, 22%);
+    border-radius: 23dp;
+    background-color: rgba(22, 24, 28, 48%);
+    /* backdrop-filter: blur(7dp); */
+    box-shadow: 0 6dp 18dp rgba(0, 0, 0, 28%);
+    overflow: hidden;
 }
 
 .utility {
     position: relative;
-    width: 72dp;
+    width: 56dp;
     height: 44dp;
-    margin-left: 5dp;
-    margin-right: 5dp;
-    border-radius: 22dp;
-    font-size: 16dp;
+    margin: 0;
+    border-width: 0dp;
+    border-radius: 0;
+    background-color: transparent;
+    box-shadow: none;
     opacity: 0.55;
 }
 
 .utility.pressed {
+    background-color: rgba(63, 78, 90, 68%);
     opacity: 1;
+}
+
+top-actions icon {
+    display: block;
+    width: 100%;
+    height: 100%;
+    font-family: "Material Symbols Rounded";
+    font-weight: normal;
+    font-size: 24dp;
+    pointer-events: none;
+}
+
+.first-person icon {
+    decorator: text("&#xf4c9;" center center);
+}
+
+.map icon {
+    decorator: text("&#xe55b;" center center);
+}
+
+.items icon {
+    decorator: text("&#xeb0e;" center center);
+}
+
+.collections icon {
+    decorator: text("&#xe034;" center center);
+}
+
+separator {
+    display: block;
+    width: 1dp;
+    height: 24dp;
+    background-color: rgba(255, 255, 255, 18%);
 }
 
 face-cluster {

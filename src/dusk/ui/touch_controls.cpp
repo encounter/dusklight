@@ -43,11 +43,14 @@ const Rml::String kDocumentSource = R"RML(
     </touch-stick>
 
     <button id="l-target" class="touch-control trigger l-target"><span>L</span></button>
-    <top-actions>
-        <button id="first-person" class="touch-control utility first-person"><span>FPV</span></button>
-        <button id="map" class="touch-control utility map"><span>Map</span></button>
-        <button id="items" class="touch-control utility items"><span>Items</span></button>
-        <button id="collections" class="touch-control utility collections"><span>Menu</span></button>
+    <top-actions class="touch-control">
+        <button id="first-person" class="utility first-person"><icon /></button>
+        <separator />
+        <button id="map" class="utility map"><icon /></button>
+        <separator />
+        <button id="items" class="utility items"><icon /></button>
+        <separator />
+        <button id="collections" class="utility collections"><icon /></button>
     </top-actions>
 
     <button id="r-trigger" class="touch-control trigger r-trigger"><span>R</span></button>
