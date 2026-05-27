@@ -450,12 +450,6 @@ void TouchControls::sync_virtual_input() noexcept {
         mMoveStick->SetClass("active", false);
     }
 
-    if (mCameraTouch.active && !aimActive) {
-        if (!getSettings().game.freeCamera.getValue()) {
-            getSettings().game.freeCamera.setValue(true);
-        }
-    }
-
     mWantsVirtualPad = status.button != 0 || status.stickX != 0 || status.stickY != 0 ||
                        status.triggerLeft != 0 || status.triggerRight != 0;
     if (mWantsVirtualPad) {
@@ -465,7 +459,8 @@ void TouchControls::sync_virtual_input() noexcept {
     }
 
     setVirtualActionBind(
-        ActionBinds::FIRST_PERSON_CAMERA, kPort, mFirstPersonHeld, visible() && !mWasSuppressed);
+        ActionBinds::FIRST_PERSON_CAMERA, kPort, mFirstPersonHeld,
+        mFirstPersonHeld && visible() && !mWasSuppressed);
     sync_visual_state();
 }
 

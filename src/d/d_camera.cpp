@@ -7500,6 +7500,9 @@ static constexpr s16 FLYCAM_ROLL_SPEED = 256;
 static ImVec2 sFlyCamLastMousePos = {-1.f, -1.f};
 
 #if TARGET_PC
+static constexpr f32 TOUCH_CAMERA_CSTICK_EXIT_THRESHOLD = 0.05f;
+static bool sTouchFreeCameraActive = false;
+
 static bool touchCameraAimActive() {
     daAlink_c* link = daAlink_getAlinkActorClass();
     return link != nullptr && link->checkGyroAimContext() &&
@@ -7655,15 +7658,26 @@ bool dCamera_c::freeCamera() {
     f32 touchYawDp = 0.0f;
     f32 touchPitchDp = 0.0f;
     bool touchCameraMoved = false;
-    if (!touchCameraAimActive()) {
+    const bool touchControlsEnabled = dusk::getSettings().game.enableTouchControls;
+    if (touchControlsEnabled && !touchCameraAimActive()) {
         touchCameraMoved = dusk::touch_camera::consume_delta(touchYawDp, touchPitchDp);
     }
 
-    if (canUseFreeCam() && mGear == 1) {
+    if (!touchControlsEnabled ||
+        mPadInfo.mCStick.mLastValue > TOUCH_CAMERA_CSTICK_EXIT_THRESHOLD)
+    {
+        sTouchFreeCameraActive = false;
+    }
+    if (touchCameraMoved) {
+        sTouchFreeCameraActive = true;
+    }
+
+    const bool useFreeCamera = canUseFreeCam() || sTouchFreeCameraActive;
+    if (useFreeCamera && mGear == 1) {
         mGear = 0;
     }
 
-    if (!canUseFreeCam() || mCamStyle == 70)
+    if (!useFreeCamera || mCamStyle == 70)
     {
         mCamParam.mManualMode = 0;
         return false;
