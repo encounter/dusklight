@@ -4,8 +4,6 @@
 
 #include <array>
 
-union SDL_Event;
-
 namespace dusk::ui {
 
 class TouchControls final : public Document {
@@ -16,7 +14,6 @@ public:
     void show() override;
     void hide(bool close) override;
     void update() override;
-    void handle_event(const SDL_Event& event) noexcept;
 
     enum class FixedControl {
         A,
@@ -34,14 +31,13 @@ public:
 
 private:
     struct StickTouch {
-        long long id = 0;
+        SDL_FingerID id = 0;
         Rml::Vector2f start;
         Rml::Vector2f current;
         bool active = false;
     };
-
     struct FixedTouch {
-        long long id = 0;
+        SDL_FingerID id = 0;
         FixedControl control = FixedControl::A;
         bool active = false;
     };
@@ -54,11 +50,10 @@ private:
     void sync_visibility() noexcept;
     void sync_safe_area() noexcept;
     void sync_visual_state() noexcept;
-    void handle_touch_down(const SDL_Event& event) noexcept;
-    void handle_touch_motion(const SDL_Event& event) noexcept;
-    void handle_touch_up(const SDL_Event& event) noexcept;
-    bool control_at_point(Rml::Vector2f position, FixedControl& control) const noexcept;
-    bool release_fixed_touch(long long id) noexcept;
+    void handle_touch_down(Rml::Event& event) noexcept;
+    void handle_touch_motion(Rml::Event& event) noexcept;
+    void handle_touch_up(Rml::Event& event) noexcept;
+    bool release_fixed_touch(SDL_FingerID id) noexcept;
 
     Rml::Element* mRoot = nullptr;
     Rml::Element* mMoveStick = nullptr;
@@ -72,13 +67,14 @@ private:
     u16 mButtonMask = 0;
     bool mLPressed = false;
     bool mLLatched = false;
+    bool mManualLLatched = false;
     bool mLReleasePending = false;
     bool mRTriggerHeld = false;
     bool mFirstPersonHeld = false;
     bool mWantsVirtualPad = false;
     bool mWasSuppressed = true;
+    clock::time_point mLPressStartTime{};
+    clock::time_point mLastLTapTime{};
 };
-
-void handle_touch_controls_event(const SDL_Event& event) noexcept;
 
 }  // namespace dusk::ui

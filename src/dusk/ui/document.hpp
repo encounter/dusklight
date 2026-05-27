@@ -21,7 +21,13 @@ public:
 
     void listen(Rml::Element* element, Rml::EventId event, ScopedEventListener::Callback callback,
         bool capture = false);
+    void listen(Rml::Element* element, const Rml::String& event,
+        ScopedEventListener::Callback callback, bool capture = false);
     void listen(Rml::EventId event, ScopedEventListener::Callback callback, bool capture = false) {
+        listen(mDocument, event, std::move(callback), capture);
+    }
+    void listen(
+        const Rml::String& event, ScopedEventListener::Callback callback, bool capture = false) {
         listen(mDocument, event, std::move(callback), capture);
     }
     void toggle() {

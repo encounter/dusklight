@@ -1,7 +1,11 @@
 #include "ui.hpp"
 
 #include <RmlUi/Core.h>
-#include <SDL3/SDL_filesystem.h>
+#include <SDL3/SDL_events.h>
+#include <SDL3/SDL_gamepad.h>
+#include <SDL3/SDL_joystick.h>
+#include <SDL3/SDL_power.h>
+#include <SDL3/SDL_video.h>
 #include <absl/container/flat_hash_set.h>
 #include <aurora/rmlui.hpp>
 #include <fmt/format.h>
@@ -11,12 +15,11 @@
 #include <ranges>
 
 #include "aurora/lib/window.hpp"
+#include "dusk/config.hpp"
 #include "dusk/io.hpp"
 #include "input.hpp"
 #include "prelaunch.hpp"
-#include "touch_controls.hpp"
 #include "window.hpp"
-#include "dusk/config.hpp"
 
 namespace dusk::ui {
 namespace {
@@ -173,7 +176,6 @@ void handle_event(const SDL_Event& event) noexcept {
         sConnectedGamepads.erase(event.gdevice.which);
     }
     input::handle_event(event);
-    handle_touch_controls_event(event);
 }
 
 Document& push_document(std::unique_ptr<Document> doc, bool show, bool passive) noexcept {

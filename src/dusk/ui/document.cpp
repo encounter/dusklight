@@ -5,6 +5,7 @@
 
 #include "Z2AudioLib/Z2SeMgr.h"
 #include "m_Do/m_Do_audio.h"
+#include <imgui.h>
 
 namespace dusk::ui {
 namespace {
@@ -104,6 +105,18 @@ void Document::listen(Rml::Element* element, Rml::EventId event,
         std::make_unique<ScopedEventListener>(element, event, std::move(callback), capture));
 }
 
+void Document::listen(Rml::Element* element, const Rml::String& event,
+    ScopedEventListener::Callback callback, bool capture) {
+    if (element == nullptr) {
+        element = mDocument;
+    }
+    if (element == nullptr || event.empty() || !callback) {
+        return;
+    }
+    mListeners.emplace_back(
+        std::make_unique<ScopedEventListener>(element, event, std::move(callback), capture));
+}
+
 bool Document::visible() const {
     if (mDocument == nullptr) {
         return false;
@@ -126,6 +139,18 @@ bool Document::handle_nav_command(Rml::Event& event, NavCommand cmd) {
         return true;
     }
     return false;
+}
+
+void Document::toggle_cursor_if_gyro(bool cursor_enabled) {
+    if (dusk::getSettings().game.gyroMode.getValue() == GyroMode::Mouse) {
+        if (cursor_enabled) {
+            ImGui::GetIO().ConfigFlags &= ~ImGuiConfigFlags_NoMouseCursorChange;
+            SDL_ShowCursor();
+        } else {
+            ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
+            SDL_HideCursor();
+        }
+    }
 }
 
 }  // namespace dusk::ui

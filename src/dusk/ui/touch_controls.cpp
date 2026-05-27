@@ -1,11 +1,10 @@
 #include "touch_controls.hpp"
 
-#include <SDL3/SDL_events.h>
-#include <SDL3/SDL_touch.h>
 #include <aurora/rmlui.hpp>
 #include <dolphin/pad.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 
 #include "d/actor/d_a_alink.h"
@@ -28,8 +27,7 @@ constexpr float kLeftZoneWidth = 0.46f;
 constexpr float kRightZoneStart = 0.52f;
 constexpr u8 kTriggerAnalog = 180;
 constexpr u8 kLTargetAnalog = 180;
-
-TouchControls* sTouchControls = nullptr;
+constexpr auto kLDoubleTapWindow = std::chrono::milliseconds(300);
 
 const Rml::String kDocumentSource = R"RML(
 <rml>
@@ -66,15 +64,14 @@ const Rml::String kDocumentSource = R"RML(
 </rml>
 )RML";
 
-Rml::Vector2f touch_position(const SDL_TouchFingerEvent& event) noexcept {
-    auto* context = aurora::rmlui::get_context();
-    if (context == nullptr) {
-        return {};
-    }
-    const auto dimensions = context->GetDimensions();
+SDL_FingerID touch_id(const Rml::Event& event) noexcept {
+    return event.GetParameter<SDL_FingerID>("finger_id", 0);
+}
+
+Rml::Vector2f touch_position(const Rml::Event& event) noexcept {
     return {
-        event.x * static_cast<float>(dimensions.x),
-        event.y * static_cast<float>(dimensions.y),
+        event.GetParameter("x", 0.0f),
+        event.GetParameter("y", 0.0f),
     };
 }
 
@@ -137,8 +134,6 @@ TouchControls::TouchControls()
       mMoveStick(mDocument != nullptr ? mDocument->GetElementById("move-stick") : nullptr),
       mMoveKnob(mDocument != nullptr ? mDocument->GetElementById("move-knob") : nullptr),
       mLTarget(mDocument != nullptr ? mDocument->GetElementById("l-target") : nullptr) {
-    sTouchControls = this;
-
     listen(mRoot, Rml::EventId::Transitionend, [this](Rml::Event& event) {
         if (event.GetTargetElement() == mRoot && !mRoot->HasAttribute("open") &&
             Document::visible())
@@ -146,14 +141,88 @@ TouchControls::TouchControls()
             Document::hide(mPendingClose);
         }
     });
+
+    listen(
+        mRoot, aurora::rmlui::TouchStartEvent,
+        [this](Rml::Event& event) {
+            if (!visible() || mWasSuppressed) {
+                return;
+            }
+            mObservedTouches++;
+            if (mObservedTouches >= 3) {
+                clear_virtual_input();
+                event.StopImmediatePropagation();
+            }
+        },
+        true);
+    listen(
+        mRoot, aurora::rmlui::TouchEndEvent,
+        [this](Rml::Event&) { mObservedTouches = std::max(0, mObservedTouches - 1); }, true);
+    listen(
+        mRoot, aurora::rmlui::TouchCancelEvent,
+        [this](Rml::Event&) { mObservedTouches = std::max(0, mObservedTouches - 1); }, true);
+
+    auto listenFixedControl = [this](const char* id, FixedControl control) {
+        auto* element = mDocument != nullptr ? mDocument->GetElementById(id) : nullptr;
+        if (element == nullptr) {
+            return;
+        }
+        listen(element, aurora::rmlui::TouchStartEvent, [this, control](Rml::Event& event) {
+            if (!visible() || mWasSuppressed) {
+                return;
+            }
+            const auto id = touch_id(event);
+            for (auto& touch : mFixedTouches) {
+                if (!touch.active) {
+                    touch = {
+                        .id = id,
+                        .control = control,
+                        .active = true,
+                    };
+                    set_fixed_control(control, true);
+                    event.StopPropagation();
+                    return;
+                }
+            }
+        });
+        listen(element, aurora::rmlui::TouchEndEvent, [this](Rml::Event& event) {
+            if (release_fixed_touch(touch_id(event))) {
+                sync_virtual_input();
+                event.StopPropagation();
+            }
+        });
+        listen(element, aurora::rmlui::TouchCancelEvent, [this](Rml::Event& event) {
+            if (release_fixed_touch(touch_id(event))) {
+                sync_virtual_input();
+                event.StopPropagation();
+            }
+        });
+    };
+    listenFixedControl("button-a", FixedControl::A);
+    listenFixedControl("button-b", FixedControl::B);
+    listenFixedControl("button-x", FixedControl::X);
+    listenFixedControl("button-y", FixedControl::Y);
+    listenFixedControl("l-target", FixedControl::L);
+    listenFixedControl("r-trigger", FixedControl::RTrigger);
+    listenFixedControl("z-trigger", FixedControl::Z);
+    listenFixedControl("first-person", FixedControl::FirstPerson);
+    listenFixedControl("items", FixedControl::Items);
+    listenFixedControl("collections", FixedControl::Collections);
+    listenFixedControl("map", FixedControl::Map);
+
+    listen(mRoot, aurora::rmlui::TouchStartEvent,
+        [this](Rml::Event& event) { handle_touch_down(event); });
+    listen(mRoot, aurora::rmlui::TouchMoveEvent,
+        [this](Rml::Event& event) { handle_touch_motion(event); });
+    listen(
+        mRoot, aurora::rmlui::TouchEndEvent, [this](Rml::Event& event) { handle_touch_up(event); });
+    listen(mRoot, aurora::rmlui::TouchCancelEvent,
+        [this](Rml::Event& event) { handle_touch_up(event); });
 }
 
 TouchControls::~TouchControls() {
     clear_virtual_input();
     clearAllVirtualActionBinds();
-    if (sTouchControls == this) {
-        sTouchControls = nullptr;
-    }
 }
 
 void TouchControls::show() {
@@ -186,15 +255,39 @@ void TouchControls::set_fixed_control(FixedControl control, bool pressed) {
 
     switch (control) {
     case FixedControl::L:
-        if (pressed && mLLatched) {
+        if (pressed && (mLLatched || mManualLLatched)) {
             mLLatched = false;
+            mManualLLatched = false;
             mLPressed = false;
             mLReleasePending = true;
+            mLPressStartTime = {};
+            mLastLTapTime = {};
             set_control_visual(control, false);
+        } else if (pressed) {
+            const auto now = clock::now();
+            if (!player_enemy_locked_on() && mLastLTapTime != clock::time_point{} &&
+                now - mLastLTapTime <= kLDoubleTapWindow)
+            {
+                mManualLLatched = true;
+                mLPressed = false;
+                mLReleasePending = true;
+                mLPressStartTime = {};
+                mLastLTapTime = {};
+            } else if (!mLReleasePending) {
+                mLPressed = true;
+                mLPressStartTime = now;
+            }
         } else if (!mLReleasePending) {
-            mLPressed = pressed;
+            mLPressed = false;
         }
         if (!pressed) {
+            const auto now = clock::now();
+            if (!mLReleasePending) {
+                const bool wasQuickTap = mLPressStartTime != clock::time_point{} &&
+                                         now - mLPressStartTime <= kLDoubleTapWindow;
+                mLastLTapTime = wasQuickTap ? now : clock::time_point{};
+            }
+            mLPressStartTime = {};
             mLReleasePending = false;
         }
         if (!pressed && !player_enemy_locked_on()) {
@@ -258,10 +351,11 @@ void TouchControls::set_control_visual(FixedControl control, bool pressed) noexc
 }
 
 void TouchControls::sync_l_lock_state() noexcept {
-    const bool lockedOn = player_enemy_locked_on();
-    if (mLPressed && lockedOn) {
-        mLLatched = true;
-    } else if (!lockedOn) {
+    if (player_enemy_locked_on()) {
+        if (mLPressed) {
+            mLLatched = true;
+        }
+    } else {
         mLLatched = false;
     }
 }
@@ -273,7 +367,10 @@ void TouchControls::clear_virtual_input() noexcept {
     mButtonMask = 0;
     mLPressed = false;
     mLLatched = false;
+    mManualLLatched = false;
     mLReleasePending = false;
+    mLPressStartTime = {};
+    mLastLTapTime = {};
     mRTriggerHeld = false;
     mFirstPersonHeld = false;
     mWantsVirtualPad = false;
@@ -317,7 +414,7 @@ void TouchControls::sync_virtual_input() noexcept {
     status.err = PAD_ERR_NONE;
     status.button = mButtonMask;
 
-    if (mLPressed || mLLatched) {
+    if (mLPressed || mLLatched || mManualLLatched) {
         status.button |= PAD_TRIGGER_L;
         status.triggerLeft = kLTargetAnalog;
     }
@@ -373,16 +470,9 @@ void TouchControls::sync_virtual_input() noexcept {
 }
 
 void TouchControls::sync_visibility() noexcept {
-    const bool suppressed = any_document_visible() || is_prelaunch_open();
-    const bool shouldShow = getSettings().game.enableTouchControls && !suppressed;
-    mWasSuppressed = suppressed;
-
-    if (shouldShow) {
-        if (!visible()) {
-            show();
-        } else if (mRoot != nullptr) {
-            mRoot->SetAttribute("open", "");
-        }
+    mWasSuppressed = any_document_visible();
+    if (getSettings().game.enableTouchControls && !mWasSuppressed) {
+        show();
     } else if (visible()) {
         hide(false);
     } else {
@@ -394,7 +484,7 @@ void TouchControls::sync_safe_area() noexcept {
     if (mRoot == nullptr || mDocument == nullptr) {
         return;
     }
-    Insets insets = safe_area_insets(mDocument->GetContext());
+    const auto insets = safe_area_insets(mDocument->GetContext());
     if (insets == mSafeInsets) {
         return;
     }
@@ -407,7 +497,8 @@ void TouchControls::sync_safe_area() noexcept {
 
 void TouchControls::sync_visual_state() noexcept {
     if (mLTarget != nullptr) {
-        mLTarget->SetClass("active", mLPressed || mLLatched || player_attention_locked());
+        mLTarget->SetClass(
+            "active", mLPressed || mLLatched || mManualLLatched || player_attention_locked());
     }
 }
 
@@ -417,64 +508,7 @@ void TouchControls::update() {
     sync_virtual_input();
 }
 
-bool TouchControls::control_at_point(Rml::Vector2f position, FixedControl& control) const noexcept {
-    auto* context = aurora::rmlui::get_context();
-    if (context == nullptr || mDocument == nullptr) {
-        return false;
-    }
-
-    auto* element = context->GetElementAtPoint(position);
-    while (element != nullptr) {
-        if (element == mDocument->GetElementById("button-a")) {
-            control = FixedControl::A;
-            return true;
-        }
-        if (element == mDocument->GetElementById("button-b")) {
-            control = FixedControl::B;
-            return true;
-        }
-        if (element == mDocument->GetElementById("button-x")) {
-            control = FixedControl::X;
-            return true;
-        }
-        if (element == mDocument->GetElementById("button-y")) {
-            control = FixedControl::Y;
-            return true;
-        }
-        if (element == mDocument->GetElementById("l-target")) {
-            control = FixedControl::L;
-            return true;
-        }
-        if (element == mDocument->GetElementById("r-trigger")) {
-            control = FixedControl::RTrigger;
-            return true;
-        }
-        if (element == mDocument->GetElementById("z-trigger")) {
-            control = FixedControl::Z;
-            return true;
-        }
-        if (element == mDocument->GetElementById("first-person")) {
-            control = FixedControl::FirstPerson;
-            return true;
-        }
-        if (element == mDocument->GetElementById("items")) {
-            control = FixedControl::Items;
-            return true;
-        }
-        if (element == mDocument->GetElementById("collections")) {
-            control = FixedControl::Collections;
-            return true;
-        }
-        if (element == mDocument->GetElementById("map")) {
-            control = FixedControl::Map;
-            return true;
-        }
-        element = element->GetParentNode();
-    }
-    return false;
-}
-
-bool TouchControls::release_fixed_touch(long long id) noexcept {
+bool TouchControls::release_fixed_touch(SDL_FingerID id) noexcept {
     for (auto& touch : mFixedTouches) {
         if (touch.active && touch.id == id) {
             set_fixed_control(touch.control, false);
@@ -485,30 +519,18 @@ bool TouchControls::release_fixed_touch(long long id) noexcept {
     return false;
 }
 
-void TouchControls::handle_touch_down(const SDL_Event& event) noexcept {
-    const auto position = touch_position(event.tfinger);
+void TouchControls::handle_touch_down(Rml::Event& event) noexcept {
+    if (!visible() || mWasSuppressed) {
+        return;
+    }
+
+    const auto position = touch_position(event);
     auto* context = aurora::rmlui::get_context();
     if (context == nullptr) {
         return;
     }
 
-    const auto id = static_cast<long long>(event.tfinger.fingerID);
-    auto control = FixedControl::A;
-    if (control_at_point(position, control)) {
-        for (auto& touch : mFixedTouches) {
-            if (!touch.active) {
-                touch = {
-                    .id = id,
-                    .control = control,
-                    .active = true,
-                };
-                set_fixed_control(control, true);
-                break;
-            }
-        }
-        return;
-    }
-
+    const auto id = touch_id(event);
     if (touch_aim_active()) {
         if (!mCameraTouch.active) {
             mCameraTouch = {
@@ -530,7 +552,7 @@ void TouchControls::handle_touch_down(const SDL_Event& event) noexcept {
         return;
     }
 
-    const float width = static_cast<float>(dimensions.x);
+    const auto width = static_cast<float>(dimensions.x);
     if (!mMoveTouch.active && position.x < width * kLeftZoneWidth) {
         mMoveTouch = {
             .id = id,
@@ -549,9 +571,13 @@ void TouchControls::handle_touch_down(const SDL_Event& event) noexcept {
     sync_virtual_input();
 }
 
-void TouchControls::handle_touch_motion(const SDL_Event& event) noexcept {
-    const auto id = static_cast<long long>(event.tfinger.fingerID);
-    const auto position = touch_position(event.tfinger);
+void TouchControls::handle_touch_motion(Rml::Event& event) noexcept {
+    if (!visible() || mWasSuppressed) {
+        return;
+    }
+
+    const auto id = touch_id(event);
+    const auto position = touch_position(event);
     if (mMoveTouch.active && mMoveTouch.id == id) {
         mMoveTouch.current = position;
     }
@@ -564,8 +590,12 @@ void TouchControls::handle_touch_motion(const SDL_Event& event) noexcept {
     sync_virtual_input();
 }
 
-void TouchControls::handle_touch_up(const SDL_Event& event) noexcept {
-    const auto id = static_cast<long long>(event.tfinger.fingerID);
+void TouchControls::handle_touch_up(Rml::Event& event) noexcept {
+    if (!visible() || mWasSuppressed) {
+        return;
+    }
+
+    const auto id = touch_id(event);
     if (release_fixed_touch(id)) {
         sync_virtual_input();
         return;
@@ -577,44 +607,6 @@ void TouchControls::handle_touch_up(const SDL_Event& event) noexcept {
         mCameraTouch = {};
     }
     sync_virtual_input();
-}
-
-void TouchControls::handle_event(const SDL_Event& event) noexcept {
-    if (event.type == SDL_EVENT_WINDOW_FOCUS_LOST || event.type == SDL_EVENT_FINGER_CANCELED) {
-        mObservedTouches = 0;
-        clear_virtual_input();
-        return;
-    }
-
-    if (!visible() || mWasSuppressed) {
-        return;
-    }
-
-    switch (event.type) {
-    case SDL_EVENT_FINGER_DOWN:
-        mObservedTouches++;
-        if (mObservedTouches >= 3) {
-            clear_virtual_input();
-            return;
-        }
-        handle_touch_down(event);
-        break;
-    case SDL_EVENT_FINGER_MOTION:
-        handle_touch_motion(event);
-        break;
-    case SDL_EVENT_FINGER_UP:
-        handle_touch_up(event);
-        mObservedTouches = std::max(0, mObservedTouches - 1);
-        break;
-    default:
-        break;
-    }
-}
-
-void handle_touch_controls_event(const SDL_Event& event) noexcept {
-    if (sTouchControls != nullptr) {
-        sTouchControls->handle_event(event);
-    }
 }
 
 }  // namespace dusk::ui

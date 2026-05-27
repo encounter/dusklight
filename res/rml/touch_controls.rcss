@@ -11,7 +11,7 @@ body {
     font-family: "Fira Sans Condensed";
     font-weight: bold;
     color: rgba(248, 244, 232, 90%);
-    z-index: 2;
+    z-index: 1;
     filter: opacity(0);
     transition: filter 0.16s linear-in-out;
 }
