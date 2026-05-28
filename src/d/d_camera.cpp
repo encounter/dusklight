@@ -7691,11 +7691,12 @@ bool dCamera_c::freeCamera() {
     if (touchCameraMoved) {
         mCamParam.mManualMode = 1;
         const f32 yawInput = dusk::getSettings().game.invertCameraXAxis ? -touchYawDp : touchYawDp;
-        const f32 pitchInput = touchPitchDp * (dusk::getSettings().game.invertCameraYAxis ? -1.0f : 1.0f);
-        mCamParam.freeXAngle += yawInput * dusk::getSettings().game.freeCameraSensitivity *
-                                 dusk::touch_camera::YAW_DEGREES_PER_DP;
-        mCamParam.freeYAngle += pitchInput * dusk::getSettings().game.freeCameraSensitivity *
-                                 dusk::touch_camera::PITCH_DEGREES_PER_DP;
+        const f32 pitchInput =
+            touchPitchDp * (dusk::getSettings().game.invertCameraYAxis ? -1.0f : 1.0f);
+        mCamParam.freeXAngle += yawInput * dusk::getSettings().game.freeCameraXSensitivity *
+                                dusk::touch_camera::YAW_DEGREES_PER_DP;
+        mCamParam.freeYAngle += pitchInput * dusk::getSettings().game.freeCameraYSensitivity *
+                                dusk::touch_camera::PITCH_DEGREES_PER_DP;
     }
 
     cXyz camMovement = {mPadInfo.mCStick.mLastPosX, mPadInfo.mCStick.mLastPosY, 0.0f};
@@ -11397,7 +11398,7 @@ static int camera_execute(camera_process_class* i_this) {
                 const auto target = get_target_trim_height(i_this);
                 const auto step = dusk::frame_interp::get_interpolation_step();
                 const auto cur = camera->TrimHeight();
-                const auto prev = (4.0f * cur - target) / 3.0f; 
+                const auto prev = (4.0f * cur - target) / 3.0f;
                 const auto trim_height = prev + (cur - prev) * step;
 
                 widezoom_correction(i_this, trim_height);

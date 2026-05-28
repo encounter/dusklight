@@ -22,6 +22,7 @@ enum class Control {
     ITEMS,
     COLLECTIONS,
     MAP,
+    SKIP,
     COUNT,
 };
 

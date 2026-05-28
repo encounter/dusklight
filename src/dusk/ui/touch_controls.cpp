@@ -110,6 +110,10 @@ constexpr std::array<ControlInfo, static_cast<std::size_t>(Control::COUNT)> kCon
         .tapAction = ActionBinds::OPEN_MAP_SCREEN,
         .holdAction = ActionBinds::TOGGLE_MINIMAP,
     },
+    {
+        .id = "skip",
+        .padButton = PAD_BUTTON_START,
+    },
 }};
 
 constexpr const ControlInfo* control_info(Control control) noexcept {
@@ -138,6 +142,7 @@ const Rml::String kDocumentSource = R"RML(
         <separator />
         <button id="collections" class="utility collections"><icon /></button>
     </top-actions>
+    <button id="skip" class="touch-control skip-action"><icon /></button>
 
     <button id="trigger-r" class="touch-control trigger trigger-r"><span>R</span></button>
     <button id="button-z" class="touch-control trigger button-z midna"><img id="z-midna-icon" class="midna-icon" /><span>Z</span></button>
@@ -468,15 +473,7 @@ void TouchControls::hide(bool close) {
 
 void TouchControls::set_control_pressed(Control control, bool pressed) {
     set_control_visual(control, pressed);
-    const auto* info = control_info(control);
-    const u16 button = info != nullptr ? info->padButton : 0;
-    if (button != 0) {
-        if (pressed) {
-            mButtonMask |= button;
-        } else {
-            mButtonMask &= ~button;
-        }
-    }
+    sync_control_button_mask();
 
     switch (control) {
     case Control::L:
@@ -574,11 +571,7 @@ void TouchControls::release_control(Control control) noexcept {
         mControlTouches[index] = {};
     }
 
-    const auto* info = control_info(control);
-    const u16 button = info != nullptr ? info->padButton : 0;
-    if (button != 0) {
-        mButtonMask &= ~button;
-    }
+    sync_control_button_mask();
     switch (control) {
     case Control::L:
         mLPressed = false;
@@ -595,6 +588,16 @@ void TouchControls::release_control(Control control) noexcept {
         break;
     }
     set_control_visual(control, false);
+}
+
+void TouchControls::sync_control_button_mask() noexcept {
+    u16 buttonMask = 0;
+    for (std::size_t i = 0; i < mControlTouches.size() && i < kControls.size(); ++i) {
+        if (mControlTouches[i].active) {
+            buttonMask |= kControls[i].padButton;
+        }
+    }
+    mButtonMask = buttonMask;
 }
 
 void TouchControls::set_control_visual(Control control, bool pressed) noexcept {
@@ -795,11 +798,30 @@ void TouchControls::sync_visual_state() noexcept {
 }
 
 void TouchControls::sync_top_bar_state() noexcept {
-    const bool hidden = !controls_available(false) || dComIfGp_event_runCheck() ||
-                        (dComIfGp_getMsgObjectClass() != nullptr && dMsgObject_isTalkNowCheck());
+    auto* event = dComIfGp_getEvent();
+    const bool skipVisible =
+        event != nullptr && event->mEventStatus == 1 && event->mSkipFunc != nullptr &&
+        !event->chkFlag2(2);
+    const bool hidden = !skipVisible &&
+                        (!controls_available(false) || dComIfGp_event_runCheck() ||
+                            (dComIfGp_getMsgObjectClass() != nullptr &&
+                                dMsgObject_isTalkNowCheck()));
+    const auto& skip = mControlElements[static_cast<std::size_t>(Control::SKIP)];
     if (mTopActions != nullptr) {
-        mTopActions->SetPseudoClass("hidden", hidden);
+        mTopActions->SetPseudoClass("hidden", hidden || skipVisible);
     }
+    if (skip.root != nullptr) {
+        skip.root->SetPseudoClass("hidden", !skipVisible);
+    }
+    if (skipVisible) {
+        release_control(Control::FIRST_PERSON);
+        release_control(Control::ITEMS);
+        release_control(Control::COLLECTIONS);
+        release_control(Control::MAP);
+        return;
+    }
+
+    release_control(Control::SKIP);
     if (!hidden) {
         return;
     }

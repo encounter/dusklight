@@ -59,6 +59,7 @@ private:
 
     void set_control_pressed(Control control, bool pressed);
     void release_control(Control control) noexcept;
+    void sync_control_button_mask() noexcept;
     bool fire_control_action(Control control, ControlAction action) noexcept;
     bool start_control_touch(SDL_FingerID id, Control control) noexcept;
     void set_control_visual(Control control, bool pressed) noexcept;

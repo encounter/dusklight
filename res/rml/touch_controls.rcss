@@ -142,6 +142,7 @@ top-actions {
 
 top-actions:hidden {
     filter: opacity(0);
+    pointer-events: none;
 }
 
 .utility {
@@ -185,6 +186,41 @@ top-actions icon {
 
 .collections icon {
     decorator: text("&#xe034;" center center);
+}
+
+.skip-action {
+    left: 50%;
+    top: 18dp;
+    width: 64dp;
+    height: 46dp;
+    margin-left: -32dp;
+    z-index: 1;
+    border-radius: 23dp;
+    background-color: rgba(63, 78, 90, 68%);
+    border-color: rgba(255, 255, 255, 36%);
+    opacity: 0.86;
+}
+
+.skip-action:hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.skip-action.pressed {
+    background-color: rgba(86, 107, 124, 82%);
+    border-color: rgba(255, 255, 255, 62%);
+    opacity: 1;
+}
+
+.skip-action icon {
+    display: block;
+    width: 100%;
+    height: 100%;
+    font-family: "Material Symbols Rounded";
+    font-weight: normal;
+    font-size: 28dp;
+    pointer-events: none;
+    decorator: text("&#xe01f;" center center);
 }
 
 separator {

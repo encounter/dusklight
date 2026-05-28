@@ -178,20 +178,21 @@ BOOL daAlink_c::setBodyAngleToCamera() {
             f32 touchYawDp = 0.0f;
             f32 touchPitchDp = 0.0f;
             if (dusk::touch_camera::consume_delta(touchYawDp, touchPitchDp)) {
-                f32 touch_scale = dusk::getSettings().game.freeCameraSensitivity;
+                f32 scale = 1.0f;
                 if (checkWolfEyeUp()) {
-                    touch_scale *= 0.6f;
+                    scale *= 0.6f;
                 }
-
                 if (dComIfGp_checkPlayerStatus0(0, 0x200000)) {
-                    touch_scale /= dComIfGp_getCameraZoomScale(field_0x317c);
+                    scale /= dComIfGp_getCameraZoomScale(field_0x317c);
                 }
 
-                const f32 yaw_degrees = -touchYawDp * dusk::touch_camera::YAW_DEGREES_PER_DP * touch_scale;
-                const f32 pitch_degrees = touchPitchDp * dusk::touch_camera::PITCH_DEGREES_PER_DP * touch_scale;
+                const f32 yawDeg = -touchYawDp * dusk::touch_camera::YAW_DEGREES_PER_DP * scale *
+                                   dusk::getSettings().game.freeCameraXSensitivity;
+                const f32 pitchDeg = touchPitchDp * dusk::touch_camera::PITCH_DEGREES_PER_DP *
+                                     scale * dusk::getSettings().game.freeCameraYSensitivity;
 
-                shape_angle.y = shape_angle.y + cM_deg2s(yaw_degrees);
-                sp8 = sp8 + cM_deg2s(pitch_degrees);
+                shape_angle.y = shape_angle.y + cM_deg2s(yawDeg);
+                sp8 = sp8 + cM_deg2s(pitchDeg);
 
                 if (checkNotItemSinkLimit() && sp8 > 0 && sp8 > mBodyAngle.x) {
                     sp8 = mBodyAngle.x;
