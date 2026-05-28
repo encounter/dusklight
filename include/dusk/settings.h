@@ -187,6 +187,7 @@ struct UserSettings {
         ConfigVar<bool> midnasLamentNonStop;
 
         // Input
+        ConfigVar<GyroMode> gyroMode;
         ConfigVar<bool> enableGyroAim;
         ConfigVar<bool> enableGyroRollgoal;
         ConfigVar<float> gyroSensitivityX;
@@ -211,6 +212,8 @@ struct UserSettings {
         ConfigVar<bool> invertAirSwimY;
         ConfigVar<float> freeCameraXSensitivity;
         ConfigVar<float> freeCameraYSensitivity;
+        ConfigVar<float> touchCameraXSensitivity;
+        ConfigVar<float> touchCameraYSensitivity;
         ConfigVar<bool> debugFlyCam;
         ConfigVar<bool> debugFlyCamLockEvents;
         ConfigVar<bool> allowBackgroundInput;

@@ -26,16 +26,7 @@ void reset_deltas() {
 }
 
 bool queryMouseAimContext() {
-    if (!getSettings().game.enableMouseAim) {
-        return false;
-    }
-
-    daAlink_c* link = daAlink_getAlinkActorClass();
-    if (link == nullptr) {
-        return false;
-    }
-
-    return link->checkAimContext() && dComIfGp_checkCameraAttentionStatus(link->field_0x317c, 0x10);
+    return getSettings().game.enableMouseAim.getValue() && dCamera_c::isAimActive();
 }
 
 bool wantMouseCapture() {

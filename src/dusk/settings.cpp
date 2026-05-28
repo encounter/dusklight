@@ -1,18 +1,7 @@
 #include "dusk/settings.h"
 #include "dusk/config.hpp"
 
-#if defined(__APPLE__)
-#include <TargetConditionals.h>
-#endif
-
 namespace dusk {
-
-#if defined(TARGET_ANDROID) || defined(__ANDROID__) || \
-    (defined(__APPLE__) && TARGET_OS_IOS && !TARGET_OS_MACCATALYST)
-static constexpr bool kDefaultTouchControls = true;
-#else
-static constexpr bool kDefaultTouchControls = false;
-#endif
 
 UserSettings g_userSettings = {
     .video = {
@@ -86,6 +75,7 @@ UserSettings g_userSettings = {
         .midnasLamentNonStop {"game.midnasLamentNonStop", false},
 
         // Input
+        .gyroMode {"game.gyroMode", GyroMode::Sensor},
         .enableGyroAim {"game.enableGyroAim", false},
         .enableGyroRollgoal {"game.enableGyroRollgoal", false},
         .gyroSensitivityX {"game.gyroSensitivityX", 1.0f},
@@ -101,7 +91,7 @@ UserSettings g_userSettings = {
         .mouseCameraSensitivity {"game.mouseCameraSensitivity", 1.0f},
         .invertMouseY {"game.invertMouseY", false},
         .freeCamera {"game.freeCamera", false},
-        .enableTouchControls {"game.enableTouchControls", kDefaultTouchControls},
+        .enableTouchControls {"game.enableTouchControls", false},
         .invertCameraXAxis {"game.invertCameraXAxis", false},
         .invertCameraYAxis {"game.invertCameraYAxis", false},
         .invertFirstPersonXAxis {"game.invertFirstPersonXAxis", false},
@@ -110,6 +100,8 @@ UserSettings g_userSettings = {
         .invertAirSwimY {"game.invertAirSwimY", false},
         .freeCameraXSensitivity {"game.freeCameraXSensitivity", 1.0f},
         .freeCameraYSensitivity {"game.freeCameraYSensitivity", 1.0f},
+        .touchCameraXSensitivity {"game.touchCameraXSensitivity", 1.0f},
+        .touchCameraYSensitivity {"game.touchCameraYSensitivity", 1.0f},
         .debugFlyCam {"game.debugFlyCam", false},
         .debugFlyCamLockEvents {"game.debugFlyCamLockEvents", true},
         .allowBackgroundInput {"game.allowBackgroundInput", true},
@@ -261,6 +253,8 @@ void registerSettings() {
     Register(g_userSettings.game.invertAirSwimY);
     Register(g_userSettings.game.freeCameraXSensitivity);
     Register(g_userSettings.game.freeCameraYSensitivity);
+    Register(g_userSettings.game.touchCameraXSensitivity);
+    Register(g_userSettings.game.touchCameraYSensitivity);
     Register(g_userSettings.game.minimalHUD);
     Register(g_userSettings.game.pauseOnFocusLost);
     Register(g_userSettings.game.enableDiscordPresence);
@@ -309,6 +303,7 @@ void registerSettings() {
     Register(g_userSettings.game.alwaysGreatspin);
     Register(g_userSettings.game.invincibleEnemies);
     Register(g_userSettings.game.enableFrameInterpolation);
+    Register(g_userSettings.game.gyroMode);
     Register(g_userSettings.game.enableGyroAim);
     Register(g_userSettings.game.enableGyroRollgoal);
     Register(g_userSettings.game.gyroSensitivityX);

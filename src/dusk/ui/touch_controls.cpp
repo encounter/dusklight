@@ -185,12 +185,6 @@ bool player_attention_locked() noexcept {
     return player != nullptr && (player->checkAttentionLock() || player->checkEnemyAttentionLock());
 }
 
-bool touch_aim_active() noexcept {
-    auto* link = daAlink_getAlinkActorClass();
-    return link != nullptr && link->checkGyroAimContext() &&
-           dComIfGp_checkCameraAttentionStatus(link->field_0x317c, 0x10);
-}
-
 bool item_wheel_active() noexcept {
     return dMeter2Info_getWindowStatus() == 2;
 }
@@ -660,8 +654,7 @@ void TouchControls::sync_touch_state() noexcept {
     }
 
     sync_l_lock_state();
-    const bool aimActive = touch_aim_active();
-
+    const bool aimActive = dCamera_c::isAimActive();
     if (aimActive && mMoveTouch.active) {
         if (!mCameraTouch.active) {
             mCameraTouch = mMoveTouch;
@@ -1023,7 +1016,7 @@ void TouchControls::handle_touch_down(Rml::Event& event) noexcept {
     }
 
     const auto id = touch_id(event);
-    if (touch_aim_active()) {
+    if (dCamera_c::isAimActive()) {
         if (!mCameraTouch.active) {
             mCameraTouch = {
                 .id = id,

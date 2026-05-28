@@ -174,7 +174,7 @@ BOOL daAlink_c::setBodyAngleToCamera() {
             }
         }
 
-        if (dusk::getSettings().game.enableTouchControls && checkGyroAimContext()) {
+        if (dusk::getSettings().game.enableTouchControls && checkAimContext()) {
             f32 touchYawDp = 0.0f;
             f32 touchPitchDp = 0.0f;
             if (dusk::touch_camera::consume_delta(touchYawDp, touchPitchDp)) {

@@ -35,6 +35,17 @@
 #include <algorithm>
 #include <filesystem>
 
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
+
+#if defined(TARGET_ANDROID) || defined(__ANDROID__) || \
+    (defined(__APPLE__) && TARGET_OS_IOS && !TARGET_OS_MACCATALYST)
+#define TOUCH_CONTROLS_AVAILABLE true
+#else
+#define TOUCH_CONTROLS_AVAILABLE false
+#endif
+
 namespace dusk::ui {
 namespace {
 
@@ -944,8 +955,21 @@ SettingsWindow::SettingsWindow(bool prelaunch) : mPrelaunch(prelaunch) {
                 .helpText = "Allow inputs even when the game window is not focused.",
                 .onChange = [](bool value) { aurora_set_background_input(value); },
             });
+
+#if TOUCH_CONTROLS_AVAILABLE
+        leftPane.add_section("Touch");
         addOption("Touch Controls", getSettings().game.enableTouchControls,
-            "Show a virtual GameCube controller overlay for touch screens.");
+            "Enables controls overlay for touch screens.<br/><br/>Press and drag on the left side "
+            "of the screen to move, and on the right side of the screen to control the camera.");
+        config_percent_select(leftPane, rightPane, getSettings().game.touchCameraXSensitivity,
+            "Touch Camera X Sensitivity",
+            "Adjusts touch camera horizontal sensitivity.<br/><br/>Applies to touch input only.",
+            25, 400, 5, [] { return !getSettings().game.enableTouchControls; });
+        config_percent_select(leftPane, rightPane, getSettings().game.touchCameraYSensitivity,
+            "Touch Camera Y Sensitivity",
+            "Adjusts touch camera vertical sensitivity.<br/><br/>Applies to touch input only.", 25,
+            400, 5, [] { return !getSettings().game.enableTouchControls; });
+#endif
 
         leftPane.add_section("Camera");
         addOption("Free Camera", getSettings().game.freeCamera,

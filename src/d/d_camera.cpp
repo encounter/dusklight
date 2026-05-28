@@ -7503,9 +7503,9 @@ static ImVec2 sFlyCamLastMousePos = {-1.f, -1.f};
 static constexpr f32 TOUCH_CAMERA_CSTICK_EXIT_THRESHOLD = 0.05f;
 static bool sTouchFreeCameraActive = false;
 
-static bool touchCameraAimActive() {
-    daAlink_c* link = daAlink_getAlinkActorClass();
-    return link != nullptr && link->checkGyroAimContext() &&
+bool dCamera_c::isAimActive() {
+    auto* link = daAlink_getAlinkActorClass();
+    return link != nullptr && link->checkAimContext() &&
            dComIfGp_checkCameraAttentionStatus(link->field_0x317c, 0x10);
 }
 
@@ -7650,19 +7650,14 @@ void dCamera_c::deactivateDebugFlyCam() {
     mDebugFlyCam.initialized = false;
 }
 
-bool dCamera_c::canUseFreeCam() {
-    return dusk::getSettings().game.freeCamera || dusk::getSettings().game.enableMouseCamera;
-}
-
 bool dCamera_c::freeCamera() {
     f32 touchYawDp = 0.0f;
     f32 touchPitchDp = 0.0f;
     bool touchCameraMoved = false;
     const bool touchControlsEnabled = dusk::getSettings().game.enableTouchControls;
-    if (touchControlsEnabled && !touchCameraAimActive()) {
+    if (touchControlsEnabled && !isAimActive()) {
         touchCameraMoved = dusk::touch_camera::consume_delta(touchYawDp, touchPitchDp);
     }
-
     if (!touchControlsEnabled ||
         mPadInfo.mCStick.mLastValue > TOUCH_CAMERA_CSTICK_EXIT_THRESHOLD)
     {
@@ -7672,7 +7667,8 @@ bool dCamera_c::freeCamera() {
         sTouchFreeCameraActive = true;
     }
 
-    const bool useFreeCamera = canUseFreeCam() || sTouchFreeCameraActive;
+    const bool useFreeCamera = dusk::getSettings().game.freeCamera ||
+                               dusk::getSettings().game.enableMouseCamera || sTouchFreeCameraActive;
     if (useFreeCamera && mGear == 1) {
         mGear = 0;
     }
@@ -7693,9 +7689,9 @@ bool dCamera_c::freeCamera() {
         const f32 yawInput = dusk::getSettings().game.invertCameraXAxis ? -touchYawDp : touchYawDp;
         const f32 pitchInput =
             touchPitchDp * (dusk::getSettings().game.invertCameraYAxis ? -1.0f : 1.0f);
-        mCamParam.freeXAngle += yawInput * dusk::getSettings().game.freeCameraXSensitivity *
+        mCamParam.freeXAngle += yawInput * dusk::getSettings().game.touchCameraXSensitivity *
                                 dusk::touch_camera::YAW_DEGREES_PER_DP;
-        mCamParam.freeYAngle += pitchInput * dusk::getSettings().game.freeCameraYSensitivity *
+        mCamParam.freeYAngle += pitchInput * dusk::getSettings().game.touchCameraYSensitivity *
                                 dusk::touch_camera::PITCH_DEGREES_PER_DP;
     }
 
