@@ -1475,6 +1475,7 @@ set(DUSK_FILES
         src/dusk/ui/button.hpp
         src/dusk/ui/component.cpp
         src/dusk/ui/component.hpp
+        src/dusk/ui/controls.hpp
         src/dusk/ui/controller_config.cpp
         src/dusk/ui/controller_config.hpp
         src/dusk/ui/document.cpp
@@ -1487,6 +1488,8 @@ set(DUSK_FILES
         src/dusk/ui/graphics_tuner.hpp
         src/dusk/ui/input.cpp
         src/dusk/ui/input.hpp
+        src/dusk/ui/item_icon_provider.cpp
+        src/dusk/ui/item_icon_provider.hpp
         src/dusk/ui/modal.cpp
         src/dusk/ui/modal.hpp
         src/dusk/ui/nav_types.hpp

@@ -269,6 +269,8 @@ struct UserSettings {
     struct {
         std::array<ActionBindConfigVar, 4> firstPersonCamera;
         std::array<ActionBindConfigVar, 4> callMidna;
+        std::array<ActionBindConfigVar, 4> openMapScreen;
+        std::array<ActionBindConfigVar, 4> toggleMinimap;
         std::array<ActionBindConfigVar, 4> openDusklightMenu;
         std::array<ActionBindConfigVar, 4> turboSpeedButton;
     } actionBindings;

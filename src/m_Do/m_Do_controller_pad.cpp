@@ -12,6 +12,10 @@
 #include "m_Do/m_Do_main.h"
 #include "tracy/Tracy.hpp"
 
+#if TARGET_PC
+#include "dusk/ui/touch_controls.hpp"
+#endif
+
 JUTGamePad* mDoCPd_c::m_gamePad[4];
 
 interface_of_controller_pad mDoCPd_c::m_cpadInfo[4];
@@ -58,6 +62,9 @@ void mDoCPd_c::create() {
 
 void mDoCPd_c::read() {
     ZoneScoped;
+#if TARGET_PC
+    dusk::ui::sync_virtual_input();
+#endif
     JUTGamePad::read();
 
     if (!mDoRst::isReset() && mDoRst::is3ButtonReset()) {

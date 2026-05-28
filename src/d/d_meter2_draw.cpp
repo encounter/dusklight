@@ -23,6 +23,11 @@
 #include "dusk/frame_interpolation.h"
 #include <cstring>
 
+#if TARGET_PC
+#include "dusk/settings.h"
+#include "dusk/ui/item_icon_provider.hpp"
+#endif
+
 dMeter2Draw_c::dMeter2Draw_c(JKRExpHeap* mp_heap) {
     OS_REPORT("enter dMeter2Draw_c::dMeter2Draw_c(JKRExpHeap *mp_heap)\n");
 
@@ -579,6 +584,15 @@ void dMeter2Draw_c::exec(u32 i_status) {
 void dMeter2Draw_c::draw() {
     J2DGrafContext* graf_ctx = dComIfGp_getCurrentGrafPort();
     graf_ctx->setup2D();
+
+#if TARGET_PC
+    if (dusk::getSettings().game.enableTouchControls) {
+        mpButtonParent->hide();
+        mpScreen->draw(0.0f, 0.0f, graf_ctx);
+        return;
+    }
+    mpButtonParent->show();
+#endif
 
     mpScreen->draw(0.0f, 0.0f, graf_ctx);
     drawKanteraScreen(1);
@@ -2311,6 +2325,11 @@ void dMeter2Draw_c::drawButtonB(u8 i_action, bool param_1, f32 i_posX, f32 i_pos
         SAFE_STRCPY(static_cast<J2DTextBox*>(mpBText[i]->getPanePtr())->getStringPtr(), mp_string);
     }
 
+#if TARGET_PC
+    if (dusk::getSettings().game.enableTouchControls) {
+        mpScreen->search(MULTI_CHAR('item_b_n'))->hide();
+    } else
+#endif
     if (i_action == 0x26 || i_action == 0x2E) {
         mpScreen->search(MULTI_CHAR('item_b_n'))->show();
         var_r31 = 1;
@@ -2588,6 +2607,12 @@ void dMeter2Draw_c::drawButtonXY(int i_no, u8 i_itemNo, u8 i_action, bool param_
             mpTextXY[i_no]->scale(g_drawHIO.mButtonXYTextScale, g_drawHIO.mButtonXYTextScale);
             mpTextXY[i_no]->paneTrans(g_drawHIO.mButtonXYTextPosX, g_drawHIO.mButtonXYTextPosY);
         }
+
+#if TARGET_PC
+        if (dusk::getSettings().game.enableTouchControls) {
+            mpScreen->search(tag[i_no])->hide();
+        }
+#endif
     }
 }
 
@@ -3140,6 +3165,10 @@ void dMeter2Draw_c::setButtonIconMidonaAlpha(u32 param_0) {
     }
 
     mpButtonXY[2]->setAlpha(255.0f * field_0x724 * temp_f30_2);
+
+#if TARGET_PC
+    dusk::ui::update_midna_icon_texture(mpButtonMidona != NULL ? mpButtonMidona->getPanePtr() : NULL);
+#endif
 }
 
 void dMeter2Draw_c::setButtonIconAlpha(int i_no, u8 unused0, u32 unused1, bool unused2) {

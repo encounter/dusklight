@@ -32,6 +32,7 @@
 #if TARGET_PC
 #include "dusk/game_clock.h"
 #include "dusk/settings.h"
+#include "dusk/ui/touch_controls.hpp"
 #endif
 
 typedef void (dMenu_Ring_c::*initFunc)();
@@ -1672,12 +1673,40 @@ void dMenu_Ring_c::drawSelectItem() {
 #else
             if (field_0x674[i] < 10) {
 #endif
+#if TARGET_PC
+                f32 initSizeX;
+                f32 initSizeY;
+                f32 initScaleX;
+                f32 initScaleY;
+                Vec pos;
+                dusk::ui::EquipTarget touchTarget;
+                if (dusk::ui::get_equip_target(i, touchTarget)) {
+                    initSizeX = touchTarget.width;
+                    initSizeY = touchTarget.height;
+                    initScaleX = 1.0f;
+                    initScaleY = 1.0f;
+                    pos.x = touchTarget.left;
+                    pos.y = touchTarget.top;
+                    pos.z = 0.0f;
+                } else {
+                    CPaneMgr* meterItemPane = dMeter2Info_getMeterItemPanePtr(i);
+                    if (meterItemPane == NULL) {
+                        continue;
+                    }
+                    initSizeX = meterItemPane->getInitSizeX() * 1.7f;
+                    initSizeY = meterItemPane->getInitSizeY() * 1.7f;
+                    initScaleX = meterItemPane->getInitScaleX();
+                    initScaleY = meterItemPane->getInitScaleY();
+                    pos = meterItemPane->getGlobalVtxCenter(meterItemPane->mPane, true, 0);
+                }
+#else
                 f32 initSizeX = dMeter2Info_getMeterItemPanePtr(i)->getInitSizeX() * 1.7f;
                 f32 initSizeY = dMeter2Info_getMeterItemPanePtr(i)->getInitSizeY() * 1.7f;
                 f32 initScaleX = dMeter2Info_getMeterItemPanePtr(i)->getInitScaleX();
                 f32 initScaleY = dMeter2Info_getMeterItemPanePtr(i)->getInitScaleY();
                 Vec pos = dMeter2Info_getMeterItemPanePtr(i)->getGlobalVtxCenter(
                     dMeter2Info_getMeterItemPanePtr(i)->mPane, true, 0);
+#endif
 
 #if TARGET_PC
                 f32 fVar14 = 0.1f + 0.8f * u;

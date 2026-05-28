@@ -183,6 +183,18 @@ UserSettings g_userSettings = {
             ActionBindConfigVar{"actionBindings.callMidna_port2", PAD_NATIVE_BUTTON_INVALID},
             ActionBindConfigVar{"actionBindings.callMidna_port3", PAD_NATIVE_BUTTON_INVALID},
         },
+        .openMapScreen {
+            ActionBindConfigVar{"actionBindings.openMapScreen_port0", PAD_NATIVE_BUTTON_INVALID},
+            ActionBindConfigVar{"actionBindings.openMapScreen_port1", PAD_NATIVE_BUTTON_INVALID},
+            ActionBindConfigVar{"actionBindings.openMapScreen_port2", PAD_NATIVE_BUTTON_INVALID},
+            ActionBindConfigVar{"actionBindings.openMapScreen_port3", PAD_NATIVE_BUTTON_INVALID},
+        },
+        .toggleMinimap {
+            ActionBindConfigVar{"actionBindings.toggleMinimap_port0", PAD_NATIVE_BUTTON_INVALID},
+            ActionBindConfigVar{"actionBindings.toggleMinimap_port1", PAD_NATIVE_BUTTON_INVALID},
+            ActionBindConfigVar{"actionBindings.toggleMinimap_port2", PAD_NATIVE_BUTTON_INVALID},
+            ActionBindConfigVar{"actionBindings.toggleMinimap_port3", PAD_NATIVE_BUTTON_INVALID},
+        },
         .openDusklightMenu {
             ActionBindConfigVar{"actionBindings.openDusklightMenu_port0", PAD_NATIVE_BUTTON_INVALID},
             ActionBindConfigVar{"actionBindings.openDusklightMenu_port1", PAD_NATIVE_BUTTON_INVALID},
@@ -340,6 +352,14 @@ void registerSettings() {
     Register(g_userSettings.actionBindings.callMidna[1]);
     Register(g_userSettings.actionBindings.callMidna[2]);
     Register(g_userSettings.actionBindings.callMidna[3]);
+    Register(g_userSettings.actionBindings.openMapScreen[0]);
+    Register(g_userSettings.actionBindings.openMapScreen[1]);
+    Register(g_userSettings.actionBindings.openMapScreen[2]);
+    Register(g_userSettings.actionBindings.openMapScreen[3]);
+    Register(g_userSettings.actionBindings.toggleMinimap[0]);
+    Register(g_userSettings.actionBindings.toggleMinimap[1]);
+    Register(g_userSettings.actionBindings.toggleMinimap[2]);
+    Register(g_userSettings.actionBindings.toggleMinimap[3]);
     Register(g_userSettings.actionBindings.openDusklightMenu[0]);
     Register(g_userSettings.actionBindings.openDusklightMenu[1]);
     Register(g_userSettings.actionBindings.openDusklightMenu[2]);

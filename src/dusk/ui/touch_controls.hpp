@@ -1,10 +1,26 @@
 #pragma once
 
+#include "controls.hpp"
 #include "document.hpp"
 
+#include "dusk/action_bindings.h"
+
 #include <array>
+#include <bitset>
+#include <cstddef>
+#include <cstdint>
+#include <string>
 
 namespace dusk::ui {
+
+enum class ControlOverride {
+    Default,
+    Action,
+};
+
+bool get_equip_target(int slot, EquipTarget& target) noexcept;
+void set_control_override(Control control, ControlOverride override) noexcept;
+void sync_virtual_input() noexcept;
 
 class TouchControls final : public Document {
 public:
@@ -14,20 +30,7 @@ public:
     void show() override;
     void hide(bool close) override;
     void update() override;
-
-    enum class FixedControl {
-        A,
-        B,
-        X,
-        Y,
-        L,
-        RTrigger,
-        Z,
-        FirstPerson,
-        Items,
-        Collections,
-        Map,
-    };
+    void sync_virtual_input() noexcept;
 
 private:
     struct StickTouch {
@@ -36,41 +39,66 @@ private:
         Rml::Vector2f current;
         bool active = false;
     };
-    struct FixedTouch {
+    struct ControlTouch {
         SDL_FingerID id = 0;
-        FixedControl control = FixedControl::A;
+        clock::time_point startTime{};
         bool active = false;
+        bool longPressFired = false;
+    };
+    struct ControlElements {
+        Rml::Element* root = nullptr;
+        Rml::Element* icon = nullptr;
+        Rml::Element* oil = nullptr;
+        Rml::Element* oilFill = nullptr;
+        Rml::Element* count = nullptr;
+    };
+    enum class ControlAction {
+        Tap,
+        Hold,
     };
 
-    void set_fixed_control(FixedControl control, bool pressed);
-    void set_control_visual(FixedControl control, bool pressed) noexcept;
+    void set_control_pressed(Control control, bool pressed);
+    void release_control(Control control) noexcept;
+    bool fire_control_action(Control control, ControlAction action) noexcept;
+    bool start_control_touch(SDL_FingerID id, Control control) noexcept;
+    void set_control_visual(Control control, bool pressed) noexcept;
     void sync_l_lock_state() noexcept;
     void clear_virtual_input() noexcept;
-    void sync_virtual_input() noexcept;
+    void sync_touch_state() noexcept;
     void sync_visibility() noexcept;
     void sync_safe_area() noexcept;
     void sync_visual_state() noexcept;
+    void sync_top_bar_state() noexcept;
+    void sync_control_displays() noexcept;
     void handle_touch_down(Rml::Event& event) noexcept;
     void handle_touch_motion(Rml::Event& event) noexcept;
     void handle_touch_up(Rml::Event& event) noexcept;
-    bool release_fixed_touch(SDL_FingerID id) noexcept;
+    void sync_control_long_presses() noexcept;
+    bool release_control_touch(SDL_FingerID id, bool cancelled) noexcept;
 
     Rml::Element* mRoot = nullptr;
-    Rml::Element* mMoveStick = nullptr;
-    Rml::Element* mMoveKnob = nullptr;
-    Rml::Element* mLTarget = nullptr;
+    Rml::Element* mControlStick = nullptr;
+    Rml::Element* mControlKnob = nullptr;
+    Rml::Element* mTopActions = nullptr;
+    std::array<ControlElements, static_cast<std::size_t>(Control::COUNT)> mControlElements{};
+    std::string mButtonBIconSource;
+    std::string mButtonXIconSource;
+    std::string mButtonYIconSource;
+    std::string mZTriggerIconSource;
+    uint64_t mZTriggerIconRevision = 0;
+    std::string mButtonXCountLabel;
+    std::string mButtonYCountLabel;
     StickTouch mMoveTouch;
     StickTouch mCameraTouch;
-    std::array<FixedTouch, 10> mFixedTouches{};
+    std::array<ControlTouch, static_cast<std::size_t>(Control::COUNT)> mControlTouches{};
+    std::bitset<static_cast<std::size_t>(ActionBinds::COUNT)> mQueuedActions;
     Insets mSafeInsets;
-    int mObservedTouches = 0;
     u16 mButtonMask = 0;
     bool mLPressed = false;
     bool mLLatched = false;
     bool mManualLLatched = false;
     bool mLReleasePending = false;
     bool mRTriggerHeld = false;
-    bool mFirstPersonHeld = false;
     bool mWantsVirtualPad = false;
     bool mWasSuppressed = true;
     clock::time_point mLPressStartTime{};

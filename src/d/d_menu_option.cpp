@@ -26,6 +26,10 @@
 
 #include "JSystem/JAudio2/JASDriverIF.h"
 
+#if TARGET_PC
+#include "dusk/ui/touch_controls.hpp"
+#endif
+
 typedef void (dMenu_Option_c::*initFunc)();
 static initFunc init[] = {
     &dMenu_Option_c::atten_init,
@@ -293,6 +297,10 @@ void dMenu_Option_c::_create() {
 }
 
 void dMenu_Option_c::_delete() {
+#if TARGET_PC
+    dusk::ui::set_control_override(dusk::ui::Control::Z, dusk::ui::ControlOverride::Default);
+#endif
+
     JKR_DELETE(mpString);
     mpString = NULL;
 
@@ -2063,6 +2071,11 @@ void dMenu_Option_c::cursorAnime(f32 i_cursorValue) {
 }
 
 void dMenu_Option_c::setZButtonString(u16 i_stringID) {
+#if TARGET_PC
+    dusk::ui::set_control_override(dusk::ui::Control::Z,
+        i_stringID != 0 ? dusk::ui::ControlOverride::Action : dusk::ui::ControlOverride::Default);
+#endif
+
     if (i_stringID == 0) {
         for (int i = 0; i < 3; i++) {
             if (mpZButtonText[i] != NULL) {

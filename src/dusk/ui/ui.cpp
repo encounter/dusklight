@@ -18,6 +18,7 @@
 #include "dusk/config.hpp"
 #include "dusk/io.hpp"
 #include "input.hpp"
+#include "item_icon_provider.hpp"
 #include "prelaunch.hpp"
 #include "window.hpp"
 
@@ -60,11 +61,13 @@ bool initialize() noexcept {
     load_font("MaterialSymbolsRounded-Regular.ttf");
     load_font("NotoMono-Regular.ttf");
 
+    register_item_icon_texture_provider();
     sInitialized = true;
     return true;
 }
 
 void shutdown() noexcept {
+    unregister_item_icon_texture_provider();
     sDocumentStack.clear();
     sPassiveDocuments.clear();
     sConnectedGamepads.clear();
