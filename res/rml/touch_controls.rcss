@@ -57,7 +57,29 @@ button:hidden {
 button span {
     display: block;
     line-height: 1;
-    pointer-events: none;
+}
+
+button icon {
+    display: block;
+    width: 100%;
+    height: 100%;
+    font-family: "Material Symbols Rounded";
+    font-weight: normal;
+    font-size: 24dp;
+}
+
+.midna-icon,
+.item-icon,
+.item-count,
+.oil-meter {
+    display: none;
+}
+
+.midna-icon.visible,
+.item-icon.visible,
+.item-count.visible,
+.oil-meter.visible {
+    display: block;
 }
 
 .touch-control {
@@ -74,14 +96,19 @@ button span {
     border-color: rgba(128, 222, 234, 72%);
 }
 
-.trigger {
-    width: 78dp;
+.trigger,
+.skip {
     height: 46dp;
     border-radius: 23dp;
+}
+
+.trigger {
+    width: 78dp;
     font-size: 22dp;
 }
 
-.trigger-r {
+.trigger-r,
+.skip {
     right: 24dp;
     top: 18dp;
 }
@@ -94,25 +121,23 @@ button span {
 }
 
 .midna-icon {
-    display: none;
     position: absolute;
     left: 9dp;
     top: -1dp;
     width: 48dp;
     height: 48dp;
-    pointer-events: none;
 }
 
-.midna-icon.visible {
-    display: block;
+.button-z.has-icon span,
+.face.has-item span {
+    position: absolute;
+    font-size: 13dp;
+    line-height: 1;
 }
 
 .button-z.has-icon span {
-    position: absolute;
     right: 9dp;
     bottom: 7dp;
-    font-size: 13dp;
-    line-height: 1;
 }
 
 .button-z.pressed {
@@ -120,27 +145,27 @@ button span {
     border-color: rgba(220, 194, 255, 70%);
 }
 
-top-actions {
+action-bar {
     position: absolute;
-    left: 50%;
-    top: 18dp;
+    left: 56dp;
+    bottom: 0;
     width: 230dp;
     height: 46dp;
-    margin-left: -115dp;
     display: flex;
     align-items: center;
     justify-content: center;
     border: 1dp rgba(255, 255, 255, 22%);
-    border-radius: 23dp;
+    border-bottom: 0dp transparent;
+    border-radius: 23dp 23dp 0dp 0dp;
     background-color: rgba(22, 24, 28, 48%);
     /* backdrop-filter: blur(7dp); */
-    box-shadow: 0 6dp 18dp rgba(0, 0, 0, 28%);
+    box-shadow: 0 -6dp 18dp rgba(0, 0, 0, 28%);
     overflow: hidden;
     filter: opacity(1);
     transition: filter 0.2s linear-in-out;
 }
 
-top-actions:hidden {
+action-bar:hidden {
     filter: opacity(0);
     pointer-events: none;
 }
@@ -154,22 +179,20 @@ top-actions:hidden {
     border-radius: 0;
     background-color: transparent;
     box-shadow: none;
+}
+
+.utility,
+.skip {
     opacity: 0.55;
 }
 
 .utility.pressed {
     background-color: rgba(63, 78, 90, 68%);
-    opacity: 1;
 }
 
-top-actions icon {
-    display: block;
-    width: 100%;
-    height: 100%;
-    font-family: "Material Symbols Rounded";
-    font-weight: normal;
-    font-size: 24dp;
-    pointer-events: none;
+.utility.pressed,
+.skip.pressed {
+    opacity: 1;
 }
 
 .first-person icon {
@@ -188,39 +211,14 @@ top-actions icon {
     decorator: text("&#xe034;" center center);
 }
 
-.skip-action {
-    left: 50%;
-    top: 18dp;
+.skip {
     width: 64dp;
-    height: 46dp;
-    margin-left: -32dp;
     z-index: 1;
-    border-radius: 23dp;
-    background-color: rgba(63, 78, 90, 68%);
     border-color: rgba(255, 255, 255, 36%);
-    opacity: 0.86;
 }
 
-.skip-action:hidden {
-    opacity: 0;
-    pointer-events: none;
-}
-
-.skip-action.pressed {
-    background-color: rgba(86, 107, 124, 82%);
-    border-color: rgba(255, 255, 255, 62%);
-    opacity: 1;
-}
-
-.skip-action icon {
-    display: block;
-    width: 100%;
-    height: 100%;
-    font-family: "Material Symbols Rounded";
-    font-weight: normal;
-    font-size: 28dp;
-    pointer-events: none;
-    decorator: text("&#xe01f;" center center);
+.skip icon {
+    decorator: text("&#xe044;" center center);
 }
 
 separator {
@@ -248,20 +246,13 @@ face-cluster {
 }
 
 .item-icon {
-    display: none;
     width: auto;
     height: auto;
     max-width: 76%;
     max-height: 76%;
-    pointer-events: none;
-}
-
-.item-icon.visible {
-    display: block;
 }
 
 .item-count {
-    display: none;
     position: absolute;
     left: 6dp;
     bottom: 5dp;
@@ -274,15 +265,9 @@ face-cluster {
     font-size: 12dp;
     line-height: 13dp;
     text-align: center;
-    pointer-events: none;
-}
-
-.item-count.visible {
-    display: block;
 }
 
 .oil-meter {
-    display: none;
     position: absolute;
     left: 12dp;
     bottom: -5dp;
@@ -293,11 +278,6 @@ face-cluster {
     border-radius: 4dp;
     background-color: rgba(18, 14, 10, 70%);
     box-shadow: 0 2dp 6dp rgba(0, 0, 0, 35%);
-    pointer-events: none;
-}
-
-.oil-meter.visible {
-    display: block;
 }
 
 oil-fill {
@@ -309,11 +289,8 @@ oil-fill {
 }
 
 .face.has-item span {
-    position: absolute;
     right: 6dp;
     bottom: 6dp;
-    font-size: 13dp;
-    line-height: 1;
     color: rgba(255, 255, 255, 88%);
 }
 

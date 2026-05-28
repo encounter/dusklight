@@ -80,7 +80,7 @@ private:
     Rml::Element* mRoot = nullptr;
     Rml::Element* mControlStick = nullptr;
     Rml::Element* mControlKnob = nullptr;
-    Rml::Element* mTopActions = nullptr;
+    Rml::Element* mActionBar = nullptr;
     std::array<ControlElements, static_cast<std::size_t>(Control::COUNT)> mControlElements{};
     std::string mButtonBIconSource;
     std::string mButtonXIconSource;

@@ -133,16 +133,16 @@ const Rml::String kDocumentSource = R"RML(
     </touch-stick>
 
     <button id="trigger-l" class="touch-control trigger trigger-l"><span>L</span></button>
-    <top-actions id="top-actions" class="touch-control">
+    <action-bar id="action-bar" class="touch-control">
+        <button id="items" class="utility items"><icon /></button>
+        <separator />
         <button id="first-person" class="utility first-person"><icon /></button>
         <separator />
         <button id="map" class="utility map"><icon /></button>
         <separator />
-        <button id="items" class="utility items"><icon /></button>
-        <separator />
         <button id="collections" class="utility collections"><icon /></button>
-    </top-actions>
-    <button id="skip" class="touch-control skip-action"><icon /></button>
+    </action-bar>
+    <button id="skip" class="touch-control skip"><icon /></button>
 
     <button id="trigger-r" class="touch-control trigger trigger-r"><span>R</span></button>
     <button id="button-z" class="touch-control trigger button-z midna"><img id="z-midna-icon" class="midna-icon" /><span>Z</span></button>
@@ -376,7 +376,7 @@ TouchControls::TouchControls()
       mRoot(mDocument != nullptr ? mDocument->GetElementById("root") : nullptr),
       mControlStick(mDocument != nullptr ? mDocument->GetElementById("control-stick") : nullptr),
       mControlKnob(mDocument != nullptr ? mDocument->GetElementById("control-knob") : nullptr),
-      mTopActions(mDocument != nullptr ? mDocument->GetElementById("top-actions") : nullptr) {
+      mActionBar(mDocument != nullptr ? mDocument->GetElementById("action-bar") : nullptr) {
     sTouchControls = this;
     if (mDocument != nullptr) {
         for (std::size_t i = 0; i < kControls.size(); ++i) {
@@ -800,8 +800,8 @@ void TouchControls::sync_top_bar_state() noexcept {
                             (dComIfGp_getMsgObjectClass() != nullptr &&
                                 dMsgObject_isTalkNowCheck()));
     const auto& skip = mControlElements[static_cast<std::size_t>(Control::SKIP)];
-    if (mTopActions != nullptr) {
-        mTopActions->SetPseudoClass("hidden", hidden || skipVisible);
+    if (mActionBar != nullptr) {
+        mActionBar->SetPseudoClass("hidden", hidden || skipVisible);
     }
     if (skip.root != nullptr) {
         skip.root->SetPseudoClass("hidden", !skipVisible);
