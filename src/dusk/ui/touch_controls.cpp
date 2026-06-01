@@ -33,7 +33,6 @@ constexpr float kAnalogZoneBottomDp = 30.f;
 constexpr float kLeftZoneWidth = 0.46f;
 constexpr float kRightZoneStart = 0.52f;
 constexpr u8 kTriggerAnalog = 180;
-constexpr u8 kLTargetAnalog = 180;
 constexpr auto kLDoubleTapWindow = std::chrono::milliseconds(300);
 constexpr auto kHoldActionDuration = std::chrono::milliseconds(450);
 constexpr float kFaceIconTargetRatio = 0.76f;
@@ -114,6 +113,22 @@ constexpr std::array<ControlInfo, static_cast<std::size_t>(Control::COUNT)> kCon
         .id = "skip",
         .padButton = PAD_BUTTON_START,
     },
+    {
+        .id = "dpad-up",
+        .padButton = PAD_BUTTON_UP,
+    },
+    {
+        .id = "dpad-down",
+        .padButton = PAD_BUTTON_DOWN,
+    },
+    {
+        .id = "dpad-left",
+        .padButton = PAD_BUTTON_LEFT,
+    },
+    {
+        .id = "dpad-right",
+        .padButton = PAD_BUTTON_RIGHT,
+    },
 }};
 
 constexpr const ControlInfo* control_info(Control control) noexcept {
@@ -131,6 +146,14 @@ const Rml::String kDocumentSource = R"RML(
         <stick-ring />
         <stick-knob id="control-knob" />
     </touch-stick>
+
+    <dpad-cluster id="dpad-cluster">
+        <dpad-center />
+        <button id="dpad-up" class="touch-control dpad-button up"><icon /></button>
+        <button id="dpad-down" class="touch-control dpad-button down"><icon /></button>
+        <button id="dpad-left" class="touch-control dpad-button left"><icon /></button>
+        <button id="dpad-right" class="touch-control dpad-button right"><icon /></button>
+    </dpad-cluster>
 
     <button id="trigger-l" class="touch-control trigger trigger-l"><span>L</span></button>
     <action-bar id="action-bar" class="touch-control">
@@ -189,6 +212,41 @@ bool item_wheel_active() noexcept {
     return dMeter2Info_getWindowStatus() == 2;
 }
 
+bool fixed_dpad_visible() noexcept {
+    if (fpcM_SearchByName(fpcNm_NAME_SCENE_e) != nullptr) {
+        return true;
+    }
+    switch (dMeter2Info_getWindowStatus()) {
+    case 0:  // Normal
+    case 2:  // Item wheel
+    case 4:  // Field map screen
+    case 5:  // Dungeon map screen
+        return false;
+    default:
+        return true;
+    }
+}
+
+bool fishing_controls_active() noexcept {
+    const auto* player = daAlink_getAlinkActorClass();
+    if (player == nullptr) {
+        return false;
+    }
+    return player->checkCanoeFishingWaitAnime();
+}
+
+enum class StickOutput {
+    MainStick,
+    CStick,
+};
+
+StickOutput stick_output_mode() noexcept {
+    if (fishing_controls_active()) {
+        return StickOutput::CStick;
+    }
+    return StickOutput::MainStick;
+}
+
 bool controls_available(bool allowItemWheel) noexcept {
     if (dComIfGp_getLinkPlayer() == nullptr) {
         return false;
@@ -209,6 +267,14 @@ bool controls_available(bool allowItemWheel) noexcept {
     }
 
     return true;
+}
+
+Rml::Vector2f clamped_stick_delta(
+    Rml::Vector2f start, Rml::Vector2f current, float stickRadius) noexcept {
+    Rml::Vector2f delta = current - start;
+    const float length = std::sqrt(delta.x * delta.x + delta.y * delta.y);
+    delta *= length > stickRadius ? stickRadius / length : 1.f;
+    return delta;
 }
 
 struct FaceButtonState {
@@ -376,6 +442,7 @@ TouchControls::TouchControls()
       mRoot(mDocument != nullptr ? mDocument->GetElementById("root") : nullptr),
       mControlStick(mDocument != nullptr ? mDocument->GetElementById("control-stick") : nullptr),
       mControlKnob(mDocument != nullptr ? mDocument->GetElementById("control-knob") : nullptr),
+      mDPadCluster(mDocument != nullptr ? mDocument->GetElementById("dpad-cluster") : nullptr),
       mActionBar(mDocument != nullptr ? mDocument->GetElementById("action-bar") : nullptr) {
     sTouchControls = this;
     if (mDocument != nullptr) {
@@ -664,28 +731,23 @@ void TouchControls::sync_touch_state() noexcept {
     }
 
     const float stickRadius = kStickRadiusDp * dp_scale();
-    if (mMoveTouch.active && stickRadius > 0.f) {
-        Rml::Vector2f delta = mMoveTouch.current - mMoveTouch.start;
-        const float length = std::sqrt(delta.x * delta.x + delta.y * delta.y);
-        const float scale = length > stickRadius ? stickRadius / length : 1.f;
-        delta *= scale;
-
-        if (mControlStick != nullptr) {
+    if (mControlStick != nullptr) {
+        if (mMoveTouch.active && stickRadius > 0.f) {
+            const auto delta =
+                clamped_stick_delta(mMoveTouch.start, mMoveTouch.current, stickRadius);
             const float knobRadius = kStickKnobRadiusDp * dp_scale();
             mControlStick->SetClass("active", true);
             mControlStick->SetProperty(Rml::PropertyId::Left,
                 Rml::Property(mMoveTouch.start.x - stickRadius, Rml::Unit::PX));
             mControlStick->SetProperty(Rml::PropertyId::Top,
                 Rml::Property(mMoveTouch.start.y - stickRadius, Rml::Unit::PX));
-            if (mControlKnob != nullptr) {
-                mControlKnob->SetProperty(Rml::PropertyId::Left,
-                    Rml::Property(stickRadius + delta.x - knobRadius, Rml::Unit::PX));
-                mControlKnob->SetProperty(Rml::PropertyId::Top,
-                    Rml::Property(stickRadius + delta.y - knobRadius, Rml::Unit::PX));
-            }
+            mControlKnob->SetProperty(Rml::PropertyId::Left,
+                Rml::Property(stickRadius + delta.x - knobRadius, Rml::Unit::PX));
+            mControlKnob->SetProperty(Rml::PropertyId::Top,
+                Rml::Property(stickRadius + delta.y - knobRadius, Rml::Unit::PX));
+        } else {
+            mControlStick->SetClass("active", false);
         }
-    } else if (mControlStick != nullptr) {
-        mControlStick->SetClass("active", false);
     }
 
     sync_visual_state();
@@ -703,7 +765,7 @@ void TouchControls::sync_virtual_input() noexcept {
 
     if (mLPressed || mLLatched || mManualLLatched) {
         status.button |= PAD_TRIGGER_L;
-        status.triggerLeft = kLTargetAnalog;
+        status.triggerLeft = kTriggerAnalog;
     }
     if (mRTriggerHeld) {
         status.button |= PAD_TRIGGER_R;
@@ -712,16 +774,25 @@ void TouchControls::sync_virtual_input() noexcept {
 
     const float stickRadius = kStickRadiusDp * dp_scale();
     if (mMoveTouch.active && stickRadius > 0.f) {
-        Rml::Vector2f delta = mMoveTouch.current - mMoveTouch.start;
-        const float length = std::sqrt(delta.x * delta.x + delta.y * delta.y);
-        const float scale = length > stickRadius ? stickRadius / length : 1.f;
-        delta *= scale;
-        status.stickX = stick_value(delta.x / stickRadius);
-        status.stickY = stick_value(-delta.y / stickRadius);
+        const auto delta = clamped_stick_delta(mMoveTouch.start, mMoveTouch.current, stickRadius);
+        const float stickX = stick_value(delta.x / stickRadius);
+        const float stickY = stick_value(-delta.y / stickRadius);
+        switch (stick_output_mode()) {
+        case StickOutput::CStick:
+            status.substickX = stickX;
+            status.substickY = stickY;
+            break;
+        case StickOutput::MainStick:
+        default:
+            status.stickX = stickX;
+            status.stickY = stickY;
+            break;
+        }
     }
 
     mWantsVirtualPad = status.button != 0 || status.stickX != 0 || status.stickY != 0 ||
-                       status.triggerLeft != 0 || status.triggerRight != 0;
+                       status.substickX != 0 || status.substickY != 0 || status.triggerLeft != 0 ||
+                       status.triggerRight != 0;
     if (mWantsVirtualPad) {
         PADSetVirtualStatus(kPort, &status);
     } else {
@@ -771,12 +842,13 @@ void TouchControls::sync_safe_area() noexcept {
 
 void TouchControls::sync_visual_state() noexcept {
     const bool hideGameplayControls = game_controls_suppressed();
-    const auto& lTarget = mControlElements[static_cast<std::size_t>(Control::L)];
+    const bool showFixedDPad = fixed_dpad_visible();
+    const auto& lTrigger = mControlElements[static_cast<std::size_t>(Control::L)];
     const auto& rTrigger = mControlElements[static_cast<std::size_t>(Control::R)];
 
-    if (lTarget.root != nullptr) {
-        lTarget.root->SetPseudoClass("hidden", hideGameplayControls);
-        lTarget.root->SetClass(
+    if (lTrigger.root != nullptr) {
+        lTrigger.root->SetPseudoClass("hidden", hideGameplayControls);
+        lTrigger.root->SetClass(
             "active", !hideGameplayControls &&
                           (mLPressed || mLLatched || mManualLLatched || player_attention_locked()));
     }
@@ -788,9 +860,29 @@ void TouchControls::sync_visual_state() noexcept {
         release_control(Control::L);
         release_control(Control::R);
     }
+
+    constexpr std::array dpadControls{
+        Control::DPAD_UP,
+        Control::DPAD_DOWN,
+        Control::DPAD_LEFT,
+        Control::DPAD_RIGHT,
+    };
+    if (mDPadCluster != nullptr) {
+        mDPadCluster->SetPseudoClass("hidden", !showFixedDPad);
+    }
+    for (const auto control : dpadControls) {
+        const auto index = static_cast<std::size_t>(control);
+        auto* element = index < mControlElements.size() ? mControlElements[index].root : nullptr;
+        if (element != nullptr) {
+            element->SetPseudoClass("hidden", !showFixedDPad);
+        }
+        if (!showFixedDPad) {
+            release_control(control);
+        }
+    }
 }
 
-void TouchControls::sync_top_bar_state() noexcept {
+void TouchControls::sync_action_bar_state() noexcept {
     auto* event = dComIfGp_getEvent();
     const bool skipVisible =
         event != nullptr && event->mEventStatus == 1 && event->mSkipFunc != nullptr &&
@@ -963,7 +1055,7 @@ void TouchControls::update() {
     sync_control_long_presses();
     sync_safe_area();
     sync_visual_state();
-    sync_top_bar_state();
+    sync_action_bar_state();
     sync_control_displays();
     sync_touch_state();
 }

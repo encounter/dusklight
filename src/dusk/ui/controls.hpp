@@ -23,6 +23,10 @@ enum class Control {
     COLLECTIONS,
     MAP,
     SKIP,
+    DPAD_UP,
+    DPAD_DOWN,
+    DPAD_LEFT,
+    DPAD_RIGHT,
     COUNT,
 };
 

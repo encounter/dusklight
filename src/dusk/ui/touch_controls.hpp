@@ -69,7 +69,7 @@ private:
     void sync_visibility() noexcept;
     void sync_safe_area() noexcept;
     void sync_visual_state() noexcept;
-    void sync_top_bar_state() noexcept;
+    void sync_action_bar_state() noexcept;
     void sync_control_displays() noexcept;
     void handle_touch_down(Rml::Event& event) noexcept;
     void handle_touch_motion(Rml::Event& event) noexcept;
@@ -80,6 +80,7 @@ private:
     Rml::Element* mRoot = nullptr;
     Rml::Element* mControlStick = nullptr;
     Rml::Element* mControlKnob = nullptr;
+    Rml::Element* mDPadCluster = nullptr;
     Rml::Element* mActionBar = nullptr;
     std::array<ControlElements, static_cast<std::size_t>(Control::COUNT)> mControlElements{};
     std::string mButtonBIconSource;
