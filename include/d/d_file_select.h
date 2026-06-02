@@ -411,6 +411,10 @@ public:
     bool yesnoWakuAlpahAnm(u8);
     #if TARGET_PC
     void fileSelectWide();
+    bool pointerDataSelect();
+    bool pointerMenuSelect();
+    bool pointerCopyDataToSelect();
+    bool pointerYesNoSelect(bool errorSelect);
     #endif
     void _draw();
     void errorMoveAnmInitSet(int, int);

@@ -20,6 +20,10 @@ body[open] {
     filter: opacity(1);
 }
 
+body:not([open]) {
+    pointer-events: none;
+}
+
 button {
     display: flex;
     align-items: center;
@@ -234,6 +238,13 @@ face-cluster {
     bottom: 28dp;
     width: 236dp;
     height: 184dp;
+    opacity: 1;
+    transition: opacity 0.2s linear-in-out;
+}
+
+face-cluster:hidden {
+    opacity: 0;
+    pointer-events: none;
 }
 
 .face {
@@ -339,88 +350,6 @@ touch-stick {
 
 touch-stick.active {
     opacity: 1;
-}
-
-dpad-cluster {
-    display: block;
-    position: absolute;
-    left: 88dp;
-    bottom: 54dp;
-    width: 192dp;
-    height: 192dp;
-    opacity: 1;
-    transition: opacity 0.2s linear-in-out;
-}
-
-dpad-cluster:hidden {
-    opacity: 0;
-    pointer-events: none;
-}
-
-.dpad-button {
-    width: 64dp;
-    height: 64dp;
-    border-radius: 9dp;
-    background-color: rgba(22, 24, 28, 52%);
-    box-shadow: none;
-    z-index: 1;
-}
-
-dpad-center {
-    position: absolute;
-    display: block;
-    left: 64dp;
-    top: 64dp;
-    width: 64dp;
-    height: 64dp;
-    border-width: 0dp;
-    border-radius: 0dp;
-    background-color: rgba(22, 24, 28, 52%);
-    box-shadow: none;
-}
-
-.dpad-button.up {
-    left: 64dp;
-    top: 0;
-    border-bottom: 0dp transparent;
-    border-radius: 9dp 9dp 0dp 0dp;
-}
-
-.dpad-button.down {
-    left: 64dp;
-    bottom: 0;
-    border-top: 0dp transparent;
-    border-radius: 0dp 0dp 9dp 9dp;
-}
-
-.dpad-button.left {
-    left: 0;
-    top: 64dp;
-    border-right: 0dp transparent;
-    border-radius: 9dp 0dp 0dp 9dp;
-}
-
-.dpad-button.right {
-    right: 0;
-    top: 64dp;
-    border-left: 0dp transparent;
-    border-radius: 0dp 9dp 9dp 0dp;
-}
-
-.dpad-button.up icon {
-    decorator: text("&#xe5ce;" center center);
-}
-
-.dpad-button.down icon {
-    decorator: text("&#xe5cf;" center center);
-}
-
-.dpad-button.left icon {
-    decorator: text("&#xe5cb;" center center);
-}
-
-.dpad-button.right icon {
-    decorator: text("&#xe5cc;" center center);
 }
 
 stick-ring {

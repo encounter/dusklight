@@ -31,6 +31,7 @@
 
 #if TARGET_PC
 #include "dusk/game_clock.h"
+#include "dusk/menu_pointer.h"
 #include "dusk/settings.h"
 #include "dusk/ui/touch_controls.hpp"
 #endif
@@ -615,6 +616,9 @@ void dMenu_Ring_c::_delete() {
  * initializes a new process if mStatus changes
 */
 void dMenu_Ring_c::_move() {
+#if TARGET_PC
+    dusk::menu_pointer::begin_context(dusk::menu_pointer::Context::ItemWheel);
+#endif
     mRingRadiusH = g_ringHIO.mRingRadiusH;
     mRingRadiusV = g_ringHIO.mRingRadiusV;
     mOldStatus = mStatus; // Save current status for check
@@ -1518,6 +1522,11 @@ void dMenu_Ring_c::stick_wait_proc() {
         setDoStatus(0);
         return;
     }
+#if TARGET_PC
+    if (pointerMove()) {
+        return;
+    }
+#endif
     if (dMw_A_TRIGGER() && !dMeter2Info_isTouchKeyCheck(0xe)) {
         Z2GetAudioMgr()->seStart(Z2SE_SYS_ERROR, NULL, 0, 0, 1.0f, 1.0f, -1.0f, -1.0f, 0);
     }
@@ -1528,6 +1537,49 @@ void dMenu_Ring_c::stick_wait_proc() {
         field_0x6b2 = 0;
     }
 }
+
+#if TARGET_PC
+bool dMenu_Ring_c::pointerMove() {
+    dusk::menu_pointer::begin_context(dusk::menu_pointer::Context::ItemWheel);
+    const auto& pointer = dusk::menu_pointer::state();
+    if (!pointer.valid || mItemsTotal == 0) {
+        return false;
+    }
+
+    int hoveredSlot = -1;
+    f32 bestDistance = 42.0f;
+    for (u8 i = 0; i < mItemsTotal; ++i) {
+        const f32 x = mItemSlotPosX[i] + mCenterPosX;
+        const f32 y = mItemSlotPosY[i] + mCenterPosY;
+        const f32 distance = calcDistance(pointer.x, pointer.y, x, y);
+        if (distance < bestDistance) {
+            bestDistance = distance;
+            hoveredSlot = i;
+        }
+    }
+
+    if (hoveredSlot < 0) {
+        return false;
+    }
+
+    if (mCurrentSlot != hoveredSlot) {
+        mDirectSelectCursorPos.x = mItemSlotPosX[mCurrentSlot];
+        mDirectSelectCursorPos.z = mItemSlotPosY[mCurrentSlot];
+        mCurrentSlot = hoveredSlot;
+        mDirectSelectActive = true;
+        field_0x670 = field_0x63e[mCurrentSlot];
+        setStatus(STATUS_MOVE);
+        field_0x6b2 = 0;
+        return true;
+    }
+
+    if (dusk::menu_pointer::consume_click()) {
+        return true;
+    }
+
+    return false;
+}
+#endif
 
 void dMenu_Ring_c::stick_move_init() {
     if (mCursorSpeed == 0) {

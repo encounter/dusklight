@@ -15,6 +15,7 @@
 #include "d/d_meter2_info.h"
 #include "d/d_msg_object.h"
 #include "dusk/action_bindings.h"
+#include "dusk/menu_pointer.h"
 #include "dusk/settings.h"
 #include "dusk/touch_camera.h"
 #include "f_op/f_op_overlap_mng.h"
@@ -113,22 +114,6 @@ constexpr std::array<ControlInfo, static_cast<std::size_t>(Control::COUNT)> kCon
         .id = "skip",
         .padButton = PAD_BUTTON_START,
     },
-    {
-        .id = "dpad-up",
-        .padButton = PAD_BUTTON_UP,
-    },
-    {
-        .id = "dpad-down",
-        .padButton = PAD_BUTTON_DOWN,
-    },
-    {
-        .id = "dpad-left",
-        .padButton = PAD_BUTTON_LEFT,
-    },
-    {
-        .id = "dpad-right",
-        .padButton = PAD_BUTTON_RIGHT,
-    },
 }};
 
 constexpr const ControlInfo* control_info(Control control) noexcept {
@@ -147,14 +132,6 @@ const Rml::String kDocumentSource = R"RML(
         <stick-knob id="control-knob" />
     </touch-stick>
 
-    <dpad-cluster id="dpad-cluster">
-        <dpad-center />
-        <button id="dpad-up" class="touch-control dpad-button up"><icon /></button>
-        <button id="dpad-down" class="touch-control dpad-button down"><icon /></button>
-        <button id="dpad-left" class="touch-control dpad-button left"><icon /></button>
-        <button id="dpad-right" class="touch-control dpad-button right"><icon /></button>
-    </dpad-cluster>
-
     <button id="trigger-l" class="touch-control trigger trigger-l"><span>L</span></button>
     <action-bar id="action-bar" class="touch-control">
         <button id="items" class="utility items"><icon /></button>
@@ -170,7 +147,7 @@ const Rml::String kDocumentSource = R"RML(
     <button id="trigger-r" class="touch-control trigger trigger-r"><span>R</span></button>
     <button id="button-z" class="touch-control trigger button-z midna"><img id="z-midna-icon" class="midna-icon" /><span>Z</span></button>
 
-    <face-cluster>
+    <face-cluster id="face-cluster">
         <button id="button-y" class="touch-control face y"><img id="button-y-icon" class="item-icon" /><oil-meter id="button-y-oil" class="oil-meter"><oil-fill id="button-y-oil-fill" /></oil-meter><count id="button-y-count" class="item-count"></count><span>Y</span></button>
         <button id="button-x" class="touch-control face x"><img id="button-x-icon" class="item-icon" /><oil-meter id="button-x-oil" class="oil-meter"><oil-fill id="button-x-oil-fill" /></oil-meter><count id="button-x-count" class="item-count"></count><span>X</span></button>
         <button id="button-b" class="touch-control face b"><img id="button-b-icon" class="item-icon" /><oil-meter id="button-b-oil" class="oil-meter"><oil-fill id="button-b-oil-fill" /></oil-meter><span>B</span></button>
@@ -188,6 +165,13 @@ Rml::Vector2f touch_position(const Rml::Event& event) noexcept {
     return {
         event.GetParameter("x", 0.f),
         event.GetParameter("y", 0.f),
+    };
+}
+
+Rml::Vector2f mouse_position(const Rml::Event& event) noexcept {
+    return {
+        event.GetParameter("mouse_x", 0.f),
+        event.GetParameter("mouse_y", 0.f),
     };
 }
 
@@ -210,21 +194,6 @@ bool player_attention_locked() noexcept {
 
 bool item_wheel_active() noexcept {
     return dMeter2Info_getWindowStatus() == 2;
-}
-
-bool fixed_dpad_visible() noexcept {
-    if (fpcM_SearchByName(fpcNm_NAME_SCENE_e) != nullptr) {
-        return true;
-    }
-    switch (dMeter2Info_getWindowStatus()) {
-    case 0:  // Normal
-    case 2:  // Item wheel
-    case 4:  // Field map screen
-    case 5:  // Dungeon map screen
-        return false;
-    default:
-        return true;
-    }
 }
 
 bool fishing_controls_active() noexcept {
@@ -442,7 +411,7 @@ TouchControls::TouchControls()
       mRoot(mDocument != nullptr ? mDocument->GetElementById("root") : nullptr),
       mControlStick(mDocument != nullptr ? mDocument->GetElementById("control-stick") : nullptr),
       mControlKnob(mDocument != nullptr ? mDocument->GetElementById("control-knob") : nullptr),
-      mDPadCluster(mDocument != nullptr ? mDocument->GetElementById("dpad-cluster") : nullptr),
+      mFaceCluster(mDocument != nullptr ? mDocument->GetElementById("face-cluster") : nullptr),
       mActionBar(mDocument != nullptr ? mDocument->GetElementById("action-bar") : nullptr) {
     sTouchControls = this;
     if (mDocument != nullptr) {
@@ -475,7 +444,7 @@ TouchControls::TouchControls()
             return;
         }
         listen(element, aurora::rmlui::TouchStartEvent, [this, control](Rml::Event& event) {
-            if (!visible() || mWasSuppressed) {
+            if (!visible() || mWasSuppressed || !getSettings().game.enableTouchControls) {
                 return;
             }
             if (start_control_touch(touch_id(event), control)) {
@@ -504,7 +473,10 @@ TouchControls::TouchControls()
     listen(
         mRoot, aurora::rmlui::TouchEndEvent, [this](Rml::Event& event) { handle_touch_up(event); });
     listen(mRoot, aurora::rmlui::TouchCancelEvent,
-        [this](Rml::Event& event) { handle_touch_up(event); });
+        [this](Rml::Event& event) { handle_touch_cancel(event); });
+    listen(mRoot, Rml::EventId::Mousemove, [this](Rml::Event& event) { handle_mouse_move(event); });
+    listen(mRoot, Rml::EventId::Mousedown, [this](Rml::Event& event) { handle_mouse_down(event); });
+    listen(mRoot, Rml::EventId::Mouseup, [this](Rml::Event& event) { handle_mouse_up(event); });
 }
 
 TouchControls::~TouchControls() {
@@ -679,22 +651,23 @@ void TouchControls::sync_l_lock_state() noexcept {
     }
 }
 
-void TouchControls::clear_virtual_input() noexcept {
+void TouchControls::clear_motion_touch_input() noexcept {
     mMoveTouch = {};
     mCameraTouch = {};
-    mControlTouches = {};
+    touch_camera::clear();
+    if (mControlStick != nullptr) {
+        mControlStick->SetClass("active", false);
+    }
+}
+
+void TouchControls::clear_control_input() noexcept {
+    for (std::size_t i = 0; i < mControlTouches.size(); ++i) {
+        release_control(static_cast<Control>(i));
+    }
     mQueuedActions.reset();
     mButtonMask = 0;
-    mLPressed = false;
-    mLLatched = false;
-    mManualLLatched = false;
-    mLReleasePending = false;
-    mLPressStartTime = {};
-    mLastLTapTime = {};
-    mRTriggerHeld = false;
     mWantsVirtualPad = false;
     PADClearVirtualStatus(kPort);
-    touch_camera::clear();
     for (const auto& control : kControls) {
         if (control.tapAction) {
             setVirtualActionBind(*control.tapAction, kPort, false, false);
@@ -703,21 +676,30 @@ void TouchControls::clear_virtual_input() noexcept {
             setVirtualActionBind(*control.holdAction, kPort, false, false);
         }
     }
-    if (mControlStick != nullptr) {
-        mControlStick->SetClass("active", false);
-    }
-    for (auto& elements : mControlElements) {
-        if (elements.root != nullptr) {
-            elements.root->SetClass("pressed", false);
-        }
-    }
-    sync_visual_state();
+}
+
+void TouchControls::clear_virtual_input() noexcept {
+    clear_motion_touch_input();
+    mMenuPointerTouch = 0;
+    mMenuPointerMouseSuppressions = 0;
+    mMenuPointerTouchActive = false;
+    clear_control_input();
 }
 
 void TouchControls::sync_touch_state() noexcept {
-    if (mWasSuppressed || !getSettings().game.enableTouchControls) {
+    const bool controlsEnabled = getSettings().game.enableTouchControls;
+    const bool pointerMenuActive = menu_pointer::touch_menu_active();
+    if (mWasSuppressed || (!controlsEnabled && !pointerMenuActive)) {
         clear_virtual_input();
         return;
+    }
+
+    if (pointerMenuActive) {
+        clear_motion_touch_input();
+        if (!controlsEnabled) {
+            clear_control_input();
+            return;
+        }
     }
 
     sync_l_lock_state();
@@ -816,7 +798,7 @@ void TouchControls::sync_virtual_input() noexcept {
 
 void TouchControls::sync_visibility() noexcept {
     mWasSuppressed = any_document_visible();
-    if (getSettings().game.enableTouchControls && !mWasSuppressed) {
+    if ((getSettings().game.enableTouchControls || menu_pointer::active()) && !mWasSuppressed) {
         show();
     } else if (visible()) {
         hide(false);
@@ -841,8 +823,19 @@ void TouchControls::sync_safe_area() noexcept {
 }
 
 void TouchControls::sync_visual_state() noexcept {
+    if (!getSettings().game.enableTouchControls) {
+        clear_motion_touch_input();
+        for (const auto control : {Control::L, Control::R}) {
+            const auto& elements = mControlElements[static_cast<std::size_t>(control)];
+            if (elements.root != nullptr) {
+                elements.root->SetPseudoClass("hidden", true);
+            }
+            release_control(control);
+        }
+        return;
+    }
+
     const bool hideGameplayControls = game_controls_suppressed();
-    const bool showFixedDPad = fixed_dpad_visible();
     const auto& lTrigger = mControlElements[static_cast<std::size_t>(Control::L)];
     const auto& rTrigger = mControlElements[static_cast<std::size_t>(Control::R)];
 
@@ -860,29 +853,25 @@ void TouchControls::sync_visual_state() noexcept {
         release_control(Control::L);
         release_control(Control::R);
     }
-
-    constexpr std::array dpadControls{
-        Control::DPAD_UP,
-        Control::DPAD_DOWN,
-        Control::DPAD_LEFT,
-        Control::DPAD_RIGHT,
-    };
-    if (mDPadCluster != nullptr) {
-        mDPadCluster->SetPseudoClass("hidden", !showFixedDPad);
-    }
-    for (const auto control : dpadControls) {
-        const auto index = static_cast<std::size_t>(control);
-        auto* element = index < mControlElements.size() ? mControlElements[index].root : nullptr;
-        if (element != nullptr) {
-            element->SetPseudoClass("hidden", !showFixedDPad);
-        }
-        if (!showFixedDPad) {
-            release_control(control);
-        }
-    }
 }
 
 void TouchControls::sync_action_bar_state() noexcept {
+    if (!getSettings().game.enableTouchControls) {
+        if (mActionBar != nullptr) {
+            mActionBar->SetPseudoClass("hidden", true);
+        }
+        const auto& skip = mControlElements[static_cast<std::size_t>(Control::SKIP)];
+        if (skip.root != nullptr) {
+            skip.root->SetPseudoClass("hidden", true);
+        }
+        for (const auto control : {Control::FIRST_PERSON, Control::ITEMS, Control::COLLECTIONS,
+                 Control::MAP, Control::SKIP})
+        {
+            release_control(control);
+        }
+        return;
+    }
+
     auto* event = dComIfGp_getEvent();
     const bool skipVisible =
         event != nullptr && event->mEventStatus == 1 && event->mSkipFunc != nullptr &&
@@ -899,10 +888,11 @@ void TouchControls::sync_action_bar_state() noexcept {
         skip.root->SetPseudoClass("hidden", !skipVisible);
     }
     if (skipVisible) {
-        release_control(Control::FIRST_PERSON);
-        release_control(Control::ITEMS);
-        release_control(Control::COLLECTIONS);
-        release_control(Control::MAP);
+        for (const auto control :
+            {Control::FIRST_PERSON, Control::ITEMS, Control::COLLECTIONS, Control::MAP})
+        {
+            release_control(control);
+        }
         return;
     }
 
@@ -911,13 +901,32 @@ void TouchControls::sync_action_bar_state() noexcept {
         return;
     }
 
-    release_control(Control::FIRST_PERSON);
-    release_control(Control::ITEMS);
-    release_control(Control::COLLECTIONS);
-    release_control(Control::MAP);
+    for (const auto control :
+        {Control::FIRST_PERSON, Control::ITEMS, Control::COLLECTIONS, Control::MAP})
+    {
+        release_control(control);
+    }
 }
 
 void TouchControls::sync_control_displays() noexcept {
+    if (!getSettings().game.enableTouchControls) {
+        if (mFaceCluster != nullptr) {
+            mFaceCluster->SetPseudoClass("hidden", true);
+        }
+        const auto& z = mControlElements[static_cast<std::size_t>(Control::Z)];
+        if (z.root != nullptr) {
+            z.root->SetPseudoClass("hidden", true);
+        }
+        for (const auto control : {Control::A, Control::B, Control::X, Control::Y, Control::Z}) {
+            release_control(control);
+        }
+        clear_equip_targets();
+        return;
+    }
+    if (mFaceCluster != nullptr) {
+        mFaceCluster->SetPseudoClass("hidden", false);
+    }
+
     const auto bState = b_button_state();
     const auto xState = xy_button_state(Control::X);
     const auto yState = xy_button_state(Control::Y);
@@ -1096,8 +1105,61 @@ void TouchControls::sync_control_long_presses() noexcept {
     }
 }
 
+bool TouchControls::handle_menu_event(Rml::Event& event, menu_pointer::Phase phase) noexcept {
+    if (!menu_pointer::touch_menu_active() || event.GetTargetElement() != mRoot) {
+        return false;
+    }
+
+    const auto id = touch_id(event);
+    switch (phase) {
+    case menu_pointer::Phase::Press:
+        if (mMenuPointerTouchActive) {
+            event.StopPropagation();
+            return true;
+        }
+        mMenuPointerTouch = id;
+        mMenuPointerTouchActive = true;
+        break;
+    case menu_pointer::Phase::Move:
+        if (!mMenuPointerTouchActive || mMenuPointerTouch != id) {
+            event.StopPropagation();
+            return true;
+        }
+        break;
+    case menu_pointer::Phase::Release:
+    case menu_pointer::Phase::Cancel:
+        if (!mMenuPointerTouchActive || mMenuPointerTouch != id) {
+            event.StopPropagation();
+            return true;
+        }
+        mMenuPointerTouchActive = false;
+        break;
+    }
+
+    const auto position = touch_position(event);
+    menu_pointer::handle_fallthrough_pointer(position.x, position.y, phase, true);
+    switch (phase) {
+    case menu_pointer::Phase::Press:
+    case menu_pointer::Phase::Release:
+        mMenuPointerMouseSuppressions = 2;
+        break;
+    case menu_pointer::Phase::Move:
+    case menu_pointer::Phase::Cancel:
+        mMenuPointerMouseSuppressions = 1;
+        break;
+    }
+    event.StopPropagation();
+    return true;
+}
+
 void TouchControls::handle_touch_down(Rml::Event& event) noexcept {
     if (!visible() || mWasSuppressed) {
+        return;
+    }
+    if (handle_menu_event(event, menu_pointer::Phase::Press)) {
+        return;
+    }
+    if (!getSettings().game.enableTouchControls) {
         return;
     }
 
@@ -1150,6 +1212,12 @@ void TouchControls::handle_touch_motion(Rml::Event& event) noexcept {
     if (!visible() || mWasSuppressed) {
         return;
     }
+    if (handle_menu_event(event, menu_pointer::Phase::Move)) {
+        return;
+    }
+    if (!getSettings().game.enableTouchControls) {
+        return;
+    }
 
     const auto id = touch_id(event);
     const auto position = touch_position(event);
@@ -1168,9 +1236,11 @@ void TouchControls::handle_touch_up(Rml::Event& event) noexcept {
     if (!visible() || mWasSuppressed) {
         return;
     }
-
     const auto id = touch_id(event);
     if (release_control_touch(id, false)) {
+        return;
+    }
+    if (handle_menu_event(event, menu_pointer::Phase::Release)) {
         return;
     }
     if (mMoveTouch.active && mMoveTouch.id == id) {
@@ -1179,6 +1249,85 @@ void TouchControls::handle_touch_up(Rml::Event& event) noexcept {
     if (mCameraTouch.active && mCameraTouch.id == id) {
         mCameraTouch = {};
     }
+}
+
+void TouchControls::handle_touch_cancel(Rml::Event& event) noexcept {
+    if (!visible() || mWasSuppressed) {
+        return;
+    }
+    const auto id = touch_id(event);
+    if (release_control_touch(id, true)) {
+        return;
+    }
+    if (handle_menu_event(event, menu_pointer::Phase::Cancel)) {
+        return;
+    }
+    if (mMoveTouch.active && mMoveTouch.id == id) {
+        mMoveTouch = {};
+    }
+    if (mCameraTouch.active && mCameraTouch.id == id) {
+        mCameraTouch = {};
+    }
+}
+
+void TouchControls::handle_mouse_move(Rml::Event& event) noexcept {
+    if (mMenuPointerMouseSuppressions > 0) {
+        --mMenuPointerMouseSuppressions;
+        return;
+    }
+    if (!visible() || mWasSuppressed || !menu_pointer::active() ||
+        event.GetTargetElement() != mRoot)
+    {
+        return;
+    }
+
+    const auto position = mouse_position(event);
+    menu_pointer::handle_fallthrough_pointer(
+        position.x, position.y, menu_pointer::Phase::Move, false);
+    event.StopPropagation();
+}
+
+void TouchControls::handle_mouse_down(Rml::Event& event) noexcept {
+    if (mMenuPointerMouseSuppressions > 0) {
+        --mMenuPointerMouseSuppressions;
+        return;
+    }
+    if (!visible() || mWasSuppressed || !menu_pointer::active() ||
+        event.GetTargetElement() != mRoot)
+    {
+        return;
+    }
+
+    const auto position = mouse_position(event);
+    const s32 button = event.GetParameter("button", -1);
+    if (!menu_pointer::handle_fallthrough_pointer(
+            position.x, position.y, menu_pointer::Phase::Press, false, button))
+    {
+        return;
+    }
+    event.StopPropagation();
+}
+
+void TouchControls::handle_mouse_up(Rml::Event& event) noexcept {
+    if (mMenuPointerMouseSuppressions > 0) {
+        --mMenuPointerMouseSuppressions;
+        return;
+    }
+    if (!visible() || mWasSuppressed ||
+        (!menu_pointer::active() && !menu_pointer::mouse_capture_active()) ||
+        event.GetTargetElement() != mRoot)
+    {
+        return;
+    }
+
+    const auto position = mouse_position(event);
+    const s32 button = event.GetParameter("button", -1);
+    if (!menu_pointer::handle_fallthrough_pointer(
+            position.x, position.y, menu_pointer::Phase::Release, false, button))
+    {
+        return;
+    }
+    event.StopPropagation();
 }
 
 }  // namespace dusk::ui

@@ -13,6 +13,7 @@
 #include "tracy/Tracy.hpp"
 
 #if TARGET_PC
+#include "dusk/menu_pointer.h"
 #include "dusk/ui/touch_controls.hpp"
 #endif
 
@@ -95,6 +96,12 @@ void mDoCPd_c::read() {
             cLib_memSet(interface, 0, sizeof(interface_of_controller_pad));
         } else {
             convert(interface, *pad);
+#if TARGET_PC
+            const u32 suppressedButtons = dusk::menu_pointer::suppressed_pad_buttons(i);
+            interface->mButtonFlags &= ~suppressedButtons;
+            interface->mPressedButtonFlags &= ~suppressedButtons;
+            dusk::menu_pointer::finish_pad_suppression_read(i);
+#endif
             LRlockCheck(interface);
         }
 #if DEBUG

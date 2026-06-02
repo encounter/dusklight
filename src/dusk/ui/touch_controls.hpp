@@ -4,6 +4,7 @@
 #include "document.hpp"
 
 #include "dusk/action_bindings.h"
+#include "dusk/menu_pointer.h"
 
 #include <array>
 #include <bitset>
@@ -64,6 +65,8 @@ private:
     bool start_control_touch(SDL_FingerID id, Control control) noexcept;
     void set_control_visual(Control control, bool pressed) noexcept;
     void sync_l_lock_state() noexcept;
+    void clear_motion_touch_input() noexcept;
+    void clear_control_input() noexcept;
     void clear_virtual_input() noexcept;
     void sync_touch_state() noexcept;
     void sync_visibility() noexcept;
@@ -74,13 +77,18 @@ private:
     void handle_touch_down(Rml::Event& event) noexcept;
     void handle_touch_motion(Rml::Event& event) noexcept;
     void handle_touch_up(Rml::Event& event) noexcept;
+    void handle_touch_cancel(Rml::Event& event) noexcept;
+    void handle_mouse_move(Rml::Event& event) noexcept;
+    void handle_mouse_down(Rml::Event& event) noexcept;
+    void handle_mouse_up(Rml::Event& event) noexcept;
     void sync_control_long_presses() noexcept;
     bool release_control_touch(SDL_FingerID id, bool cancelled) noexcept;
+    bool handle_menu_event(Rml::Event& event, menu_pointer::Phase phase) noexcept;
 
     Rml::Element* mRoot = nullptr;
     Rml::Element* mControlStick = nullptr;
     Rml::Element* mControlKnob = nullptr;
-    Rml::Element* mDPadCluster = nullptr;
+    Rml::Element* mFaceCluster = nullptr;
     Rml::Element* mActionBar = nullptr;
     std::array<ControlElements, static_cast<std::size_t>(Control::COUNT)> mControlElements{};
     std::string mButtonBIconSource;
@@ -92,6 +100,8 @@ private:
     std::string mButtonYCountLabel;
     StickTouch mMoveTouch;
     StickTouch mCameraTouch;
+    SDL_FingerID mMenuPointerTouch = 0;
+    int mMenuPointerMouseSuppressions = 0;
     std::array<ControlTouch, static_cast<std::size_t>(Control::COUNT)> mControlTouches{};
     std::bitset<static_cast<std::size_t>(ActionBinds::COUNT)> mQueuedActions;
     Insets mSafeInsets;
@@ -103,6 +113,7 @@ private:
     bool mRTriggerHeld = false;
     bool mWantsVirtualPad = false;
     bool mWasSuppressed = true;
+    bool mMenuPointerTouchActive = false;
     clock::time_point mLPressStartTime{};
     clock::time_point mLastLTapTime{};
 };
