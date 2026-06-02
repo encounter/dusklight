@@ -128,7 +128,6 @@ button icon {
     position: absolute;
     left: 9dp;
     top: -1dp;
-    width: 48dp;
     height: 48dp;
 }
 

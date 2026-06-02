@@ -19,7 +19,7 @@
 #include "dusk/settings.h"
 #include "dusk/touch_camera.h"
 #include "f_op/f_op_overlap_mng.h"
-#include "item_icon_provider.hpp"
+#include "icon_provider.hpp"
 #include "m_Do/m_Do_graphic.h"
 #include "ui.hpp"
 
@@ -62,8 +62,6 @@ constexpr std::array<ControlInfo, static_cast<std::size_t>(Control::COUNT)> kCon
     {
         .id = "button-b",
         .iconId = "button-b-icon",
-        .oilId = "button-b-oil",
-        .oilFillId = "button-b-oil-fill",
         .padButton = PAD_BUTTON_B,
     },
     {
@@ -121,6 +119,12 @@ constexpr const ControlInfo* control_info(Control control) noexcept {
     return index < kControls.size() ? &kControls[index] : nullptr;
 }
 
+bool control_override_active(Control control) noexcept {
+    const auto index = static_cast<std::size_t>(control);
+    return index < sControlOverrides.size() &&
+           sControlOverrides[index] != ControlOverride::Default;
+}
+
 const Rml::String kDocumentSource = R"RML(
 <rml>
 <head>
@@ -150,7 +154,7 @@ const Rml::String kDocumentSource = R"RML(
     <face-cluster id="face-cluster">
         <button id="button-y" class="touch-control face y"><img id="button-y-icon" class="item-icon" /><oil-meter id="button-y-oil" class="oil-meter"><oil-fill id="button-y-oil-fill" /></oil-meter><count id="button-y-count" class="item-count"></count><span>Y</span></button>
         <button id="button-x" class="touch-control face x"><img id="button-x-icon" class="item-icon" /><oil-meter id="button-x-oil" class="oil-meter"><oil-fill id="button-x-oil-fill" /></oil-meter><count id="button-x-count" class="item-count"></count><span>X</span></button>
-        <button id="button-b" class="touch-control face b"><img id="button-b-icon" class="item-icon" /><oil-meter id="button-b-oil" class="oil-meter"><oil-fill id="button-b-oil-fill" /></oil-meter><span>B</span></button>
+        <button id="button-b" class="touch-control face b"><img id="button-b-icon" class="item-icon" /><span>B</span></button>
         <button id="button-a" class="touch-control face a"><span>A</span></button>
     </face-cluster>
 </body>
@@ -260,17 +264,15 @@ void release_rml_texture(const std::string& source) noexcept {
 }
 
 FaceButtonState override_button_state(Control control) {
-    switch (sControlOverrides[static_cast<size_t>(control)]) {
-    case ControlOverride::Action:
+    if (control_override_active(control)) {
         return {
             .iconSource = "",
             .visible = true,
             .showIcon = false,
         };
-    case ControlOverride::Default:
-    default:
-        return {};
     }
+
+    return {};
 }
 
 bool game_controls_suppressed() noexcept {
@@ -510,6 +512,15 @@ void TouchControls::set_control_pressed(Control control, bool pressed) {
 
     switch (control) {
     case Control::L:
+        if (control_override_active(control)) {
+            mLPressed = pressed;
+            mLLatched = false;
+            mManualLLatched = false;
+            mLReleasePending = false;
+            mLPressStartTime = {};
+            mLastLTapTime = {};
+            break;
+        }
         if (pressed && (mLLatched || mManualLLatched)) {
             mLLatched = false;
             mManualLLatched = false;
@@ -838,19 +849,24 @@ void TouchControls::sync_visual_state() noexcept {
     const bool hideGameplayControls = game_controls_suppressed();
     const auto& lTrigger = mControlElements[static_cast<std::size_t>(Control::L)];
     const auto& rTrigger = mControlElements[static_cast<std::size_t>(Control::R)];
+    const bool lHidden = hideGameplayControls && !control_override_active(Control::L);
+    const bool rHidden = hideGameplayControls && !control_override_active(Control::R);
 
     if (lTrigger.root != nullptr) {
-        lTrigger.root->SetPseudoClass("hidden", hideGameplayControls);
+        lTrigger.root->SetPseudoClass("hidden", lHidden);
         lTrigger.root->SetClass(
-            "active", !hideGameplayControls &&
-                          (mLPressed || mLLatched || mManualLLatched || player_attention_locked()));
+            "active", !lHidden &&
+                          (mLPressed || mLLatched || mManualLLatched ||
+                              (!control_override_active(Control::L) && player_attention_locked())));
     }
     if (rTrigger.root != nullptr) {
-        rTrigger.root->SetPseudoClass("hidden", hideGameplayControls);
+        rTrigger.root->SetPseudoClass("hidden", rHidden);
     }
 
-    if (hideGameplayControls) {
+    if (lHidden) {
         release_control(Control::L);
+    }
+    if (rHidden) {
         release_control(Control::R);
     }
 }

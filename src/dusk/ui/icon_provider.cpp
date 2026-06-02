@@ -1,9 +1,10 @@
-#include "item_icon_provider.hpp"
+#include "icon_provider.hpp"
 
 #include "d/dolzel.h"  // IWYU pragma: keep
 
 #ifdef AURORA_ENABLE_RMLUI
 
+#include <SDL3/SDL_surface.h>
 #include <aurora/lib/gfx/texture_convert.hpp>
 #include <aurora/rmlui.hpp>
 #include <fmt/format.h>
@@ -16,6 +17,7 @@
 #include <cstdint>
 #include <cstring>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <span>
 #include <string>
@@ -34,10 +36,10 @@
 namespace dusk::ui {
 namespace {
 
-constexpr std::string_view kScheme = "dusk-item";
-constexpr std::string_view kSourcePrefix = "dusk-item://";
-constexpr std::string_view kMeterScheme = "dusk-meter";
-constexpr std::string_view kMeterSourcePrefix = "dusk-meter://";
+constexpr std::string_view kScheme = "item";
+constexpr std::string_view kSourcePrefix = "item://";
+constexpr std::string_view kMeterScheme = "meter";
+constexpr std::string_view kMeterSourcePrefix = "meter://";
 constexpr size_t kItemTextureBufferSize = 0xC00;
 constexpr size_t kMaxCachedIcons = 128;
 constexpr uint64_t kMeterTextureSourceSlots = 8;
@@ -103,6 +105,12 @@ struct PictureLayer {
     RectF rect;
     uint8_t alpha = 0;
 };
+
+struct SurfaceDeleter {
+    void operator()(SDL_Surface* surface) const noexcept { SDL_DestroySurface(surface); }
+};
+
+using SurfacePtr = std::unique_ptr<SDL_Surface, SurfaceDeleter>;
 
 std::unordered_map<std::string, CachedIcon>& icon_cache() {
     static auto* cache = new std::unordered_map<std::string, CachedIcon>();
@@ -314,7 +322,7 @@ JUtility::TColor bilerp_corner(
 
 std::array<uint8_t, 4> apply_layer_colors(std::span<const uint8_t, 4> src,
     const LayerColors& colors, uint32_t x, uint32_t y, uint32_t width, uint32_t height) noexcept {
-    std::array<uint8_t, 4> out{
+    std::array out{
         lerp_u8(colors.black.r, colors.white.r, src[0]),
         lerp_u8(colors.black.g, colors.white.g, src[1]),
         lerp_u8(colors.black.b, colors.white.b, src[2]),
@@ -344,38 +352,6 @@ void blend_premultiplied(uint8_t* dst, const std::array<uint8_t, 4>& src) noexce
         std::min(255u, srcB + (static_cast<uint32_t>(dst[2]) * invAlpha) / 255u));
     dst[3] = static_cast<uint8_t>(
         std::min(255u, srcAlpha + (static_cast<uint32_t>(dst[3]) * invAlpha) / 255u));
-}
-
-std::array<uint8_t, 4> sample_bilinear(
-    const aurora::gfx::ConvertedTexture& texture, float x, float y) noexcept {
-    if (texture.width == 0 || texture.height == 0 || texture.data.empty()) {
-        return {};
-    }
-
-    x = std::clamp(x, 0.0f, static_cast<float>(texture.width - 1u));
-    y = std::clamp(y, 0.0f, static_cast<float>(texture.height - 1u));
-    const uint32_t x0 = static_cast<uint32_t>(std::floor(x));
-    const uint32_t y0 = static_cast<uint32_t>(std::floor(y));
-    const uint32_t x1 = std::min<uint32_t>(x0 + 1u, texture.width - 1u);
-    const uint32_t y1 = std::min<uint32_t>(y0 + 1u, texture.height - 1u);
-    const float fx = x - static_cast<float>(x0);
-    const float fy = y - static_cast<float>(y0);
-
-    const auto pixel = [&texture](uint32_t px, uint32_t py, size_t channel) -> float {
-        const size_t offset =
-            (static_cast<size_t>(py) * texture.width + static_cast<size_t>(px)) * 4u + channel;
-        return offset < texture.data.size() ? static_cast<float>(texture.data.data()[offset]) :
-                                              0.0f;
-    };
-
-    std::array<uint8_t, 4> out{};
-    for (size_t channel = 0; channel < out.size(); ++channel) {
-        const float top = pixel(x0, y0, channel) * (1.0f - fx) + pixel(x1, y0, channel) * fx;
-        const float bottom = pixel(x0, y1, channel) * (1.0f - fx) + pixel(x1, y1, channel) * fx;
-        out[channel] = static_cast<uint8_t>(
-            std::clamp(std::lround(top * (1.0f - fy) + bottom * fy), 0l, 255l));
-    }
-    return out;
 }
 
 LayerColors layer_colors(const J2DPicture& picture) noexcept {
@@ -457,6 +433,88 @@ std::optional<CachedIcon> render_item_icon(u8 itemNo) {
         }
     }
 
+    return icon;
+}
+
+SurfacePtr create_rgba_surface(uint32_t width, uint32_t height) {
+    if (width == 0 || height == 0 ||
+        width > static_cast<uint32_t>(std::numeric_limits<int>::max()) ||
+        height > static_cast<uint32_t>(std::numeric_limits<int>::max()))
+    {
+        return {};
+    }
+
+    return SurfacePtr{SDL_CreateSurface(
+        static_cast<int>(width), static_cast<int>(height), SDL_PIXELFORMAT_RGBA32)};
+}
+
+bool lock_surface(SDL_Surface* surface) noexcept {
+    return surface != nullptr && (!SDL_MUSTLOCK(surface) || SDL_LockSurface(surface));
+}
+
+void unlock_surface(SDL_Surface* surface) noexcept {
+    if (surface != nullptr && SDL_MUSTLOCK(surface)) {
+        SDL_UnlockSurface(surface);
+    }
+}
+
+SurfacePtr create_layer_surface(
+    const aurora::gfx::ConvertedTexture& decoded, const LayerColors& colors) {
+    if (decoded.width == 0 || decoded.height == 0 || decoded.data.empty()) {
+        return {};
+    }
+
+    auto surface = create_rgba_surface(decoded.width, decoded.height);
+    if (!surface || !lock_surface(surface.get())) {
+        return {};
+    }
+
+    for (uint32_t y = 0; y < decoded.height; ++y) {
+        auto* destination = static_cast<uint8_t*>(surface->pixels) +
+                            static_cast<size_t>(y) * static_cast<size_t>(surface->pitch);
+        for (uint32_t x = 0; x < decoded.width; ++x) {
+            const size_t sourceOffset =
+                (static_cast<size_t>(y) * decoded.width + static_cast<size_t>(x)) * 4;
+            if (sourceOffset + 3 >= decoded.data.size()) {
+                continue;
+            }
+
+            const std::span<const uint8_t, 4> sourcePixel(decoded.data.data() + sourceOffset, 4);
+            const auto pixel =
+                apply_layer_colors(sourcePixel, colors, x, y, decoded.width, decoded.height);
+            std::memcpy(destination + static_cast<size_t>(x) * 4, pixel.data(), pixel.size());
+        }
+    }
+
+    unlock_surface(surface.get());
+    SDL_SetSurfaceBlendMode(surface.get(), SDL_BLENDMODE_BLEND);
+    return surface;
+}
+
+std::optional<CachedIcon> icon_from_surface(SDL_Surface* surface) {
+    if (surface == nullptr || surface->w <= 0 || surface->h <= 0) {
+        return std::nullopt;
+    }
+
+    CachedIcon icon{
+        .width = static_cast<uint32_t>(surface->w),
+        .height = static_cast<uint32_t>(surface->h),
+    };
+    const size_t rowSize = static_cast<size_t>(icon.width) * 4u;
+    icon.pixels.resize(rowSize * static_cast<size_t>(icon.height));
+
+    if (!lock_surface(surface)) {
+        return std::nullopt;
+    }
+
+    for (uint32_t y = 0; y < icon.height; ++y) {
+        const auto* source = static_cast<const uint8_t*>(surface->pixels) +
+                             static_cast<size_t>(y) * static_cast<size_t>(surface->pitch);
+        auto* destination = icon.pixels.data() + static_cast<size_t>(y) * rowSize;
+        std::memcpy(destination, source, rowSize);
+    }
+
+    unlock_surface(surface);
     return icon;
 }
 
@@ -553,7 +611,7 @@ float pane_icon_render_scale(const std::vector<PictureLayer>& layers, const Rect
 }
 
 void composite_picture_layer(
-    CachedIcon& icon, const RectF& canvas, const PictureLayer& layer, float renderScale) {
+    SDL_Surface& icon, const RectF& canvas, const PictureLayer& layer, float renderScale) {
     if (layer.picture == nullptr || !layer.rect.valid()) {
         return;
     }
@@ -568,6 +626,12 @@ void composite_picture_layer(
         return;
     }
 
+    const auto colors = layer_colors(*layer.picture, layer.alpha);
+    auto layerSurface = create_layer_surface(decoded, colors);
+    if (!layerSurface) {
+        return;
+    }
+
     const float dstLeft = (layer.rect.left - canvas.left) * renderScale;
     const float dstTop = (layer.rect.top - canvas.top) * renderScale;
     const float dstRight = (layer.rect.right - canvas.left) * renderScale;
@@ -578,45 +642,22 @@ void composite_picture_layer(
         return;
     }
 
-    const int x0 =
-        std::clamp(static_cast<int>(std::floor(dstLeft)), 0, static_cast<int>(icon.width));
-    const int y0 =
-        std::clamp(static_cast<int>(std::floor(dstTop)), 0, static_cast<int>(icon.height));
-    const int x1 =
-        std::clamp(static_cast<int>(std::ceil(dstRight)), 0, static_cast<int>(icon.width));
-    const int y1 =
-        std::clamp(static_cast<int>(std::ceil(dstBottom)), 0, static_cast<int>(icon.height));
+    const int x0 = std::clamp(static_cast<int>(std::floor(dstLeft)), 0, icon.w);
+    const int y0 = std::clamp(static_cast<int>(std::floor(dstTop)), 0, icon.h);
+    const int x1 = std::clamp(static_cast<int>(std::ceil(dstRight)), 0, icon.w);
+    const int y1 = std::clamp(static_cast<int>(std::ceil(dstBottom)), 0, icon.h);
     if (x0 >= x1 || y0 >= y1) {
         return;
     }
 
-    const auto colors = layer_colors(*layer.picture, layer.alpha);
-    const auto colorWidth = std::max<uint32_t>(1, static_cast<uint32_t>(std::ceil(dstWidth)));
-    const auto colorHeight = std::max<uint32_t>(1, static_cast<uint32_t>(std::ceil(dstHeight)));
-
-    for (int y = y0; y < y1; ++y) {
-        const float v =
-            std::clamp(((static_cast<float>(y) + 0.5f) - dstTop) / dstHeight, 0.0f, 0.999999f);
-        const float sourceY = v * static_cast<float>(decoded.height) - 0.5f;
-        const auto colorY = std::min<uint32_t>(colorHeight - 1u,
-            static_cast<uint32_t>(std::max(0.0f, (static_cast<float>(y) + 0.5f) - dstTop)));
-
-        for (int x = x0; x < x1; ++x) {
-            const float u =
-                std::clamp(((static_cast<float>(x) + 0.5f) - dstLeft) / dstWidth, 0.0f, 0.999999f);
-            const float sourceX = u * static_cast<float>(decoded.width) - 0.5f;
-            const auto colorX = std::min<uint32_t>(colorWidth - 1u,
-                static_cast<uint32_t>(std::max(0.0f, (static_cast<float>(x) + 0.5f) - dstLeft)));
-
-            const auto sourcePixel = sample_bilinear(decoded, sourceX, sourceY);
-            const auto pixel =
-                apply_layer_colors(sourcePixel, colors, colorX, colorY, colorWidth, colorHeight);
-            uint8_t* destination =
-                icon.pixels.data() +
-                (static_cast<size_t>(y) * icon.width + static_cast<size_t>(x)) * 4;
-            blend_premultiplied(destination, pixel);
-        }
-    }
+    SDL_Rect destinationRect{
+        .x = x0,
+        .y = y0,
+        .w = x1 - x0,
+        .h = y1 - y0,
+    };
+    SDL_BlitSurfaceScaled(
+        layerSurface.get(), nullptr, &icon, &destinationRect, SDL_SCALEMODE_LINEAR);
 }
 
 std::optional<CachedIcon> render_j2d_pane_icon(J2DPane* pane) {
@@ -641,20 +682,19 @@ std::optional<CachedIcon> render_j2d_pane_icon(J2DPane* pane) {
         return std::nullopt;
     }
 
-    CachedIcon icon{
-        .width = *width,
-        .height = *height,
-    };
-    icon.pixels.assign(static_cast<size_t>(icon.width) * static_cast<size_t>(icon.height) * 4, 0);
-
-    for (const auto& layer : layers) {
-        composite_picture_layer(icon, canvas, layer, renderScale);
+    auto surface = create_rgba_surface(*width, *height);
+    if (!surface) {
+        return std::nullopt;
     }
 
-    return icon;
+    for (const auto& layer : layers) {
+        composite_picture_layer(*surface, canvas, layer, renderScale);
+    }
+
+    return icon_from_surface(surface.get());
 }
 
-std::optional<aurora::rmlui::RuntimeTexture> item_icon_provider(std::string_view source) {
+std::optional<aurora::rmlui::RuntimeTexture> icon_provider(std::string_view source) {
     const auto itemNo = item_for_source(source);
     if (!itemNo) {
         return std::nullopt;
@@ -710,12 +750,12 @@ std::optional<aurora::rmlui::RuntimeTexture> meter_texture_provider(std::string_
 
 }  // namespace
 
-void register_item_icon_texture_provider() noexcept {
-    aurora::rmlui::register_texture_provider(std::string(kScheme), item_icon_provider);
+void register_icon_texture_provider() noexcept {
+    aurora::rmlui::register_texture_provider(std::string(kScheme), icon_provider);
     aurora::rmlui::register_texture_provider(std::string(kMeterScheme), meter_texture_provider);
 }
 
-void unregister_item_icon_texture_provider() noexcept {
+void unregister_icon_texture_provider() noexcept {
     aurora::rmlui::unregister_texture_provider(kScheme);
     aurora::rmlui::unregister_texture_provider(kMeterScheme);
     icon_cache().clear();
@@ -814,9 +854,6 @@ std::optional<float> item_oil_fill_for_button(Control control) noexcept {
     case Control::Y:
         itemNo = selected_slot_item(1);
         break;
-    case Control::B:
-        itemNo = b_button_item();
-        break;
     default:
         break;
     }
@@ -838,8 +875,8 @@ std::optional<float> item_oil_fill_for_button(Control control) noexcept {
 
 namespace dusk::ui {
 
-void register_item_icon_texture_provider() noexcept {}
-void unregister_item_icon_texture_provider() noexcept {}
+void register_icon_texture_provider() noexcept {}
+void unregister_icon_texture_provider() noexcept {}
 void update_midna_icon_texture(J2DPane*) noexcept {}
 std::string midna_icon_source() {
     return {};

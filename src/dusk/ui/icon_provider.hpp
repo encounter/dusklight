@@ -10,8 +10,8 @@ class J2DPane;
 
 namespace dusk::ui {
 
-void register_item_icon_texture_provider() noexcept;
-void unregister_item_icon_texture_provider() noexcept;
+void register_icon_texture_provider() noexcept;
+void unregister_icon_texture_provider() noexcept;
 
 void update_midna_icon_texture(J2DPane* pane) noexcept;
 std::string midna_icon_source();

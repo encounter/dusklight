@@ -25,7 +25,7 @@
 
 #if TARGET_PC
 #include "dusk/settings.h"
-#include "dusk/ui/item_icon_provider.hpp"
+#include "dusk/ui/icon_provider.hpp"
 #endif
 
 dMeter2Draw_c::dMeter2Draw_c(JKRExpHeap* mp_heap) {

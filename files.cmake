@@ -1490,8 +1490,8 @@ set(DUSK_FILES
         src/dusk/ui/graphics_tuner.hpp
         src/dusk/ui/input.cpp
         src/dusk/ui/input.hpp
-        src/dusk/ui/item_icon_provider.cpp
-        src/dusk/ui/item_icon_provider.hpp
+        src/dusk/ui/icon_provider.cpp
+        src/dusk/ui/icon_provider.hpp
         src/dusk/ui/modal.cpp
         src/dusk/ui/modal.hpp
         src/dusk/ui/nav_types.hpp
