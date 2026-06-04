@@ -6,10 +6,13 @@
 #include "Z2AudioLib/Z2SeMgr.h"
 #include "m_Do/m_Do_audio.h"
 
+#include <mutex>
+
 namespace dusk::ui {
 namespace {
 
 Rml::ElementDocument* load_document(const Rml::String& source) {
+    std::lock_guard lock{aurora::rmlui::context_mutex()};
     auto* context = aurora::rmlui::get_context();
     if (context == nullptr) {
         return nullptr;
@@ -51,6 +54,7 @@ Document::Document(const Rml::String& source) : mDocument(load_document(source))
 }
 
 Document::~Document() {
+    std::lock_guard lock{aurora::rmlui::context_mutex()};
     mListeners.clear();
     if (mDocument != nullptr) {
         mDocument->Close();
@@ -59,6 +63,7 @@ Document::~Document() {
 }
 
 void Document::show() {
+    std::lock_guard lock{aurora::rmlui::context_mutex()};
     if (mDocument != nullptr) {
         // Attempt to preserve the previously focused element
         mDocument->Show(Rml::ModalFlag::None, Rml::FocusFlag::Keep, Rml::ScrollFlag::None);
@@ -71,6 +76,7 @@ void Document::show() {
 }
 
 void Document::hide(bool close) {
+    std::lock_guard lock{aurora::rmlui::context_mutex()};
     if (mDocument != nullptr) {
         mDocument->Hide();
     }
@@ -87,6 +93,7 @@ bool Document::focus() {
 
 void Document::listen(Rml::Element* element, Rml::EventId event,
     ScopedEventListener::Callback callback, bool capture) {
+    std::lock_guard lock{aurora::rmlui::context_mutex()};
     if (element == nullptr) {
         element = mDocument;
     }
@@ -98,6 +105,7 @@ void Document::listen(Rml::Element* element, Rml::EventId event,
 }
 
 bool Document::visible() const {
+    std::lock_guard lock{aurora::rmlui::context_mutex()};
     if (mDocument == nullptr) {
         return false;
     }
