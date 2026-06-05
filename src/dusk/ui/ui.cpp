@@ -47,7 +47,6 @@ bool initialize() noexcept {
     if (!aurora::rmlui::is_initialized()) {
         return false;
     }
-    std::lock_guard lock{aurora::rmlui::context_mutex()};
 
     load_font("FiraSans-Regular.ttf", true);
     load_font("FiraSans-Bold.ttf");
@@ -63,7 +62,6 @@ bool initialize() noexcept {
 }
 
 void shutdown() noexcept {
-    std::lock_guard lock{aurora::rmlui::context_mutex()};
     sDocumentStack.clear();
     sPassiveDocuments.clear();
     sConnectedGamepads.clear();
@@ -127,7 +125,6 @@ void handle_event(const SDL_Event& event) noexcept {
     if (!aurora::rmlui::is_initialized()) {
         return;
     }
-    std::lock_guard lock{aurora::rmlui::context_mutex()};
 
     if (event.type == SDL_EVENT_GAMEPAD_ADDED) {
         auto* gamepad = SDL_GetGamepadFromID(event.gdevice.which);
@@ -179,7 +176,6 @@ void handle_event(const SDL_Event& event) noexcept {
 }
 
 Document& push_document(std::unique_ptr<Document> doc, bool show, bool passive) noexcept {
-    std::lock_guard lock{aurora::rmlui::context_mutex()};
     Document& ret = *doc;
     if (passive) {
         sPassiveDocuments.push_back(std::move(doc));
@@ -194,7 +190,6 @@ Document& push_document(std::unique_ptr<Document> doc, bool show, bool passive) 
 }
 
 void show_top_document() noexcept {
-    std::lock_guard lock{aurora::rmlui::context_mutex()};
     if (auto* doc = top_document()) {
         doc->show();
     }
@@ -226,7 +221,6 @@ void update() noexcept {
     if (!aurora::rmlui::is_initialized()) {
         return;
     }
-    std::lock_guard lock{aurora::rmlui::context_mutex()};
 
     input::update_input();
     const auto update_documents = [](auto& documents) {
