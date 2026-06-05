@@ -41,6 +41,7 @@ UserSettings g_userSettings = {
         .noMissClimbing {"game.noMissClimbing", false},
         .fastTears {"game.fastTears", false},
         .no2ndFishForCat {"game.no2ndFishForCat", false},
+        .buttonFishing {"game.buttonFishing", false},
         .instantSaves {"game.instantSaves", false},
         .instantText {"game.instantText", false},
         .sunsSong {"game.sunsSong", false},
@@ -50,6 +51,7 @@ UserSettings g_userSettings = {
         // Preferences
         .enableMirrorMode {"game.enableMirrorMode", false},
         .minimalHUD {"game.minimalHUD", false},
+        .hudScale {"game.hudScale", 1.0f},
         .pauseOnFocusLost {"game.pauseOnFocusLost", false},
         .enableLinkDollRotation {"game.enableLinkDollRotation", false},
         .enableAchievementToasts {"game.enableAchievementToasts", true},
@@ -239,6 +241,7 @@ void registerSettings() {
     Register(g_userSettings.game.fastClimbing);
     Register(g_userSettings.game.fastTears);
     Register(g_userSettings.game.no2ndFishForCat);
+    Register(g_userSettings.game.buttonFishing);
     Register(g_userSettings.game.instantSaves);
     Register(g_userSettings.game.instantText);
     Register(g_userSettings.game.sunsSong);
@@ -256,6 +259,7 @@ void registerSettings() {
     Register(g_userSettings.game.touchCameraXSensitivity);
     Register(g_userSettings.game.touchCameraYSensitivity);
     Register(g_userSettings.game.minimalHUD);
+    Register(g_userSettings.game.hudScale);
     Register(g_userSettings.game.pauseOnFocusLost);
     Register(g_userSettings.game.enableDiscordPresence);
     Register(g_userSettings.game.bloomMode);
