@@ -8,7 +8,6 @@
 
 #include <algorithm>
 #include <filesystem>
-#include <mutex>
 #include <ranges>
 
 #include "aurora/lib/window.hpp"
