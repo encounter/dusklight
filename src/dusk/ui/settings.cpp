@@ -370,6 +370,9 @@ const Rml::String kInternalResolutionHelpText =
 const Rml::String kShadowResolutionHelpText =
     "Configure the shadow-map resolution. Higher values improve shadow quality but increase GPU "
     "and memory usage.";
+const Rml::String kMapResolutionHelpText =
+    "Configure the mini-map render resolution. 1x matches the mini-map's HUD size at the current "
+    "internal resolution; higher values improve map clarity but increase GPU and memory usage.";
 const Rml::String kResamplerHelpText =
     "Configure the sampling method used when scaling the internal resolution for final presentation.";
 const Rml::String kBloomHelpText =
@@ -836,6 +839,16 @@ SettingsWindow::SettingsWindow(bool prelaunch) : mPrelaunch(prelaunch) {
                 .helpText = kShadowResolutionHelpText,
                 .valueMin = 1,
                 .valueMax = 8,
+                .defaultValue = 1,
+            }, mPrelaunch);
+        graphics_tuner_control(*this, leftPane, rightPane,
+            getSettings().game.mapResolutionMultiplier,
+            GraphicsTunerProps{
+                .option = GraphicsOption::MapResolution,
+                .title = "Map Resolution",
+                .helpText = kMapResolutionHelpText,
+                .valueMin = 1,
+                .valueMax = 4,
                 .defaultValue = 1,
             }, mPrelaunch);
         graphics_tuner_control(*this, leftPane, rightPane, getSettings().game.resampler,

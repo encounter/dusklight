@@ -46,6 +46,8 @@ int get_value(GraphicsOption option) {
         return getSettings().game.internalResolutionScale.getValue();
     case GraphicsOption::ShadowResolution:
         return getSettings().game.shadowResolutionMultiplier.getValue();
+    case GraphicsOption::MapResolution:
+        return getSettings().game.mapResolutionMultiplier.getValue();
     case GraphicsOption::Resampler:
         return static_cast<int>(getSettings().game.resampler.getValue());
     case GraphicsOption::BloomMode:
@@ -70,6 +72,9 @@ void set_value(GraphicsOption option, int value) {
         break;
     case GraphicsOption::ShadowResolution:
         getSettings().game.shadowResolutionMultiplier.setValue(value);
+        break;
+    case GraphicsOption::MapResolution:
+        getSettings().game.mapResolutionMultiplier.setValue(value);
         break;
     case GraphicsOption::Resampler: {
         const auto sampler = static_cast<Resampler>(std::clamp(value,
@@ -207,6 +212,8 @@ Rml::String format_graphics_setting_value(GraphicsOption option, int value) {
         }
     }
     case GraphicsOption::ShadowResolution:
+        return fmt::format("{}×", value);
+    case GraphicsOption::MapResolution:
         return fmt::format("{}×", value);
     case GraphicsOption::Resampler:
         switch (static_cast<Resampler>(value)) {

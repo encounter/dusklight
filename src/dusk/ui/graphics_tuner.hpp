@@ -42,6 +42,7 @@ private:
 enum class GraphicsOption {
     InternalResolution,
     ShadowResolution,
+    MapResolution,
     Resampler,
     BloomMode,
     BloomMultiplier,
