@@ -28,8 +28,8 @@
 #include <numbers>
 #include <span>
 
-constexpr u16 kMaxMapResolutionMultiplier = 4;
-constexpr u16 kMapImageSide = 16 * kMaxMapResolutionMultiplier;
+constexpr u16 kMapIconResolutionMultiplier = 4;
+constexpr u16 kMapImageSide = 16 * kMapIconResolutionMultiplier;
 constexpr u32 kMapImageTotalPixels = kMapImageSide * kMapImageSide;
 
 typedef std::function<u8(size_t, size_t)> PaintI8Fn;
@@ -54,13 +54,10 @@ aurora::Vec2<u16> map_render_size_for(u16 width, u16 height) {
     const f32 irScaleX = renderWidth > 0 ? static_cast<f32>(renderWidth) / logicalWidth : 1.0f;
     const f32 irScaleY = renderHeight > 0 ? static_cast<f32>(renderHeight) / logicalHeight : 1.0f;
     const f32 hudScale = std::clamp(dusk::getSettings().game.hudScale.getValue(), 0.5f, 2.0f);
-    const int multiplier =
-        std::clamp(dusk::getSettings().game.mapResolutionMultiplier.getValue(), 1,
-                   static_cast<int>(kMaxMapResolutionMultiplier));
-
-    const f32 targetScaleX = irScaleX * hudScale * static_cast<f32>(multiplier);
-    const f32 targetScaleY = irScaleY * hudScale * static_cast<f32>(multiplier);
-    return {scaled_map_axis(width, targetScaleX), scaled_map_axis(height, targetScaleY)};
+    return {
+        scaled_map_axis(width, irScaleX * hudScale),
+        scaled_map_axis(height, irScaleY * hudScale),
+    };
 }
 
 void paint_i8(std::span<u8> dst, size_t width, PaintI8Fn paint) {

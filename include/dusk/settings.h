@@ -197,7 +197,6 @@ struct UserSettings {
         ConfigVar<FrameInterpMode> enableFrameInterpolation;
         ConfigVar<int> internalResolutionScale;
         ConfigVar<int> shadowResolutionMultiplier;
-        ConfigVar<int> mapResolutionMultiplier;
         ConfigVar<Resampler> resampler;
         ConfigVar<bool> enableMapBackground;
         ConfigVar<bool> disableCutscenePillarboxing;

@@ -71,7 +71,6 @@ UserSettings g_userSettings = {
         .enableFrameInterpolation {"game.enableFrameInterpolation", FrameInterpMode::Off},
         .internalResolutionScale {"game.internalResolutionScale", 0},
         .shadowResolutionMultiplier {"game.shadowResolutionMultiplier", 1},
-        .mapResolutionMultiplier {"game.mapResolutionMultiplier", 1},
         .resampler {"game.resampler", Resampler::Bilinear},
         .enableMapBackground {"game.enableMapBackground", true},
         .disableCutscenePillarboxing {"game.disableCutscenePillarboxing", false},
@@ -259,7 +258,6 @@ void registerSettings() {
     Register(g_userSettings.game.internalResolutionScale);
     Register(g_userSettings.game.resampler);
     Register(g_userSettings.game.shadowResolutionMultiplier);
-    Register(g_userSettings.game.mapResolutionMultiplier);
     Register(g_userSettings.game.enableMapBackground);
     Register(g_userSettings.game.disableCutscenePillarboxing);
     Register(g_userSettings.game.enableFastIronBoots);
