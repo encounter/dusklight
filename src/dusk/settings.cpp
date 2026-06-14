@@ -11,6 +11,9 @@ UserSettings g_userSettings = {
         .enableFpsOverlay {"game.enableFpsOverlay", false},
         .fpsOverlayCorner {"game.fpsOverlayCorner", 0},
         .maxFrameRate {"video.maxFrameRate", 240},
+        .rememberWindowSize {"video.rememberWindowSize", false},
+        .lastWindowWidth {"video.lastWindowWidth", 0},
+        .lastWindowHeight {"video.lastWindowHeight", 0},
     },
 
     .audio = {
@@ -131,7 +134,7 @@ UserSettings g_userSettings = {
         .canTransformAnywhere {"game.canTransformAnywhere", false},
         .fastRoll {"game.fastRoll", false},
         .fastSpinner {"game.fastSpinner", false},
-        .freeMagicArmor {"game.freeMagicArmor", false},
+        .armorRupeeDrain {"game.armorRupeeDrain", MagicArmorMode::NORMAL},
         .invincibleEnemies {"game.invincibleEnemies", false},
 
         // Technical
@@ -216,6 +219,9 @@ void registerSettings() {
     Register(g_userSettings.video.enableFpsOverlay);
     Register(g_userSettings.video.fpsOverlayCorner);
     Register(g_userSettings.video.maxFrameRate);
+    Register(g_userSettings.video.rememberWindowSize);
+    Register(g_userSettings.video.lastWindowWidth);
+    Register(g_userSettings.video.lastWindowHeight);
 
     // Audio
     Register(g_userSettings.audio.masterVolume);
@@ -275,7 +281,7 @@ void registerSettings() {
     Register(g_userSettings.game.enableFastIronBoots);
     Register(g_userSettings.game.canTransformAnywhere);
     Register(g_userSettings.game.fastRoll);
-    Register(g_userSettings.game.freeMagicArmor);
+    Register(g_userSettings.game.armorRupeeDrain);
     Register(g_userSettings.game.restoreWiiGlitches);
     Register(g_userSettings.game.enableLinkDollRotation);
     Register(g_userSettings.game.enableAchievementToasts);
