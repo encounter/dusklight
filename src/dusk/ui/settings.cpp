@@ -22,6 +22,7 @@
 #include "menu_bar.hpp"
 #include "pane.hpp"
 #include "prelaunch.hpp"
+#include "touch_controls_editor.hpp"
 #include "ui.hpp"
 
 #include <aurora/lib/window.hpp>
@@ -984,6 +985,16 @@ SettingsWindow::SettingsWindow(bool prelaunch) : mPrelaunch(prelaunch) {
         addOption("Touch Controls", getSettings().game.enableTouchControls,
             "Enables controls overlay for touch screens.<br/><br/>Press and drag on the left side "
             "of the screen to move, and on the right side of the screen to control the camera.");
+        auto& customizeTouchLayout = leftPane.add_button(ControlledButton::Props{
+            .text = "Customize Layout",
+            .isDisabled = [] { return !getSettings().game.enableTouchControls; },
+        });
+        leftPane.register_control(customizeTouchLayout.on_pressed(
+                                      [this] { push(std::make_unique<TouchControlsEditor>()); }),
+            rightPane, [](Pane& pane) {
+                pane.clear();
+                pane.add_text("Open the touch controls layout editor.");
+            });
         config_percent_select(leftPane, rightPane, getSettings().game.touchCameraXSensitivity,
             "Touch Camera X Sensitivity",
             "Adjusts touch camera horizontal sensitivity.<br/><br/>Applies to touch input only.",

@@ -1,4 +1,5 @@
 #include "touch_controls.hpp"
+#include "touch_controls_common.hpp"
 
 #include <aurora/rmlui.hpp>
 #include <dolphin/pad.h>
@@ -10,7 +11,6 @@
 #include <cmath>
 #include <cstdint>
 #include <optional>
-#include <string_view>
 
 #include "d/actor/d_a_alink.h"
 #include "d/actor/d_a_player.h"
@@ -118,132 +118,6 @@ constexpr std::array<ControlInfo, static_cast<std::size_t>(Control::COUNT)> kCon
     },
 }};
 
-struct LayoutControlInfo {
-    std::string_view id;
-    ControlProps props;
-    std::optional<Control> control;
-};
-
-constexpr std::array kLayoutControls = {
-    LayoutControlInfo{
-        .id = "triggerL",
-        .props =
-            {
-                .x = 24.f,
-                .y = 18.f,
-                .w = 78.f,
-                .h = 46.f,
-                .scale = 1.f,
-                .anchor = ControlAnchor::TopLeft,
-            },
-        .control = Control::L,
-    },
-    LayoutControlInfo{
-        .id = "triggerR",
-        .props =
-            {
-                .x = 24.f,
-                .y = 18.f,
-                .w = 78.f,
-                .h = 46.f,
-                .scale = 1.f,
-                .anchor = ControlAnchor::TopRight,
-            },
-        .control = Control::R,
-    },
-    LayoutControlInfo{
-        .id = "buttonZ",
-        .props =
-            {
-                .x = 24.f,
-                .y = 72.f,
-                .w = 78.f,
-                .h = 46.f,
-                .scale = 1.f,
-                .anchor = ControlAnchor::TopRight,
-            },
-        .control = Control::Z,
-    },
-    LayoutControlInfo{
-        .id = "actionBar",
-        .props =
-            {
-                .x = 56.f,
-                .y = 0.f,
-                .w = 230.f,
-                .h = 46.f,
-                .scale = 1.f,
-                .anchor = ControlAnchor::BottomLeft,
-            },
-        .control = std::nullopt,
-    },
-    LayoutControlInfo{
-        .id = "skip",
-        .props =
-            {
-                .x = 24.f,
-                .y = 18.f,
-                .w = 64.f,
-                .h = 46.f,
-                .scale = 1.f,
-                .anchor = ControlAnchor::TopRight,
-            },
-        .control = Control::SKIP,
-    },
-    LayoutControlInfo{
-        .id = "buttonY",
-        .props =
-            {
-                .x = 124.f,
-                .y = 138.f,
-                .w = 58.f,
-                .h = 58.f,
-                .scale = 1.f,
-                .anchor = ControlAnchor::BottomRight,
-            },
-        .control = Control::Y,
-    },
-    LayoutControlInfo{
-        .id = "buttonX",
-        .props =
-            {
-                .x = 28.f,
-                .y = 144.f,
-                .w = 58.f,
-                .h = 58.f,
-                .scale = 1.f,
-                .anchor = ControlAnchor::BottomRight,
-            },
-        .control = Control::X,
-    },
-    LayoutControlInfo{
-        .id = "buttonB",
-        .props =
-            {
-                .x = 158.f,
-                .y = 48.f,
-                .w = 58.f,
-                .h = 58.f,
-                .scale = 1.f,
-                .anchor = ControlAnchor::BottomRight,
-            },
-        .control = Control::B,
-    },
-    LayoutControlInfo{
-        .id = "buttonA",
-        .props =
-            {
-                .x = 62.f,
-                .y = 64.f,
-                .w = 74.f,
-                .h = 74.f,
-                .scale = 1.f,
-                .anchor = ControlAnchor::BottomRight,
-            },
-        .control = Control::A,
-    },
-};
-
 constexpr const ControlInfo* control_info(Control control) noexcept {
     const auto index = static_cast<std::size_t>(control);
     return index < kControls.size() ? &kControls[index] : nullptr;
@@ -254,7 +128,9 @@ bool control_override_active(Control control) noexcept {
     return index < sControlOverrides.size() && sControlOverrides[index] != ControlOverride::Default;
 }
 
-const Rml::String kDocumentSource = R"RML(
+Rml::String touch_controls_document_source() {
+    const auto fragment = touch_controls_rml_fragment();
+    return Rml::String{R"RML(
 <rml>
 <head>
     <link type="text/rcss" href="res/rml/touch_controls.rcss" />
@@ -264,107 +140,11 @@ const Rml::String kDocumentSource = R"RML(
         <stick-ring />
         <stick-knob id="control-knob" />
     </touch-stick>
-
-    <button id="trigger-l" class="control trigger trigger-l"><span>L</span></button>
-    <action-bar id="action-bar" class="control">
-        <button id="items" class="utility items"><icon><glyph>&#xeb0e;</glyph></icon></button>
-        <separator />
-        <button id="first-person" class="utility first-person"><icon><glyph>&#xf4c9;</glyph></icon></button>
-        <separator />
-        <button id="map" class="utility map"><icon><glyph>&#xe55b;</glyph></icon></button>
-        <separator />
-        <button id="collections" class="utility collections"><icon><glyph>&#xe034;</glyph></icon></button>
-    </action-bar>
-    <button id="skip" class="control skip"><icon><glyph>&#xe044;</glyph></icon></button>
-
-    <button id="trigger-r" class="control trigger trigger-r"><span>R</span></button>
-    <button id="button-z" class="control trigger button-z midna"><img id="z-midna-icon" class="midna-icon" /><span>Z</span></button>
-
-    <button id="button-y" class="control face y"><img id="button-y-icon" class="item-icon" /><oil-meter id="button-y-oil" class="oil-meter"><oil-fill id="button-y-oil-fill" /></oil-meter><count id="button-y-count" class="item-count"></count><span>Y</span></button>
-    <button id="button-x" class="control face x"><img id="button-x-icon" class="item-icon" /><oil-meter id="button-x-oil" class="oil-meter"><oil-fill id="button-x-oil-fill" /></oil-meter><count id="button-x-count" class="item-count"></count><span>X</span></button>
-    <button id="button-b" class="control face b"><img id="button-b-icon" class="item-icon" /><span>B</span></button>
-    <button id="button-a" class="control face a"><span>A</span></button>
+)RML"} + Rml::String{fragment.data(), fragment.size()} +
+           Rml::String{R"RML(
 </body>
 </rml>
-)RML";
-
-SDL_FingerID touch_id(const Rml::Event& event) noexcept {
-    return event.GetParameter<SDL_FingerID>("finger_id", 0);
-}
-
-Rml::Vector2f touch_position(const Rml::Event& event) noexcept {
-    return {
-        event.GetParameter("x", 0.f),
-        event.GetParameter("y", 0.f),
-    };
-}
-
-Rml::Vector2f mouse_position(const Rml::Event& event) noexcept {
-    return {
-        event.GetParameter("mouse_x", 0.f),
-        event.GetParameter("mouse_y", 0.f),
-    };
-}
-
-float dp_scale() noexcept {
-    auto* context = aurora::rmlui::get_context();
-    if (context == nullptr) {
-        return 1.f;
-    }
-    return std::max(context->GetDensityIndependentPixelRatio(), 1.f);
-}
-
-ControlLayoutSize document_size_dp(Rml::Context* context) noexcept {
-    if (context == nullptr) {
-        return {};
-    }
-
-    const auto dimensions = context->GetDimensions();
-    const float scale = std::max(context->GetDensityIndependentPixelRatio(), 1.f);
-    return {
-        .w = static_cast<float>(dimensions.x) / scale,
-        .h = static_cast<float>(dimensions.y) / scale,
-    };
-}
-
-[[maybe_unused]] Rml::Vector2f touch_position_dp(
-    const Rml::Event& event, Rml::Context& context) noexcept {
-    const auto position = touch_position(event);
-    const float scale = std::max(context.GetDensityIndependentPixelRatio(), 1.f);
-    return position / scale;
-}
-
-bool float_near(float a, float b) noexcept {
-    return std::abs(a - b) <= 0.01f;
-}
-
-bool rect_near(ControlRect a, ControlRect b) noexcept {
-    return float_near(a.l, b.l) && float_near(a.t, b.t) && float_near(a.w, b.w) &&
-           float_near(a.h, b.h);
-}
-
-void apply_box_if_changed(
-    Rml::Element* element, std::optional<ControlRect>& appliedBox, ControlRect box) noexcept {
-    if (element == nullptr || (appliedBox && rect_near(*appliedBox, box))) {
-        return;
-    }
-
-    element->SetProperty(Rml::PropertyId::Left, Rml::Property(box.l, Rml::Unit::DP));
-    element->SetProperty(Rml::PropertyId::Top, Rml::Property(box.t, Rml::Unit::DP));
-    element->SetProperty(Rml::PropertyId::Width, Rml::Property(box.w, Rml::Unit::DP));
-    element->SetProperty(Rml::PropertyId::Height, Rml::Property(box.h, Rml::Unit::DP));
-    appliedBox = box;
-}
-
-void apply_transform_if_changed(
-    Rml::Element* element, std::optional<float>& appliedTransform, float scale) noexcept {
-    if (element == nullptr || (appliedTransform && float_near(*appliedTransform, scale))) {
-        return;
-    }
-
-    element->SetProperty(Rml::PropertyId::Transform,
-        Rml::Transform::MakeProperty({Rml::Transforms::Scale2D{scale}}));
-    appliedTransform = scale;
+)RML"};
 }
 
 s8 stick_value(float value) noexcept {
@@ -590,7 +370,7 @@ void sync_virtual_input() noexcept {
 }
 
 TouchControls::TouchControls()
-    : Document(kDocumentSource, true),
+    : Document(touch_controls_document_source(), true),
       mRoot(mDocument != nullptr ? mDocument->GetElementById("root") : nullptr),
       mControlStick(mDocument != nullptr ? mDocument->GetElementById("control-stick") : nullptr),
       mControlKnob(mDocument != nullptr ? mDocument->GetElementById("control-knob") : nullptr),
@@ -629,17 +409,17 @@ TouchControls::TouchControls()
             if (!visible() || mWasSuppressed || !getSettings().game.enableTouchControls) {
                 return;
             }
-            if (start_control_touch(touch_id(event), control)) {
+            if (start_control_touch(touch_event_id(event), control)) {
                 event.StopPropagation();
             }
         });
         listen(element, aurora::rmlui::TouchEndEvent, [this](Rml::Event& event) {
-            if (release_control_touch(touch_id(event), false)) {
+            if (release_control_touch(touch_event_id(event), false)) {
                 event.StopPropagation();
             }
         });
         listen(element, aurora::rmlui::TouchCancelEvent, [this](Rml::Event& event) {
-            if (release_control_touch(touch_id(event), true)) {
+            if (release_control_touch(touch_event_id(event), true)) {
                 event.StopPropagation();
             }
         });
@@ -846,7 +626,8 @@ void TouchControls::apply_control_transform(Control control) noexcept {
     auto& layout = elements.layout;
     const float pressedScale =
         index < mControlVisualPressed.size() && mControlVisualPressed[index] ? kPressedScale : 1.f;
-    apply_transform_if_changed(elements.root, layout.appliedTransform, layout.layoutScale * pressedScale);
+    apply_control_transform_if_changed(
+        elements.root, layout.appliedTransform, layout.layoutScale * pressedScale);
 }
 
 void TouchControls::sync_l_lock_state() noexcept {
@@ -920,12 +701,12 @@ void TouchControls::sync_touch_state() noexcept {
         mMoveTouch = {};
     }
 
-    const float stickRadius = kStickRadiusDp * dp_scale();
+    const float stickRadius = kStickRadiusDp * touch_dp_scale();
     if (mControlStick != nullptr) {
         if (mMoveTouch.active && stickRadius > 0.f) {
             const auto delta =
                 clamped_stick_delta(mMoveTouch.start, mMoveTouch.current, stickRadius);
-            const float knobRadius = kStickKnobRadiusDp * dp_scale();
+            const float knobRadius = kStickKnobRadiusDp * touch_dp_scale();
             mControlStick->SetClass("active", true);
             mControlStick->SetProperty(Rml::PropertyId::Left,
                 Rml::Property(mMoveTouch.start.x - stickRadius, Rml::Unit::PX));
@@ -962,7 +743,7 @@ void TouchControls::sync_virtual_input() noexcept {
         status.triggerRight = kTriggerAnalog;
     }
 
-    const float stickRadius = kStickRadiusDp * dp_scale();
+    const float stickRadius = kStickRadiusDp * touch_dp_scale();
     if (mMoveTouch.active && stickRadius > 0.f) {
         const auto delta = clamped_stick_delta(mMoveTouch.start, mMoveTouch.current, stickRadius);
         const float stickX = stick_value(delta.x / stickRadius);
@@ -1028,21 +809,21 @@ void TouchControls::sync_safe_area() noexcept {
 
 void TouchControls::sync_control_layouts() noexcept {
     auto* context = mDocument != nullptr ? mDocument->GetContext() : aurora::rmlui::get_context();
-    const auto docSize = document_size_dp(context);
+    const auto docSize = touch_document_size_dp(context);
     if (docSize.w <= 0.f || docSize.h <= 0.f || context == nullptr) {
         return;
     }
 
     const auto& customControls = getSettings().game.touchControlsLayout.getValue().controls;
-    for (const auto& info : kLayoutControls) {
+    for (const auto& info : touch_layout_controls()) {
         auto props = info.props;
-        if (const auto iter = customControls.find(info.id); iter != customControls.end()) {
+        if (const auto iter = customControls.find(info.layoutId); iter != customControls.end()) {
             props = iter->second;
         }
 
         const auto layout = resolve_control_layout(props, docSize);
-        if (info.control) {
-            const auto index = static_cast<std::size_t>(*info.control);
+        if (info.hasControl) {
+            const auto index = static_cast<std::size_t>(info.control);
             if (index >= mControlElements.size()) {
                 continue;
             }
@@ -1051,15 +832,18 @@ void TouchControls::sync_control_layouts() noexcept {
             auto& state = elements.layout;
             state.visualRect = layout.visual;
             state.layoutScale = layout.scale;
-            apply_box_if_changed(elements.root, state.appliedBox, layout.box);
-            apply_control_transform(*info.control);
+            apply_control_box_if_changed(elements.root, state.appliedBox, layout.box);
+            apply_control_dock_classes(
+                elements.root, touch_control_dock_anchor(layout.visual, docSize));
+            apply_control_transform(info.control);
             continue;
         }
 
         mActionBarLayout.visualRect = layout.visual;
         mActionBarLayout.layoutScale = layout.scale;
-        apply_box_if_changed(mActionBar, mActionBarLayout.appliedBox, layout.box);
-        apply_transform_if_changed(
+        apply_control_box_if_changed(mActionBar, mActionBarLayout.appliedBox, layout.box);
+        apply_control_dock_classes(mActionBar, touch_control_dock_anchor(layout.visual, docSize));
+        apply_control_transform_if_changed(
             mActionBar, mActionBarLayout.appliedTransform, mActionBarLayout.layoutScale);
     }
 }
@@ -1354,7 +1138,7 @@ bool TouchControls::handle_menu_event(Rml::Event& event, menu_pointer::Phase pha
         return false;
     }
 
-    const auto id = touch_id(event);
+    const auto id = touch_event_id(event);
     switch (phase) {
     case menu_pointer::Phase::Press:
         if (mMenuPointerTouchActive) {
@@ -1380,7 +1164,7 @@ bool TouchControls::handle_menu_event(Rml::Event& event, menu_pointer::Phase pha
         break;
     }
 
-    const auto position = touch_position(event);
+    const auto position = touch_event_position(event);
     menu_pointer::handle_fallthrough_pointer(position.x, position.y, phase, true);
     switch (phase) {
     case menu_pointer::Phase::Press:
@@ -1407,13 +1191,13 @@ void TouchControls::handle_touch_down(Rml::Event& event) noexcept {
         return;
     }
 
-    const auto position = touch_position(event);
+    const auto position = touch_event_position(event);
     auto* context = aurora::rmlui::get_context();
     if (context == nullptr) {
         return;
     }
 
-    const auto id = touch_id(event);
+    const auto id = touch_event_id(event);
     if (dCamera_c::isAimActive()) {
         if (!mCameraTouch.active) {
             mCameraTouch = {
@@ -1427,9 +1211,9 @@ void TouchControls::handle_touch_down(Rml::Event& event) noexcept {
     }
 
     const auto dimensions = context->GetDimensions();
-    const float top = mSafeInsets.top + kAnalogZoneTopDp * dp_scale();
-    const float bottom =
-        static_cast<float>(dimensions.y) - mSafeInsets.bottom - kAnalogZoneBottomDp * dp_scale();
+    const float top = mSafeInsets.top + kAnalogZoneTopDp * touch_dp_scale();
+    const float bottom = static_cast<float>(dimensions.y) - mSafeInsets.bottom -
+                         kAnalogZoneBottomDp * touch_dp_scale();
     if (position.y < top || position.y > bottom) {
         return;
     }
@@ -1463,15 +1247,15 @@ void TouchControls::handle_touch_motion(Rml::Event& event) noexcept {
         return;
     }
 
-    const auto id = touch_id(event);
-    const auto position = touch_position(event);
+    const auto id = touch_event_id(event);
+    const auto position = touch_event_position(event);
     if (mMoveTouch.active && mMoveTouch.id == id) {
         mMoveTouch.current = position;
     }
     if (mCameraTouch.active && mCameraTouch.id == id) {
         const auto delta = position - mCameraTouch.current;
         mCameraTouch.current = position;
-        const float scale = dp_scale();
+        const float scale = touch_dp_scale();
         touch_camera::add_delta(delta.x / scale, delta.y / scale);
     }
 }
@@ -1480,7 +1264,7 @@ void TouchControls::handle_touch_up(Rml::Event& event) noexcept {
     if (!visible() || mWasSuppressed) {
         return;
     }
-    const auto id = touch_id(event);
+    const auto id = touch_event_id(event);
     if (release_control_touch(id, false)) {
         return;
     }
@@ -1499,7 +1283,7 @@ void TouchControls::handle_touch_cancel(Rml::Event& event) noexcept {
     if (!visible() || mWasSuppressed) {
         return;
     }
-    const auto id = touch_id(event);
+    const auto id = touch_event_id(event);
     if (release_control_touch(id, true)) {
         return;
     }
@@ -1525,7 +1309,7 @@ void TouchControls::handle_mouse_move(Rml::Event& event) noexcept {
         return;
     }
 
-    const auto position = mouse_position(event);
+    const auto position = mouse_event_position(event);
     menu_pointer::handle_fallthrough_pointer(
         position.x, position.y, menu_pointer::Phase::Move, false);
     event.StopPropagation();
@@ -1542,7 +1326,7 @@ void TouchControls::handle_mouse_down(Rml::Event& event) noexcept {
         return;
     }
 
-    const auto position = mouse_position(event);
+    const auto position = mouse_event_position(event);
     const s32 button = event.GetParameter("button", -1);
     if (!menu_pointer::handle_fallthrough_pointer(
             position.x, position.y, menu_pointer::Phase::Press, false, button))
@@ -1564,7 +1348,7 @@ void TouchControls::handle_mouse_up(Rml::Event& event) noexcept {
         return;
     }
 
-    const auto position = mouse_position(event);
+    const auto position = mouse_event_position(event);
     const s32 button = event.GetParameter("button", -1);
     if (!menu_pointer::handle_fallthrough_pointer(
             position.x, position.y, menu_pointer::Phase::Release, false, button))

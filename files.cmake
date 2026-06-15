@@ -1519,8 +1519,12 @@ set(DUSK_FILES
         src/dusk/ui/string_button.hpp
         src/dusk/ui/tab_bar.cpp
         src/dusk/ui/tab_bar.hpp
+        src/dusk/ui/touch_controls_common.cpp
+        src/dusk/ui/touch_controls_common.hpp
         src/dusk/ui/touch_controls.cpp
         src/dusk/ui/touch_controls.hpp
+        src/dusk/ui/touch_controls_editor.cpp
+        src/dusk/ui/touch_controls_editor.hpp
         src/dusk/ui/ui.cpp
         src/dusk/ui/ui.hpp
         src/dusk/ui/warp.cpp

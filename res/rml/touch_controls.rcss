@@ -12,12 +12,12 @@ body {
     font-weight: bold;
     color: rgba(248, 244, 232, 90%);
     z-index: 1;
-    opacity: 0;
-    transition: opacity 0.2s linear-in-out;
+    filter: opacity(0);
+    transition: filter 0.2s linear-in-out;
 }
 
 body[open] {
-    opacity: 1;
+    filter: opacity(1);
 }
 
 body:not([open]) {
@@ -139,10 +139,9 @@ action-bar {
     position: absolute;
     display: flex;
     align-items: center;
-    justify-content: center;
+    justify-content: stretch;
     border: 1dp rgba(255, 255, 255, 22%);
-    border-bottom: 0dp transparent;
-    border-radius: 23dp 23dp 0dp 0dp;
+    border-radius: 23dp;
     background-color: rgba(22, 24, 28, 48%);
     /* backdrop-filter: blur(7dp); */
     /* box-shadow: 0 -6dp 18dp rgba(0, 0, 0, 28%); */
@@ -161,6 +160,7 @@ action-bar:hidden separator {
 
 .utility {
     position: relative;
+    flex: 1 1 auto;
     width: 56dp;
     height: 44dp;
     margin: 0;
@@ -191,6 +191,7 @@ action-bar:hidden separator {
 
 separator {
     display: block;
+    flex: 0 0 1dp;
     width: 1dp;
     height: 24dp;
     background-color: rgba(255, 255, 255, 18%);
@@ -270,6 +271,34 @@ oil-fill {
 
 .face.y {
     background-color: rgba(113, 91, 150, 54%);
+}
+
+button.control.docked-top,
+action-bar.docked-top {
+    border-top-width: 0dp;
+    border-top-left-radius: 0dp;
+    border-top-right-radius: 0dp;
+}
+
+button.control.docked-bottom,
+action-bar.docked-bottom {
+    border-bottom-width: 0dp;
+    border-bottom-left-radius: 0dp;
+    border-bottom-right-radius: 0dp;
+}
+
+button.control.docked-left,
+action-bar.docked-left {
+    border-left-width: 0dp;
+    border-top-left-radius: 0dp;
+    border-bottom-left-radius: 0dp;
+}
+
+button.control.docked-right,
+action-bar.docked-right {
+    border-right-width: 0dp;
+    border-top-right-radius: 0dp;
+    border-bottom-right-radius: 0dp;
 }
 
 touch-stick {
