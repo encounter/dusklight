@@ -12,12 +12,12 @@ body {
     font-weight: bold;
     color: rgba(248, 244, 232, 90%);
     z-index: 1;
-    filter: opacity(0);
-    transition: filter 0.2s linear-in-out;
+    opacity: 0;
+    transition: opacity 0.2s linear-in-out;
 }
 
 body[open] {
-    filter: opacity(1);
+    opacity: 1;
 }
 
 body:not([open]) {
@@ -35,8 +35,7 @@ button {
     color: rgba(248, 244, 232, 90%);
     text-align: center;
     /* backdrop-filter: blur(7dp); */
-    box-shadow: 0 6dp 18dp rgba(0, 0, 0, 28%);
-    transform: scale(1);
+    /* box-shadow: 0 6dp 18dp rgba(0, 0, 0, 28%); */
     transform-origin: center;
     transition: background-color border-color filter transform 0.08s linear-in-out,
                 opacity 0.2s linear-in-out;
@@ -47,10 +46,6 @@ button.active {
     background-color: rgba(63, 78, 90, 68%);
     border-color: rgba(255, 255, 255, 48%);
     filter: brightness(1.18);
-}
-
-button.pressed {
-    transform: scale(0.94);
 }
 
 button:hidden {
@@ -64,12 +59,19 @@ button span {
 }
 
 button icon {
-    display: block;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     width: 100%;
     height: 100%;
+}
+
+button icon glyph {
+    display: block;
     font-family: "Material Symbols Rounded";
     font-weight: normal;
     font-size: 24dp;
+    line-height: 1;
 }
 
 .midna-icon,
@@ -86,13 +88,8 @@ button icon {
     display: block;
 }
 
-.touch-control {
+.control {
     position: absolute;
-}
-
-.trigger-l {
-    left: 24dp;
-    top: 18dp;
 }
 
 .trigger-l.active {
@@ -102,24 +99,14 @@ button icon {
 
 .trigger,
 .skip {
-    height: 46dp;
     border-radius: 23dp;
 }
 
 .trigger {
-    width: 78dp;
     font-size: 22dp;
 }
 
-.trigger-r,
-.skip {
-    right: 24dp;
-    top: 18dp;
-}
-
 .button-z {
-    right: 24dp;
-    top: 72dp;
     background-color: rgba(118, 79, 158, 58%);
     border-color: rgba(203, 170, 255, 36%);
 }
@@ -150,10 +137,6 @@ button icon {
 
 action-bar {
     position: absolute;
-    left: 56dp;
-    bottom: 0;
-    width: 230dp;
-    height: 46dp;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -162,14 +145,17 @@ action-bar {
     border-radius: 23dp 23dp 0dp 0dp;
     background-color: rgba(22, 24, 28, 48%);
     /* backdrop-filter: blur(7dp); */
-    box-shadow: 0 -6dp 18dp rgba(0, 0, 0, 28%);
+    /* box-shadow: 0 -6dp 18dp rgba(0, 0, 0, 28%); */
     overflow: hidden;
-    filter: opacity(1);
-    transition: filter 0.2s linear-in-out;
+    opacity: 1;
+    transform-origin: center;
+    transition: opacity 0.2s linear-in-out;
 }
 
-action-bar:hidden {
-    filter: opacity(0);
+action-bar:hidden,
+action-bar:hidden button,
+action-bar:hidden separator {
+    opacity: 0;
     pointer-events: none;
 }
 
@@ -198,30 +184,9 @@ action-bar:hidden {
     opacity: 1;
 }
 
-.first-person icon {
-    decorator: text("&#xf4c9;" center center);
-}
-
-.map icon {
-    decorator: text("&#xe55b;" center center);
-}
-
-.items icon {
-    decorator: text("&#xeb0e;" center center);
-}
-
-.collections icon {
-    decorator: text("&#xe034;" center center);
-}
-
 .skip {
-    width: 64dp;
     z-index: 1;
     border-color: rgba(255, 255, 255, 36%);
-}
-
-.skip icon {
-    decorator: text("&#xe044;" center center);
 }
 
 separator {
@@ -229,27 +194,12 @@ separator {
     width: 1dp;
     height: 24dp;
     background-color: rgba(255, 255, 255, 18%);
-}
-
-face-cluster {
-    position: absolute;
-    right: 28dp;
-    bottom: 28dp;
-    width: 236dp;
-    height: 184dp;
     opacity: 1;
     transition: opacity 0.2s linear-in-out;
 }
 
-face-cluster:hidden {
-    opacity: 0;
-    pointer-events: none;
-}
-
 .face {
     position: absolute;
-    width: 58dp;
-    height: 58dp;
     border-radius: 29dp;
     font-size: 24dp;
     overflow: visible;
@@ -287,7 +237,7 @@ face-cluster:hidden {
     border: 1dp rgba(42, 32, 18, 82%);
     border-radius: 4dp;
     background-color: rgba(18, 14, 10, 70%);
-    box-shadow: 0 2dp 6dp rgba(0, 0, 0, 35%);
+    /* box-shadow: 0 2dp 6dp rgba(0, 0, 0, 35%); */
 }
 
 oil-fill {
@@ -305,30 +255,20 @@ oil-fill {
 }
 
 .face.a {
-    right: 34dp;
-    top: 74dp;
-    width: 74dp;
-    height: 74dp;
     border-radius: 37dp;
     font-size: 31dp;
     background-color: rgba(34, 112, 123, 62%);
 }
 
 .face.b {
-    left: 48dp;
-    top: 106dp;
     background-color: rgba(161, 61, 66, 58%);
 }
 
 .face.x {
-    right: 0;
-    top: 10dp;
     background-color: rgba(83, 115, 151, 56%);
 }
 
 .face.y {
-    left: 82dp;
-    top: 16dp;
     background-color: rgba(113, 91, 150, 54%);
 }
 
@@ -341,7 +281,7 @@ touch-stick {
     background-color: rgba(18, 20, 24, 35%);
     border: 1dp rgba(255, 255, 255, 20%);
     /* backdrop-filter: blur(7dp); */
-    box-shadow: 0 8dp 24dp rgba(0, 0, 0, 24%);
+    /* box-shadow: 0 8dp 24dp rgba(0, 0, 0, 24%); */
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.18s linear-in-out;

@@ -4,12 +4,14 @@
 #include "document.hpp"
 
 #include "dusk/action_bindings.h"
+#include "dusk/control_layout.hpp"
 #include "dusk/menu_pointer.h"
 
 #include <array>
 #include <bitset>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 
 namespace dusk::ui {
@@ -46,12 +48,19 @@ private:
         bool active = false;
         bool longPressFired = false;
     };
+    struct LayoutState {
+        std::optional<ControlRect> visualRect;
+        std::optional<ControlRect> appliedBox;
+        float layoutScale = 1.0f;
+        std::optional<float> appliedTransform;
+    };
     struct ControlElements {
         Rml::Element* root = nullptr;
         Rml::Element* icon = nullptr;
         Rml::Element* oil = nullptr;
         Rml::Element* oilFill = nullptr;
         Rml::Element* count = nullptr;
+        LayoutState layout;
     };
     enum class ControlAction {
         Tap,
@@ -71,9 +80,11 @@ private:
     void sync_touch_state() noexcept;
     void sync_visibility() noexcept;
     void sync_safe_area() noexcept;
+    void sync_control_layouts() noexcept;
     void sync_visual_state() noexcept;
     void sync_action_bar_state() noexcept;
     void sync_control_displays() noexcept;
+    void apply_control_transform(Control control) noexcept;
     void handle_touch_down(Rml::Event& event) noexcept;
     void handle_touch_motion(Rml::Event& event) noexcept;
     void handle_touch_up(Rml::Event& event) noexcept;
@@ -88,7 +99,6 @@ private:
     Rml::Element* mRoot = nullptr;
     Rml::Element* mControlStick = nullptr;
     Rml::Element* mControlKnob = nullptr;
-    Rml::Element* mFaceCluster = nullptr;
     Rml::Element* mActionBar = nullptr;
     std::array<ControlElements, static_cast<std::size_t>(Control::COUNT)> mControlElements{};
     std::string mButtonBIconSource;
@@ -103,7 +113,9 @@ private:
     SDL_FingerID mMenuPointerTouch = 0;
     int mMenuPointerMouseSuppressions = 0;
     std::array<ControlTouch, static_cast<std::size_t>(Control::COUNT)> mControlTouches{};
+    std::array<bool, static_cast<std::size_t>(Control::COUNT)> mControlVisualPressed{};
     std::bitset<static_cast<std::size_t>(ActionBinds::COUNT)> mQueuedActions;
+    LayoutState mActionBarLayout;
     Insets mSafeInsets;
     u16 mButtonMask = 0;
     bool mLPressed = false;

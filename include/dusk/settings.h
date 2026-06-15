@@ -4,6 +4,7 @@
 #include <array>
 
 #include "dusk/config_var.hpp"
+#include "dusk/control_layout.hpp"
 
 namespace dusk {
 
@@ -119,6 +120,11 @@ struct ConfigEnumRange<MagicArmorMode> {
     static constexpr auto min = MagicArmorMode::NORMAL;
     static constexpr auto max = MagicArmorMode::COSMETIC;
 };
+
+template <>
+struct ConfigValueTraits<ControlLayout> {
+    static constexpr bool enabled = true;
+};
 }  // namespace config
 
 // Persistent user settings
@@ -223,6 +229,7 @@ struct UserSettings {
         ConfigVar<bool> invertMouseY;
         ConfigVar<bool> freeCamera;
         ConfigVar<bool> enableTouchControls;
+        ConfigVar<ControlLayout> touchControlsLayout;
         ConfigVar<bool> invertCameraXAxis;
         ConfigVar<bool> invertCameraYAxis;
         ConfigVar<bool> invertFirstPersonXAxis;

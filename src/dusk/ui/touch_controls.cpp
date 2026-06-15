@@ -2,12 +2,15 @@
 
 #include <aurora/rmlui.hpp>
 #include <dolphin/pad.h>
+#include <fmt/format.h>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <optional>
+#include <string_view>
 
 #include "d/actor/d_a_alink.h"
 #include "d/actor/d_a_player.h"
@@ -37,6 +40,7 @@ constexpr u8 kTriggerAnalog = 180;
 constexpr auto kLDoubleTapWindow = std::chrono::milliseconds(300);
 constexpr auto kHoldActionDuration = std::chrono::milliseconds(450);
 constexpr float kFaceIconTargetRatio = 0.76f;
+constexpr float kPressedScale = 0.94f;
 constexpr size_t kEquipTargetCount = 4;
 
 std::array<EquipTarget, kEquipTargetCount> sEquipTargets{};
@@ -114,6 +118,132 @@ constexpr std::array<ControlInfo, static_cast<std::size_t>(Control::COUNT)> kCon
     },
 }};
 
+struct LayoutControlInfo {
+    std::string_view id;
+    ControlProps props;
+    std::optional<Control> control;
+};
+
+constexpr std::array kLayoutControls = {
+    LayoutControlInfo{
+        .id = "triggerL",
+        .props =
+            {
+                .x = 24.f,
+                .y = 18.f,
+                .w = 78.f,
+                .h = 46.f,
+                .scale = 1.f,
+                .anchor = ControlAnchor::TopLeft,
+            },
+        .control = Control::L,
+    },
+    LayoutControlInfo{
+        .id = "triggerR",
+        .props =
+            {
+                .x = 24.f,
+                .y = 18.f,
+                .w = 78.f,
+                .h = 46.f,
+                .scale = 1.f,
+                .anchor = ControlAnchor::TopRight,
+            },
+        .control = Control::R,
+    },
+    LayoutControlInfo{
+        .id = "buttonZ",
+        .props =
+            {
+                .x = 24.f,
+                .y = 72.f,
+                .w = 78.f,
+                .h = 46.f,
+                .scale = 1.f,
+                .anchor = ControlAnchor::TopRight,
+            },
+        .control = Control::Z,
+    },
+    LayoutControlInfo{
+        .id = "actionBar",
+        .props =
+            {
+                .x = 56.f,
+                .y = 0.f,
+                .w = 230.f,
+                .h = 46.f,
+                .scale = 1.f,
+                .anchor = ControlAnchor::BottomLeft,
+            },
+        .control = std::nullopt,
+    },
+    LayoutControlInfo{
+        .id = "skip",
+        .props =
+            {
+                .x = 24.f,
+                .y = 18.f,
+                .w = 64.f,
+                .h = 46.f,
+                .scale = 1.f,
+                .anchor = ControlAnchor::TopRight,
+            },
+        .control = Control::SKIP,
+    },
+    LayoutControlInfo{
+        .id = "buttonY",
+        .props =
+            {
+                .x = 124.f,
+                .y = 138.f,
+                .w = 58.f,
+                .h = 58.f,
+                .scale = 1.f,
+                .anchor = ControlAnchor::BottomRight,
+            },
+        .control = Control::Y,
+    },
+    LayoutControlInfo{
+        .id = "buttonX",
+        .props =
+            {
+                .x = 28.f,
+                .y = 144.f,
+                .w = 58.f,
+                .h = 58.f,
+                .scale = 1.f,
+                .anchor = ControlAnchor::BottomRight,
+            },
+        .control = Control::X,
+    },
+    LayoutControlInfo{
+        .id = "buttonB",
+        .props =
+            {
+                .x = 158.f,
+                .y = 48.f,
+                .w = 58.f,
+                .h = 58.f,
+                .scale = 1.f,
+                .anchor = ControlAnchor::BottomRight,
+            },
+        .control = Control::B,
+    },
+    LayoutControlInfo{
+        .id = "buttonA",
+        .props =
+            {
+                .x = 62.f,
+                .y = 64.f,
+                .w = 74.f,
+                .h = 74.f,
+                .scale = 1.f,
+                .anchor = ControlAnchor::BottomRight,
+            },
+        .control = Control::A,
+    },
+};
+
 constexpr const ControlInfo* control_info(Control control) noexcept {
     const auto index = static_cast<std::size_t>(control);
     return index < kControls.size() ? &kControls[index] : nullptr;
@@ -121,8 +251,7 @@ constexpr const ControlInfo* control_info(Control control) noexcept {
 
 bool control_override_active(Control control) noexcept {
     const auto index = static_cast<std::size_t>(control);
-    return index < sControlOverrides.size() &&
-           sControlOverrides[index] != ControlOverride::Default;
+    return index < sControlOverrides.size() && sControlOverrides[index] != ControlOverride::Default;
 }
 
 const Rml::String kDocumentSource = R"RML(
@@ -136,27 +265,25 @@ const Rml::String kDocumentSource = R"RML(
         <stick-knob id="control-knob" />
     </touch-stick>
 
-    <button id="trigger-l" class="touch-control trigger trigger-l"><span>L</span></button>
-    <action-bar id="action-bar" class="touch-control">
-        <button id="items" class="utility items"><icon /></button>
+    <button id="trigger-l" class="control trigger trigger-l"><span>L</span></button>
+    <action-bar id="action-bar" class="control">
+        <button id="items" class="utility items"><icon><glyph>&#xeb0e;</glyph></icon></button>
         <separator />
-        <button id="first-person" class="utility first-person"><icon /></button>
+        <button id="first-person" class="utility first-person"><icon><glyph>&#xf4c9;</glyph></icon></button>
         <separator />
-        <button id="map" class="utility map"><icon /></button>
+        <button id="map" class="utility map"><icon><glyph>&#xe55b;</glyph></icon></button>
         <separator />
-        <button id="collections" class="utility collections"><icon /></button>
+        <button id="collections" class="utility collections"><icon><glyph>&#xe034;</glyph></icon></button>
     </action-bar>
-    <button id="skip" class="touch-control skip"><icon /></button>
+    <button id="skip" class="control skip"><icon><glyph>&#xe044;</glyph></icon></button>
 
-    <button id="trigger-r" class="touch-control trigger trigger-r"><span>R</span></button>
-    <button id="button-z" class="touch-control trigger button-z midna"><img id="z-midna-icon" class="midna-icon" /><span>Z</span></button>
+    <button id="trigger-r" class="control trigger trigger-r"><span>R</span></button>
+    <button id="button-z" class="control trigger button-z midna"><img id="z-midna-icon" class="midna-icon" /><span>Z</span></button>
 
-    <face-cluster id="face-cluster">
-        <button id="button-y" class="touch-control face y"><img id="button-y-icon" class="item-icon" /><oil-meter id="button-y-oil" class="oil-meter"><oil-fill id="button-y-oil-fill" /></oil-meter><count id="button-y-count" class="item-count"></count><span>Y</span></button>
-        <button id="button-x" class="touch-control face x"><img id="button-x-icon" class="item-icon" /><oil-meter id="button-x-oil" class="oil-meter"><oil-fill id="button-x-oil-fill" /></oil-meter><count id="button-x-count" class="item-count"></count><span>X</span></button>
-        <button id="button-b" class="touch-control face b"><img id="button-b-icon" class="item-icon" /><span>B</span></button>
-        <button id="button-a" class="touch-control face a"><span>A</span></button>
-    </face-cluster>
+    <button id="button-y" class="control face y"><img id="button-y-icon" class="item-icon" /><oil-meter id="button-y-oil" class="oil-meter"><oil-fill id="button-y-oil-fill" /></oil-meter><count id="button-y-count" class="item-count"></count><span>Y</span></button>
+    <button id="button-x" class="control face x"><img id="button-x-icon" class="item-icon" /><oil-meter id="button-x-oil" class="oil-meter"><oil-fill id="button-x-oil-fill" /></oil-meter><count id="button-x-count" class="item-count"></count><span>X</span></button>
+    <button id="button-b" class="control face b"><img id="button-b-icon" class="item-icon" /><span>B</span></button>
+    <button id="button-a" class="control face a"><span>A</span></button>
 </body>
 </rml>
 )RML";
@@ -185,6 +312,59 @@ float dp_scale() noexcept {
         return 1.f;
     }
     return std::max(context->GetDensityIndependentPixelRatio(), 1.f);
+}
+
+ControlLayoutSize document_size_dp(Rml::Context* context) noexcept {
+    if (context == nullptr) {
+        return {};
+    }
+
+    const auto dimensions = context->GetDimensions();
+    const float scale = std::max(context->GetDensityIndependentPixelRatio(), 1.f);
+    return {
+        .w = static_cast<float>(dimensions.x) / scale,
+        .h = static_cast<float>(dimensions.y) / scale,
+    };
+}
+
+[[maybe_unused]] Rml::Vector2f touch_position_dp(
+    const Rml::Event& event, Rml::Context& context) noexcept {
+    const auto position = touch_position(event);
+    const float scale = std::max(context.GetDensityIndependentPixelRatio(), 1.f);
+    return position / scale;
+}
+
+bool float_near(float a, float b) noexcept {
+    return std::abs(a - b) <= 0.01f;
+}
+
+bool rect_near(ControlRect a, ControlRect b) noexcept {
+    return float_near(a.l, b.l) && float_near(a.t, b.t) && float_near(a.w, b.w) &&
+           float_near(a.h, b.h);
+}
+
+void apply_box_if_changed(
+    Rml::Element* element, std::optional<ControlRect>& appliedBox, ControlRect box) noexcept {
+    if (element == nullptr || (appliedBox && rect_near(*appliedBox, box))) {
+        return;
+    }
+
+    element->SetProperty(Rml::PropertyId::Left, Rml::Property(box.l, Rml::Unit::DP));
+    element->SetProperty(Rml::PropertyId::Top, Rml::Property(box.t, Rml::Unit::DP));
+    element->SetProperty(Rml::PropertyId::Width, Rml::Property(box.w, Rml::Unit::DP));
+    element->SetProperty(Rml::PropertyId::Height, Rml::Property(box.h, Rml::Unit::DP));
+    appliedBox = box;
+}
+
+void apply_transform_if_changed(
+    Rml::Element* element, std::optional<float>& appliedTransform, float scale) noexcept {
+    if (element == nullptr || (appliedTransform && float_near(*appliedTransform, scale))) {
+        return;
+    }
+
+    element->SetProperty(Rml::PropertyId::Transform,
+        Rml::Transform::MakeProperty({Rml::Transforms::Scale2D{scale}}));
+    appliedTransform = scale;
 }
 
 s8 stick_value(float value) noexcept {
@@ -337,7 +517,7 @@ void clear_equip_targets() noexcept {
     }
 }
 
-void sync_equip_target(int slot, Rml::Element* element, float widthRatio, float heightRatio,
+void sync_equip_target(int slot, ControlRect rectDp, float widthRatio, float heightRatio,
     bool square = false) noexcept {
     if (slot < 0 || static_cast<size_t>(slot) >= sEquipTargets.size()) {
         return;
@@ -347,7 +527,7 @@ void sync_equip_target(int slot, Rml::Element* element, float widthRatio, float 
     target.valid = false;
 
     auto* context = aurora::rmlui::get_context();
-    if (element == nullptr || context == nullptr) {
+    if (context == nullptr) {
         return;
     }
 
@@ -356,8 +536,9 @@ void sync_equip_target(int slot, Rml::Element* element, float widthRatio, float 
         return;
     }
 
-    const auto buttonPosition = element->GetAbsoluteOffset(Rml::BoxArea::Border);
-    const auto buttonSize = element->GetBox().GetSize(Rml::BoxArea::Border);
+    const float scale = std::max(context->GetDensityIndependentPixelRatio(), 1.f);
+    const Rml::Vector2f buttonPosition{rectDp.l * scale, rectDp.t * scale};
+    const Rml::Vector2f buttonSize{rectDp.w * scale, rectDp.h * scale};
     if (buttonSize.x <= 0.f || buttonSize.y <= 0.f) {
         return;
     }
@@ -413,7 +594,6 @@ TouchControls::TouchControls()
       mRoot(mDocument != nullptr ? mDocument->GetElementById("root") : nullptr),
       mControlStick(mDocument != nullptr ? mDocument->GetElementById("control-stick") : nullptr),
       mControlKnob(mDocument != nullptr ? mDocument->GetElementById("control-knob") : nullptr),
-      mFaceCluster(mDocument != nullptr ? mDocument->GetElementById("face-cluster") : nullptr),
       mActionBar(mDocument != nullptr ? mDocument->GetElementById("action-bar") : nullptr) {
     sTouchControls = this;
     if (mDocument != nullptr) {
@@ -647,9 +827,26 @@ void TouchControls::sync_control_button_mask() noexcept {
 void TouchControls::set_control_visual(Control control, bool pressed) noexcept {
     const auto index = static_cast<std::size_t>(control);
     auto* element = index < mControlElements.size() ? mControlElements[index].root : nullptr;
+    if (index >= mControlVisualPressed.size()) {
+        return;
+    }
+    mControlVisualPressed[index] = pressed;
     if (element != nullptr) {
         element->SetClass("pressed", pressed);
     }
+    apply_control_transform(control);
+}
+
+void TouchControls::apply_control_transform(Control control) noexcept {
+    const auto index = static_cast<std::size_t>(control);
+    if (index >= mControlElements.size()) {
+        return;
+    }
+    auto& elements = mControlElements[index];
+    auto& layout = elements.layout;
+    const float pressedScale =
+        index < mControlVisualPressed.size() && mControlVisualPressed[index] ? kPressedScale : 1.f;
+    apply_transform_if_changed(elements.root, layout.appliedTransform, layout.layoutScale * pressedScale);
 }
 
 void TouchControls::sync_l_lock_state() noexcept {
@@ -819,7 +1016,7 @@ void TouchControls::sync_visibility() noexcept {
 }
 
 void TouchControls::sync_safe_area() noexcept {
-    if (mRoot == nullptr || mDocument == nullptr) {
+    if (mDocument == nullptr) {
         return;
     }
     const auto insets = safe_area_insets(mDocument->GetContext());
@@ -827,14 +1024,48 @@ void TouchControls::sync_safe_area() noexcept {
         return;
     }
     mSafeInsets = insets;
-    mRoot->SetProperty(Rml::PropertyId::PaddingTop, Rml::Property(insets.top, Rml::Unit::PX));
-    mRoot->SetProperty(Rml::PropertyId::PaddingRight, Rml::Property(insets.right, Rml::Unit::PX));
-    mRoot->SetProperty(Rml::PropertyId::PaddingBottom, Rml::Property(insets.bottom, Rml::Unit::PX));
-    mRoot->SetProperty(Rml::PropertyId::PaddingLeft, Rml::Property(insets.left, Rml::Unit::PX));
+}
+
+void TouchControls::sync_control_layouts() noexcept {
+    auto* context = mDocument != nullptr ? mDocument->GetContext() : aurora::rmlui::get_context();
+    const auto docSize = document_size_dp(context);
+    if (docSize.w <= 0.f || docSize.h <= 0.f || context == nullptr) {
+        return;
+    }
+
+    const auto& customControls = getSettings().game.touchControlsLayout.getValue().controls;
+    for (const auto& info : kLayoutControls) {
+        auto props = info.props;
+        if (const auto iter = customControls.find(info.id); iter != customControls.end()) {
+            props = iter->second;
+        }
+
+        const auto layout = resolve_control_layout(props, docSize);
+        if (info.control) {
+            const auto index = static_cast<std::size_t>(*info.control);
+            if (index >= mControlElements.size()) {
+                continue;
+            }
+
+            auto& elements = mControlElements[index];
+            auto& state = elements.layout;
+            state.visualRect = layout.visual;
+            state.layoutScale = layout.scale;
+            apply_box_if_changed(elements.root, state.appliedBox, layout.box);
+            apply_control_transform(*info.control);
+            continue;
+        }
+
+        mActionBarLayout.visualRect = layout.visual;
+        mActionBarLayout.layoutScale = layout.scale;
+        apply_box_if_changed(mActionBar, mActionBarLayout.appliedBox, layout.box);
+        apply_transform_if_changed(
+            mActionBar, mActionBarLayout.appliedTransform, mActionBarLayout.layoutScale);
+    }
 }
 
 void TouchControls::sync_visual_state() noexcept {
-    if (!getSettings().game.enableTouchControls) {
+    if (mWasSuppressed || !getSettings().game.enableTouchControls) {
         clear_motion_touch_input();
         for (const auto control : {Control::L, Control::R}) {
             const auto& elements = mControlElements[static_cast<std::size_t>(control)];
@@ -854,10 +1085,9 @@ void TouchControls::sync_visual_state() noexcept {
 
     if (lTrigger.root != nullptr) {
         lTrigger.root->SetPseudoClass("hidden", lHidden);
-        lTrigger.root->SetClass(
-            "active", !lHidden &&
-                          (mLPressed || mLLatched || mManualLLatched ||
-                              (!control_override_active(Control::L) && player_attention_locked())));
+        lTrigger.root->SetClass("active",
+            !lHidden && (mLPressed || mLLatched || mManualLLatched ||
+                            (!control_override_active(Control::L) && player_attention_locked())));
     }
     if (rTrigger.root != nullptr) {
         rTrigger.root->SetPseudoClass("hidden", rHidden);
@@ -872,7 +1102,7 @@ void TouchControls::sync_visual_state() noexcept {
 }
 
 void TouchControls::sync_action_bar_state() noexcept {
-    if (!getSettings().game.enableTouchControls) {
+    if (mWasSuppressed || !getSettings().game.enableTouchControls) {
         if (mActionBar != nullptr) {
             mActionBar->SetPseudoClass("hidden", true);
         }
@@ -889,13 +1119,12 @@ void TouchControls::sync_action_bar_state() noexcept {
     }
 
     auto* event = dComIfGp_getEvent();
-    const bool skipVisible =
-        event != nullptr && event->mEventStatus == 1 && event->mSkipFunc != nullptr &&
-        !event->chkFlag2(2);
-    const bool hidden = !skipVisible &&
-                        (!controls_available(false) || dComIfGp_event_runCheck() ||
-                            (dComIfGp_getMsgObjectClass() != nullptr &&
-                                dMsgObject_isTalkNowCheck()));
+    const bool skipVisible = event != nullptr && event->mEventStatus == 1 &&
+                             event->mSkipFunc != nullptr && !event->chkFlag2(2);
+    const bool hidden =
+        !skipVisible &&
+        (!controls_available(false) || dComIfGp_event_runCheck() ||
+            (dComIfGp_getMsgObjectClass() != nullptr && dMsgObject_isTalkNowCheck()));
     const auto& skip = mControlElements[static_cast<std::size_t>(Control::SKIP)];
     if (mActionBar != nullptr) {
         mActionBar->SetPseudoClass("hidden", hidden || skipVisible);
@@ -925,22 +1154,16 @@ void TouchControls::sync_action_bar_state() noexcept {
 }
 
 void TouchControls::sync_control_displays() noexcept {
-    if (!getSettings().game.enableTouchControls) {
-        if (mFaceCluster != nullptr) {
-            mFaceCluster->SetPseudoClass("hidden", true);
-        }
-        const auto& z = mControlElements[static_cast<std::size_t>(Control::Z)];
-        if (z.root != nullptr) {
-            z.root->SetPseudoClass("hidden", true);
-        }
+    if (mWasSuppressed || !getSettings().game.enableTouchControls) {
         for (const auto control : {Control::A, Control::B, Control::X, Control::Y, Control::Z}) {
+            const auto& elements = mControlElements[static_cast<std::size_t>(control)];
+            if (elements.root != nullptr) {
+                elements.root->SetPseudoClass("hidden", true);
+            }
             release_control(control);
         }
         clear_equip_targets();
         return;
-    }
-    if (mFaceCluster != nullptr) {
-        mFaceCluster->SetPseudoClass("hidden", false);
     }
 
     const auto bState = b_button_state();
@@ -948,11 +1171,15 @@ void TouchControls::sync_control_displays() noexcept {
     const auto yState = xy_button_state(Control::Y);
     const auto zState = z_button_state();
 
+    const auto& a = mControlElements[static_cast<std::size_t>(Control::A)];
     const auto& b = mControlElements[static_cast<std::size_t>(Control::B)];
     const auto& x = mControlElements[static_cast<std::size_t>(Control::X)];
     const auto& y = mControlElements[static_cast<std::size_t>(Control::Y)];
     const auto& z = mControlElements[static_cast<std::size_t>(Control::Z)];
 
+    if (a.root != nullptr) {
+        a.root->SetPseudoClass("hidden", false);
+    }
     if (z.root != nullptr) {
         z.root->SetPseudoClass("hidden", !zState.visible);
         z.root->SetClass("has-icon", zState.showIcon);
@@ -1061,17 +1288,17 @@ void TouchControls::sync_control_displays() noexcept {
         return;
     }
 
-    if (xState.showIcon) {
-        sync_equip_target(0, x.root, kFaceIconTargetRatio, kFaceIconTargetRatio);
+    if (xState.showIcon && x.layout.visualRect) {
+        sync_equip_target(0, *x.layout.visualRect, kFaceIconTargetRatio, kFaceIconTargetRatio);
     }
-    if (yState.showIcon) {
-        sync_equip_target(1, y.root, kFaceIconTargetRatio, kFaceIconTargetRatio);
+    if (yState.showIcon && y.layout.visualRect) {
+        sync_equip_target(1, *y.layout.visualRect, kFaceIconTargetRatio, kFaceIconTargetRatio);
     }
-    if (zState.showIcon) {
-        sync_equip_target(2, z.icon, 1.f, 1.f, true);
+    if (zState.showIcon && z.layout.visualRect) {
+        sync_equip_target(2, *z.layout.visualRect, 1.f, 1.f, true);
     }
-    if (bState.showIcon) {
-        sync_equip_target(3, b.root, kFaceIconTargetRatio, kFaceIconTargetRatio);
+    if (bState.showIcon && b.layout.visualRect) {
+        sync_equip_target(3, *b.layout.visualRect, kFaceIconTargetRatio, kFaceIconTargetRatio);
     }
 }
 
@@ -1079,6 +1306,7 @@ void TouchControls::update() {
     sync_visibility();
     sync_control_long_presses();
     sync_safe_area();
+    sync_control_layouts();
     sync_visual_state();
     sync_action_bar_state();
     sync_control_displays();
