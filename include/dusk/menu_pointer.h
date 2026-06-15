@@ -40,6 +40,7 @@ void begin_context(Context context) noexcept;
 bool handle_fallthrough_pointer(f32 x, f32 y, Phase phase, bool touch, s32 mouseButton = -1) noexcept;
 
 bool active() noexcept;
+bool enabled() noexcept;
 bool mouse_capture_active() noexcept;
 const State& state() noexcept;
 bool consume_click() noexcept;

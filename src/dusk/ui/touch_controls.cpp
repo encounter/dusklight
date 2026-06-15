@@ -787,7 +787,10 @@ void TouchControls::sync_virtual_input() noexcept {
 
 void TouchControls::sync_visibility() noexcept {
     mWasSuppressed = any_document_visible();
-    if ((getSettings().game.enableTouchControls || menu_pointer::active()) && !mWasSuppressed) {
+    if ((getSettings().game.enableTouchControls ||
+            (menu_pointer::enabled() && menu_pointer::active())) &&
+        !mWasSuppressed)
+    {
         show();
     } else if (visible()) {
         hide(false);
@@ -1137,6 +1140,13 @@ bool TouchControls::handle_menu_event(Rml::Event& event, menu_pointer::Phase pha
     if (!menu_pointer::active() || event.GetTargetElement() != mRoot) {
         return false;
     }
+    if (!menu_pointer::enabled()) {
+        mMenuPointerTouch = 0;
+        mMenuPointerMouseSuppressions = 0;
+        mMenuPointerTouchActive = false;
+        event.StopPropagation();
+        return true;
+    }
 
     const auto id = touch_event_id(event);
     switch (phase) {
@@ -1304,7 +1314,7 @@ void TouchControls::handle_mouse_move(Rml::Event& event) noexcept {
         return;
     }
     if (!visible() || mWasSuppressed || !menu_pointer::active() ||
-        event.GetTargetElement() != mRoot)
+        !menu_pointer::enabled() || event.GetTargetElement() != mRoot)
     {
         return;
     }
@@ -1321,7 +1331,7 @@ void TouchControls::handle_mouse_down(Rml::Event& event) noexcept {
         return;
     }
     if (!visible() || mWasSuppressed || !menu_pointer::active() ||
-        event.GetTargetElement() != mRoot)
+        !menu_pointer::enabled() || event.GetTargetElement() != mRoot)
     {
         return;
     }
@@ -1342,6 +1352,7 @@ void TouchControls::handle_mouse_up(Rml::Event& event) noexcept {
         return;
     }
     if (!visible() || mWasSuppressed ||
+        !menu_pointer::enabled() ||
         (!menu_pointer::active() && !menu_pointer::mouse_capture_active()) ||
         event.GetTargetElement() != mRoot)
     {

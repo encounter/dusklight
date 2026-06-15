@@ -216,6 +216,7 @@ struct UserSettings {
         ConfigVar<bool> invertMouseY;
         ConfigVar<bool> freeCamera;
         ConfigVar<bool> enableTouchControls;
+        ConfigVar<bool> enableMenuPointer;
         ConfigVar<ui::ControlLayout> touchControlsLayout;
         ConfigVar<bool> invertCameraXAxis;
         ConfigVar<bool> invertCameraYAxis;

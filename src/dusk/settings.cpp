@@ -96,6 +96,7 @@ UserSettings g_userSettings = {
         .invertMouseY {"game.invertMouseY", false},
         .freeCamera {"game.freeCamera", false},
         .enableTouchControls {"game.enableTouchControls", false},
+        .enableMenuPointer {"game.enableMenuPointer", true},
         .touchControlsLayout {"game.touchControlsLayout", ui::ControlLayout{}},
         .invertCameraXAxis {"game.invertCameraXAxis", false},
         .invertCameraYAxis {"game.invertCameraYAxis", false},
@@ -329,6 +330,7 @@ void registerSettings() {
     Register(g_userSettings.game.invertMouseY);
     Register(g_userSettings.game.freeCamera);
     Register(g_userSettings.game.enableTouchControls);
+    Register(g_userSettings.game.enableMenuPointer);
     Register(g_userSettings.game.touchControlsLayout);
     Register(g_userSettings.game.debugFlyCam);
     Register(g_userSettings.game.debugFlyCamLockEvents);

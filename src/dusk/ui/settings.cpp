@@ -1072,6 +1072,8 @@ SettingsWindow::SettingsWindow(bool prelaunch) : mPrelaunch(prelaunch) {
             [] { return !getSettings().game.enableMouseAim || !getSettings().game.enableMouseCamera; });
 
         leftPane.add_section("Gameplay");
+        addOption("Mouse/Touch in Menus", getSettings().game.enableMenuPointer,
+            "Enables mouse and touch input for supported in-game menus.");
         addOption("Invert Air/Swim X Axis", getSettings().game.invertAirSwimX,
             "Invert horizontal movement while flying or swimming.");
         addOption("Invert Air/Swim Y Axis", getSettings().game.invertAirSwimY,

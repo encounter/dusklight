@@ -2,6 +2,7 @@
 
 #include "m_Do/m_Do_graphic.h"
 #include "d/d_pane_class.h"
+#include "dusk/settings.h"
 
 #include <aurora/rmlui.hpp>
 #include <dolphin/pad.h>
@@ -118,9 +119,31 @@ void set_position_from_rml(f32 x, f32 y) noexcept {
     s_state.valid = true;
 }
 
+void clear_input_state() noexcept {
+    s_state = {};
+    s_clickConsumed = false;
+    s_lastDialogChoice = 0xFF;
+    s_currentDialogChoice = 0xFF;
+    s_lastDialogChoiceValid = false;
+    s_currentDialogChoiceValid = false;
+    s_lastDialogClicked = false;
+    s_currentDialogClicked = false;
+    s_mouseActive = false;
+    s_mouseButtonCaptured = false;
+    s_mouseButton = -1;
+    s_suppressedPadHoldMask = 0;
+    s_suppressedPadNextReadMask = 0;
+    s_deferredActivationContext = Context::None;
+    s_deferredActivationTarget = 0xFF;
+}
+
 }  // namespace
 
 bool handle_fallthrough_pointer(f32 x, f32 y, Phase phase, bool touch, s32 mouseButton) noexcept {
+    if (!enabled()) {
+        return false;
+    }
+
     s_clickConsumed = false;
 
     if (!touch) {
@@ -182,6 +205,9 @@ void begin_game_frame() noexcept {
     s_currentDialogChoiceValid = false;
     s_currentDialogClicked = false;
     s_clickConsumed = false;
+    if (!enabled()) {
+        clear_input_state();
+    }
 }
 
 void end_game_frame() noexcept {
@@ -221,8 +247,12 @@ bool active() noexcept {
     return s_currentContext != Context::None || s_lastContext != Context::None;
 }
 
+bool enabled() noexcept {
+    return getSettings().game.enableMenuPointer.getValue();
+}
+
 bool mouse_capture_active() noexcept {
-    return s_mouseButtonCaptured;
+    return enabled() && s_mouseButtonCaptured;
 }
 
 const State& state() noexcept {
