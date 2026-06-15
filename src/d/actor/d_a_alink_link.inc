@@ -187,9 +187,9 @@ BOOL daAlink_c::setBodyAngleToCamera() {
                 }
 
                 const f32 yawDeg = -touchYawDp * dusk::touch_camera::YAW_DEGREES_PER_DP * scale *
-                                   dusk::getSettings().game.freeCameraXSensitivity;
+                                   dusk::getSettings().game.touchCameraXSensitivity;
                 const f32 pitchDeg = touchPitchDp * dusk::touch_camera::PITCH_DEGREES_PER_DP *
-                                     scale * dusk::getSettings().game.freeCameraYSensitivity;
+                                     scale * dusk::getSettings().game.touchCameraYSensitivity;
 
                 shape_angle.y = shape_angle.y + cM_deg2s(yawDeg);
                 sp8 = sp8 + cM_deg2s(pitchDeg);

@@ -655,18 +655,21 @@ void dMeter2Draw_c::draw() {
     graf_ctx->setup2D();
 
 #if TARGET_PC
-    if (dusk::getSettings().game.enableTouchControls) {
+    const bool touchControlsEnabled = dusk::getSettings().game.enableTouchControls;
+    if (touchControlsEnabled) {
         mpButtonParent->hide();
-        mpScreen->draw(0.0f, 0.0f, graf_ctx);
-        return;
+    } else {
+        mpButtonParent->show();
     }
-    mpButtonParent->show();
 #endif
 
     mpScreen->draw(0.0f, 0.0f, graf_ctx);
     drawKanteraScreen(1);
     drawKanteraScreen(2);
 
+#if TARGET_PC
+    if (!touchControlsEnabled) {
+#endif
     for (int i = 0; i < 2; i++) {
         if (mpItemXY[i] != NULL) {
             for (int j = 0; j < 3; j++) {
@@ -715,6 +718,9 @@ void dMeter2Draw_c::draw() {
             }
         }
     }
+#if TARGET_PC
+    }
+#endif
 
     if (mpLightDropParent->getAlphaRate() != 0.0f) {
         f32 var_f28 = g_drawHIO.mLightDrop.mPikariScaleNormal;
@@ -797,7 +803,11 @@ void dMeter2Draw_c::draw() {
         }
     }
 
+#if TARGET_PC
+    if (!touchControlsEnabled && field_0x738 > 0.0f) {
+#else
     if (field_0x738 > 0.0f) {
+#endif
         drawPikari(mpButtonMidona, &field_0x738, g_drawHIO.mMidnaIconPikariScale,
                    g_drawHIO.mMidnaIconPikariFrontOuter, g_drawHIO.mMidnaIconPikariFrontInner,
                    g_drawHIO.mMidnaIconPikariBackOuter, g_drawHIO.mMidnaIconPikariBackInner,
