@@ -4,8 +4,8 @@
 #include "document.hpp"
 
 #include "dusk/action_bindings.h"
-#include "dusk/control_layout.hpp"
 #include "dusk/menu_pointer.h"
+#include "dusk/ui/controls.hpp"
 
 #include <array>
 #include <bitset>

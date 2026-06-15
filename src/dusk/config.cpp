@@ -30,56 +30,56 @@ aurora::Module DuskConfigLog("dusk::config");
 static absl::flat_hash_map<std::string_view, ConfigVarBase*> RegisteredConfigVars;
 static bool RegistrationDone = false;
 
-static std::optional<dusk::ControlAnchor> parse_control_anchor(std::string_view value) {
+static std::optional<dusk::ui::ControlAnchor> parse_control_anchor(std::string_view value) {
     if (value == "none") {
-        return dusk::ControlAnchor::None;
+        return dusk::ui::ControlAnchor::None;
     }
     if (value == "top") {
-        return dusk::ControlAnchor::Top;
+        return dusk::ui::ControlAnchor::Top;
     }
     if (value == "left") {
-        return dusk::ControlAnchor::Left;
+        return dusk::ui::ControlAnchor::Left;
     }
     if (value == "bottom") {
-        return dusk::ControlAnchor::Bottom;
+        return dusk::ui::ControlAnchor::Bottom;
     }
     if (value == "right") {
-        return dusk::ControlAnchor::Right;
+        return dusk::ui::ControlAnchor::Right;
     }
     if (value == "topLeft") {
-        return dusk::ControlAnchor::TopLeft;
+        return dusk::ui::ControlAnchor::TopLeft;
     }
     if (value == "topRight") {
-        return dusk::ControlAnchor::TopRight;
+        return dusk::ui::ControlAnchor::TopRight;
     }
     if (value == "bottomLeft") {
-        return dusk::ControlAnchor::BottomLeft;
+        return dusk::ui::ControlAnchor::BottomLeft;
     }
     if (value == "bottomRight") {
-        return dusk::ControlAnchor::BottomRight;
+        return dusk::ui::ControlAnchor::BottomRight;
     }
     return std::nullopt;
 }
 
-static const char* control_anchor_value(dusk::ControlAnchor anchor) {
+static const char* control_anchor_value(dusk::ui::ControlAnchor anchor) {
     switch (anchor) {
-    case dusk::ControlAnchor::None:
+    case dusk::ui::ControlAnchor::None:
         return "none";
-    case dusk::ControlAnchor::Top:
+    case dusk::ui::ControlAnchor::Top:
         return "top";
-    case dusk::ControlAnchor::Left:
+    case dusk::ui::ControlAnchor::Left:
         return "left";
-    case dusk::ControlAnchor::Bottom:
+    case dusk::ui::ControlAnchor::Bottom:
         return "bottom";
-    case dusk::ControlAnchor::Right:
+    case dusk::ui::ControlAnchor::Right:
         return "right";
-    case dusk::ControlAnchor::TopLeft:
+    case dusk::ui::ControlAnchor::TopLeft:
         return "topLeft";
-    case dusk::ControlAnchor::TopRight:
+    case dusk::ui::ControlAnchor::TopRight:
         return "topRight";
-    case dusk::ControlAnchor::BottomLeft:
+    case dusk::ui::ControlAnchor::BottomLeft:
         return "bottomLeft";
-    case dusk::ControlAnchor::BottomRight:
+    case dusk::ui::ControlAnchor::BottomRight:
         return "bottomRight";
     }
     return "none";
@@ -99,7 +99,7 @@ static std::optional<float> json_finite_float(const json& object, const char* ke
     return value;
 }
 
-static std::optional<dusk::ControlProps> parse_control_props(const json& value) {
+static std::optional<dusk::ui::ControlProps> parse_control_props(const json& value) {
     if (!value.is_object()) {
         return std::nullopt;
     }
@@ -118,7 +118,7 @@ static std::optional<dusk::ControlProps> parse_control_props(const json& value) 
     if (!anchor || *w <= 0.0f || *h <= 0.0f || *scale <= 0.0f) {
         return std::nullopt;
     }
-    return dusk::ControlProps{
+    return dusk::ui::ControlProps{
         .x = *x,
         .y = *y,
         .w = *w,
@@ -303,7 +303,6 @@ template class ConfigImpl<dusk::BloomMode>;
 template class ConfigImpl<dusk::DepthOfFieldMode>;
 template class ConfigImpl<dusk::DiscVerificationState>;
 template class ConfigImpl<dusk::GameLanguage>;
-template class ConfigImpl<dusk::GyroMode>;
 
 template <>
 void ConfigImpl<FrameInterpMode>::loadFromJson(
@@ -321,14 +320,14 @@ void ConfigImpl<FrameInterpMode>::loadFromJson(
 }
 
 template <>
-void ConfigImpl<ControlLayout>::loadFromJson(
-    ConfigVar<ControlLayout>& cVar, const json& jsonValue) {
+void ConfigImpl<ui::ControlLayout>::loadFromJson(
+    ConfigVar<ui::ControlLayout>& cVar, const json& jsonValue) {
     if (!jsonValue.is_object()) {
         return;
     }
 
     const int version = jsonValue.value("version", 0);
-    if (version != ControlLayout::Version) {
+    if (version != ui::ControlLayout::Version) {
         return;
     }
 
@@ -337,9 +336,9 @@ void ConfigImpl<ControlLayout>::loadFromJson(
         return;
     }
 
-    ControlLayout layout{.version = version};
+    ui::ControlLayout layout{.version = version};
     for (const auto& control : controlsIter->items()) {
-        if (!is_control_layout_id(control.key())) {
+        if (!ui::is_control_layout_id(control.key())) {
             continue;
         }
 
@@ -352,14 +351,13 @@ void ConfigImpl<ControlLayout>::loadFromJson(
 }
 
 template <>
-void ConfigImpl<ControlLayout>::loadFromArg(
-    ConfigVar<ControlLayout>&, const std::string_view) {
+void ConfigImpl<ui::ControlLayout>::loadFromArg(
+    ConfigVar<ui::ControlLayout>&, const std::string_view) {
     throw InvalidConfigError("Touch control layout cannot be parsed from launch arguments");
 }
 
 template <>
-nlohmann::json ConfigImpl<ControlLayout>::dumpToJson(
-    const ConfigVar<ControlLayout>& cVar) {
+nlohmann::json ConfigImpl<ui::ControlLayout>::dumpToJson(const ConfigVar<ui::ControlLayout>& cVar) {
     const auto& layout = cVar.getValueForSave();
     json controls = json::object();
     for (const auto& [id, props] : layout.controls) {
@@ -374,7 +372,7 @@ nlohmann::json ConfigImpl<ControlLayout>::dumpToJson(
     }
 
     return {
-        {"version", ControlLayout::Version},
+        {"version", ui::ControlLayout::Version},
         {"controls", std::move(controls)},
     };
 }
@@ -383,7 +381,7 @@ template class ConfigImpl<dusk::FrameInterpMode>;
 template class ConfigImpl<dusk::MenuScaling>;
 template class ConfigImpl<dusk::Resampler>;
 template class ConfigImpl<dusk::MagicArmorMode>;
-template class ConfigImpl<dusk::ControlLayout>;
+template class ConfigImpl<dusk::ui::ControlLayout>;
 }  // namespace dusk::config
 
 void dusk::config::Register(ConfigVarBase& configVar) {

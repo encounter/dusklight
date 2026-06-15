@@ -34,10 +34,6 @@ bool wantMouseCapture() {
     return getSettings().game.enableMouseCamera.getValue() || queryMouseAimContext();
 }
 
-bool wantMouseGrab() {
-    return getSettings().game.enableMouseCamera.getValue() || getSettings().game.enableMouseAim.getValue();
-}
-
 bool isWindowFocused(SDL_Window* window) {
     if (window == nullptr) {
         return false;
@@ -52,13 +48,6 @@ bool shouldCaptureMouse(SDL_Window* window) {
     return wantMouseCapture() && isWindowFocused(window);
 }
 
-bool shouldGrabMouse(SDL_Window* window) {
-    if (window == nullptr || menu_pointer::active()) {
-        return false;
-    }
-    return wantMouseGrab() && isWindowFocused(window);
-}
-
 bool syncCaptureState(SDL_Window* window, bool should_capture) {
     if (window == nullptr) {
         reset_deltas();
@@ -67,6 +56,7 @@ bool syncCaptureState(SDL_Window* window, bool should_capture) {
 
     const bool was_captured = SDL_GetWindowRelativeMouseMode(window);
     if (was_captured != should_capture) {
+        SDL_SetWindowMouseGrab(window, should_capture);
         SDL_SetWindowRelativeMouseMode(window, should_capture);
     }
 
@@ -86,17 +76,6 @@ bool syncCaptureState(SDL_Window* window, bool should_capture) {
     }
 
     return is_captured;
-}
-
-void syncGrabState(SDL_Window* window, bool should_grab) {
-    if (window == nullptr) {
-        return;
-    }
-
-    const bool was_grabbed = SDL_GetWindowMouseGrab(window);
-    if (was_grabbed != should_grab) {
-        SDL_SetWindowMouseGrab(window, should_grab);
-    }
 }
 
 void accumulateDeltas(float mx_rel, float my_rel, bool camera_active, bool aim_active) {
@@ -166,7 +145,6 @@ void read() {
     SDL_Window* window = aurora::window::get_sdl_window();
     const bool capture_active = syncCaptureState(window, shouldCaptureMouse(window));
     update_cursor_visibility(window, capture_active);
-    syncGrabState(window, shouldGrabMouse(window));
 
     if (!capture_active) {
         return;
@@ -213,7 +191,6 @@ void onFocusLost() {
     SDL_Window* window = aurora::window::get_sdl_window();
     if (window != nullptr) {
         syncCaptureState(window, false);
-        syncGrabState(window, false);
     }
     s_idle_frames = 0;
     set_cursor_visible(true);
@@ -222,6 +199,5 @@ void onFocusLost() {
 void onFocusGained() {
     SDL_Window* window = aurora::window::get_sdl_window();
     syncCaptureState(window, shouldCaptureMouse(window));
-    syncGrabState(window, shouldGrabMouse(window));
 }
 }  // namespace dusk::mouse

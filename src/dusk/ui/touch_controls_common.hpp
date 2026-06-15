@@ -2,8 +2,6 @@
 
 #include "controls.hpp"
 
-#include "dusk/control_layout.hpp"
-
 #include <RmlUi/Core.h>
 #include <SDL3/SDL_touch.h>
 

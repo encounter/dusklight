@@ -677,7 +677,7 @@ void TouchControls::clear_virtual_input() noexcept {
 
 void TouchControls::sync_touch_state() noexcept {
     const bool controlsEnabled = getSettings().game.enableTouchControls;
-    const bool pointerMenuActive = menu_pointer::touch_menu_active();
+    const bool pointerMenuActive = menu_pointer::active();
     if (mWasSuppressed || (!controlsEnabled && !pointerMenuActive)) {
         clear_virtual_input();
         return;
@@ -1134,7 +1134,7 @@ void TouchControls::sync_control_long_presses() noexcept {
 }
 
 bool TouchControls::handle_menu_event(Rml::Event& event, menu_pointer::Phase phase) noexcept {
-    if (!menu_pointer::touch_menu_active() || event.GetTargetElement() != mRoot) {
+    if (!menu_pointer::active() || event.GetTargetElement() != mRoot) {
         return false;
     }
 

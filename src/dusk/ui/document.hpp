@@ -50,7 +50,6 @@ public:
     bool closed() const { return mClosed; }
 
     bool handle_nav_event(Rml::Event& event);
-    void toggle_cursor_if_gyro(bool);
 
 protected:
     virtual bool handle_nav_command(Rml::Event& event, NavCommand cmd);

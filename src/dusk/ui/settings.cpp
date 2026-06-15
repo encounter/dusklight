@@ -1027,44 +1027,6 @@ SettingsWindow::SettingsWindow(bool prelaunch) : mPrelaunch(prelaunch) {
             "Invert vertical movement while aiming with items or first person camera.<br/><br/>Applies to the control stick only.");
 
         leftPane.add_section("Gyro");
-        leftPane.register_control(
-            leftPane.add_select_button({
-                .key = "Gyro Input Method",
-                .getValue =
-                    [] {
-                        const auto mode = getSettings().game.gyroMode.getValue();
-                        const auto idx = static_cast<size_t>(mode);
-                        return Rml::String{kGyroInputModeLabels[idx]};
-                    },
-                .isModified =
-                    [] {
-                        return getSettings().game.gyroMode.getValue() !=
-                               getSettings().game.gyroMode.getDefaultValue();
-                    },
-            }),
-            rightPane, [](Pane& pane) {
-                for (size_t i = 0; i < kGyroInputModeLabels.size(); i++) {
-                    pane
-                        .add_button({
-                            .text = Rml::String{kGyroInputModeLabels[i]},
-                            .isSelected =
-                                [i] {
-                                    return getSettings().game.gyroMode.getValue() == static_cast<GyroMode>(i);
-                                },
-                        })
-                        .on_pressed([i] {
-                            mDoAud_seStartMenu(kSoundItemChange);
-                            const GyroMode mode = static_cast<GyroMode>(i);
-                            getSettings().game.gyroMode.setValue(mode);
-                            config::Save();
-                        });
-                }
-                pane.add_rml(
-                    "<br/><b>Sensor</b> reads motion from a supported controller gyro, or the device gyro when "
-                    "controller gyro is unavailable.<br/>"
-                    "<br/><b>Mouse</b> treats mouse input as gyro, intended for use with the Steam Deck.<br/>"
-                    "<br/>Mouse input cannot currently be used with Gyro Rollgoal.");
-            });
         addOption("Gyro Aim", getSettings().game.enableGyroAim,
             "Enables gyro controls while in look mode, aiming a hawk, and aiming "
             "supported items.<br/><br/>Supported items include the Slingshot, Gale Boomerang, "

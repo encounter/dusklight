@@ -80,7 +80,6 @@ UserSettings g_userSettings = {
         .midnasLamentNonStop {"game.midnasLamentNonStop", false},
 
         // Input
-        .gyroMode {"game.gyroMode", GyroMode::Sensor},
         .enableGyroAim {"game.enableGyroAim", false},
         .enableGyroRollgoal {"game.enableGyroRollgoal", false},
         .gyroSensitivityX {"game.gyroSensitivityX", 1.0f},
@@ -97,7 +96,7 @@ UserSettings g_userSettings = {
         .invertMouseY {"game.invertMouseY", false},
         .freeCamera {"game.freeCamera", false},
         .enableTouchControls {"game.enableTouchControls", false},
-        .touchControlsLayout {"game.touchControlsLayout", ControlLayout{}},
+        .touchControlsLayout {"game.touchControlsLayout", ui::ControlLayout{}},
         .invertCameraXAxis {"game.invertCameraXAxis", false},
         .invertCameraYAxis {"game.invertCameraYAxis", false},
         .invertFirstPersonXAxis {"game.invertFirstPersonXAxis", false},
@@ -314,7 +313,6 @@ void registerSettings() {
     Register(g_userSettings.game.alwaysGreatspin);
     Register(g_userSettings.game.invincibleEnemies);
     Register(g_userSettings.game.enableFrameInterpolation);
-    Register(g_userSettings.game.gyroMode);
     Register(g_userSettings.game.enableGyroAim);
     Register(g_userSettings.game.enableGyroRollgoal);
     Register(g_userSettings.game.gyroSensitivityX);

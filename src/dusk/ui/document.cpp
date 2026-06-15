@@ -141,16 +141,4 @@ bool Document::handle_nav_command(Rml::Event& event, NavCommand cmd) {
     return false;
 }
 
-void Document::toggle_cursor_if_gyro(bool cursor_enabled) {
-    if (dusk::getSettings().game.gyroMode.getValue() == GyroMode::Mouse) {
-        if (cursor_enabled) {
-            ImGui::GetIO().ConfigFlags &= ~ImGuiConfigFlags_NoMouseCursorChange;
-            SDL_ShowCursor();
-        } else {
-            ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
-            SDL_HideCursor();
-        }
-    }
-}
-
 }  // namespace dusk::ui

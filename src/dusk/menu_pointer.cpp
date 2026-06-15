@@ -221,10 +221,6 @@ bool active() noexcept {
     return s_currentContext != Context::None || s_lastContext != Context::None;
 }
 
-bool touch_menu_active() noexcept {
-    return active();
-}
-
 bool mouse_capture_active() noexcept {
     return s_mouseButtonCaptured;
 }

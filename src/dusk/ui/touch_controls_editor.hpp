@@ -1,9 +1,8 @@
 #pragma once
 
+#include "controls.hpp"
 #include "document.hpp"
 #include "touch_controls_common.hpp"
-
-#include "dusk/control_layout.hpp"
 
 #include <array>
 #include <cstddef>
@@ -61,7 +60,8 @@ private:
     void bind_control_events() noexcept;
     void bind_handle_events() noexcept;
     void bind_toolbar_events() noexcept;
-    void bind_button_command(Rml::Element* element, void (TouchControlsEditor::*callback)()) noexcept;
+    void bind_button_command(
+        Rml::Element* element, void (TouchControlsEditor::*callback)()) noexcept;
     void sync_control_layouts() noexcept;
     void sync_selection_frame() noexcept;
     void set_selected_control(std::size_t index) noexcept;
@@ -69,8 +69,7 @@ private:
     ControlProps props_for(std::size_t index) const;
     void store_props(std::size_t index, ControlRect visual, ControlProps props) noexcept;
     void restore_active_control() noexcept;
-    bool begin_edit(
-        std::size_t index, EditHandle handle, Rml::Vector2f positionPx, bool touch,
+    bool begin_edit(std::size_t index, EditHandle handle, Rml::Vector2f positionPx, bool touch,
         SDL_FingerID touchId = 0) noexcept;
     bool continue_edit(Rml::Vector2f positionPx) noexcept;
     bool end_edit(bool touch, SDL_FingerID touchId, bool cancelled) noexcept;
