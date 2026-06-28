@@ -2,7 +2,7 @@
 
 #include <filesystem>
 
-namespace dusk::modding {
+namespace dusk::mods::loader {
 class NativeModule final {
 public:
     NativeModule() noexcept;

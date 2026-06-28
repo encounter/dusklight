@@ -1,11 +1,12 @@
 #pragma once
 
 #include <filesystem>
+#include <string_view>
 #include "miniz.h"
 
 #include "dusk/mod_loader.hpp"
 
-namespace dusk::modding {
+namespace dusk::mods::loader {
 
 #if DUSK_CODE_MODS
 constexpr bool EnableCodeMods = true;
@@ -49,25 +50,9 @@ private:
     std::filesystem::path root_path;
 };
 
+LoadedMod* mod_from_context(ModContext* context);
+const LoadedMod* mod_from_context(const ModContext* context);
+const char* mod_id_from_context(ModContext* context);
+void fail_mod(LoadedMod& mod, ModResult code, std::string_view message);
 
-extern thread_local LoadedMod* g_currentMod;
-extern std::unordered_map<std::string, void*> g_services;
-
-extern thread_local void* g_dusk_hook_current_mod;
-
-struct ModGuard {
-    explicit ModGuard(dusk::LoadedMod* m) {
-        g_currentMod = m;
-        g_dusk_hook_current_mod = m;
-    }
-    ~ModGuard() {
-        g_currentMod = nullptr;
-        g_dusk_hook_current_mod = nullptr;
-    }
-};
-
-inline const char* modName() {
-    return g_currentMod ? g_currentMod->metadata.id.c_str() : "mod";
-}
-
-}  // namespace dusk::modding
+}  // namespace dusk::mods::loader

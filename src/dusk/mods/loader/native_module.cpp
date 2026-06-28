@@ -49,7 +49,7 @@ static std::string pl_dlerror() {
 #endif
 }
 
-namespace dusk::modding {
+namespace dusk::mods::loader {
 NativeModule::NativeModule() noexcept : handle(nullptr) {
 }
 
@@ -80,4 +80,4 @@ NativeModule::~NativeModule() {
 void* NativeModule::LookupSymbol(const char* name) const {
     return pl_dlsym(handle, name);
 }
-}  // namespace dusk::modding
+}  // namespace dusk::mods::loader

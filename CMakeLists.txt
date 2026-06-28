@@ -672,7 +672,7 @@ if (APPLE)
         set(DUSK_RESOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/platforms/tvos)
     else ()
         set(DUSK_RESOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/platforms/macos)
-        set(DUSK_ENTITLEMENTS ${DUSK_RESOURCE_DIR}/Dusk.entitlements)
+        set(DUSK_ENTITLEMENTS ${DUSK_RESOURCE_DIR}/Dusklight.entitlements)
     endif ()
     set(DUSK_INFO_PLIST ${DUSK_RESOURCE_DIR}/Info.plist.in)
     file(GLOB_RECURSE DUSK_RESOURCE_FILES
@@ -706,6 +706,15 @@ if (APPLE)
         XCODE_ATTRIBUTE_CODE_SIGN_ENTITLEMENTS ${DUSK_ENTITLEMENTS}
         XCODE_ATTRIBUTE_ENABLE_HARDENED_RUNTIME "YES"
     )
+
+    if (NOT IOS AND NOT TVOS AND NOT "${CMAKE_GENERATOR}" STREQUAL "Xcode")
+        add_custom_command(TARGET dusklight POST_BUILD
+            COMMAND /usr/bin/codesign --force --sign - --entitlements
+                "${DUSK_ENTITLEMENTS}" "$<TARGET_BUNDLE_DIR:dusklight>"
+            COMMENT "Signing Dusklight.app with entitlements"
+            VERBATIM
+        )
+    endif ()
 endif ()
 
 if (APPLE AND NOT IOS AND NOT TVOS)

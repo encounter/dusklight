@@ -1,28 +1,34 @@
 #pragma once
 
 #include <filesystem>
-#include <string>
-#include <vector>
+#include <memory>
 #include <ranges>
+#include <string>
+#include <string_view>
+#include <vector>
 
-#include "dusk/mod_api.h"
 #include "dusk/config_var.hpp"
+#include "mods/api.h"
+#include "mods/svc/ui.h"
 
-namespace dusk::modding {
+namespace dusk {
+struct LoadedMod;
+}
+
+struct ModContext {
+    dusk::LoadedMod* mod = nullptr;
+};
+
+namespace dusk::mods::loader {
 class ModBundle;
 class NativeModule;
 }
 
 namespace dusk {
 
-struct RmlTabContentCallback {
-    void (*build_fn)(void* panel, void* userdata);
-    void* userdata;
-};
-
-struct RmlTabUpdateCallback {
-    void (*update_fn)(void* userdata);
-    void* userdata;
+struct ModUiTabCallback {
+    ModContext* context = nullptr;
+    UiTab tab{};
 };
 
 struct ModMetadata {
@@ -35,16 +41,13 @@ struct ModMetadata {
 };
 
 struct NativeMod {
-    std::unique_ptr<modding::NativeModule> handle;
-    DuskModAPI api{};
+    std::unique_ptr<mods::loader::NativeModule> handle;
+    const ModManifest* manifest = nullptr;
+    ModContext** contextSymbol = nullptr;
 
-    using FnInit = void (*)(DuskModAPI*);
-    using FnTick = void (*)(DuskModAPI*);
-    using FnCleanup = void (*)(DuskModAPI*);
-
-    FnInit fn_init = nullptr;
-    FnTick fn_tick = nullptr;
-    FnCleanup fn_cleanup = nullptr;
+    ModInitializeFn fn_initialize = nullptr;
+    ModUpdateFn fn_update = nullptr;
+    ModShutdownFn fn_shutdown = nullptr;
 };
 
 enum class NativeModStatus : u8 {
@@ -72,9 +75,14 @@ enum class NativeModStatus : u8 {
     ModMissingPlatform,
 
     /**
-     * Mod is built for a different API version than this build of the game.
+     * Mod is built for a different ABI version than this build of the game.
      */
     ApiVersionMismatch,
+
+    /**
+     * Mod is missing a required native API export.
+     */
+    MissingExport,
 
     /**
      * Unknown error loading the native mod.
@@ -91,14 +99,15 @@ struct LoadedMod {
 
     bool active = false;
     bool load_failed = false;
+    std::string failure_reason;
 
     NativeModStatus native_status = NativeModStatus::None;
     std::unique_ptr<NativeMod> native;
+    std::unique_ptr<ModContext> context;
 
-    std::unique_ptr<modding::ModBundle> bundle;
+    std::unique_ptr<mods::loader::ModBundle> bundle;
 
-    std::vector<RmlTabContentCallback> tab_content;
-    std::vector<RmlTabUpdateCallback> tab_updates;
+    std::vector<ModUiTabCallback> ui_tabs;
 };
 
 class ModLoader {
@@ -125,7 +134,11 @@ private:
 
     void tryLoadDusk(const std::filesystem::path& modPath, bool fromDir);
     void tryLoadNativeMod(LoadedMod& mod);
-    void buildAPI(LoadedMod& mod);
+    void initializeServices();
+    bool registerStaticServiceExports(LoadedMod& mod);
+    bool resolveServiceImports(LoadedMod& mod);
+    void clearServices();
+    void failMod(LoadedMod& mod, ModResult code, std::string_view message);
     void initOverlayFiles();
 };
 

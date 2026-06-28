@@ -262,7 +262,11 @@
           "type": "BOOL",
           "value": false
         },
-        "CMAKE_INSTALL_PREFIX": "${sourceDir}/build/install"
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/build/install",
+        "DUSK_ENABLE_CODE_MODS": {
+          "type": "BOOL",
+          "value": true
+        }
       },
       "vendor": {
         "microsoft.com/VisualStudioSettings/CMake/1.0": {

@@ -1,18 +1,22 @@
 #pragma once
 
-#include <cstdint>
+#include "mods/svc/hook.h"
 
 namespace dusk {
 
-void hookInstallByAddr(void* fn_addr, void* tramp_fn, void** orig_store);
+ModResult hookInstallByAddr(ModContext* context, void* fn_addr, void* tramp_fn, void** orig_store);
 
-void hookRegisterPre (void* fn_addr, void* mod, int32_t (*fn)(void* args));
-void hookRegisterPost(void* fn_addr, void* mod, const char* mod_name, void (*fn)(void* args, void* retval));
-bool hookSetReplace  (void* fn_addr, void* mod, const char* mod_name, void (*fn)(void* args, void* retval));
+ModResult hookRegisterPre(
+    void* fn_addr, ModContext* context, HookPreFn callback, const HookOptions* options);
+ModResult hookRegisterPost(
+    void* fn_addr, ModContext* context, HookPostFn callback, const HookOptions* options);
+ModResult hookSetReplace(
+    void* fn_addr, ModContext* context, HookReplaceFn callback, const HookOptions* options);
 
-bool hookDispatchPre (void* fn_addr, void* args, void* retval);
-void hookDispatchPost(void* fn_addr, void* args, void* retval);
+ModResult hookDispatchPre(
+    ModContext* context, void* fn_addr, void* args, void* retval, int* out_skip_original);
+ModResult hookDispatchPost(ModContext* context, void* fn_addr, void* args, void* retval);
 
-void hookClearMod(void* mod);
+void hookClearMod(ModContext* context);
 
-} // namespace dusk
+}  // namespace dusk

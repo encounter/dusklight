@@ -1,9 +1,9 @@
 #include "fmt/format.h"
-#include "mod_loader.hpp"
+#include "loader.hpp"
 
 #include <span>
 
-namespace dusk::modding {
+namespace dusk::mods::loader {
 
 ModBundleZip::ModBundleZip(std::vector<u8>&& data) : zip_data(std::move(data)) {
     if (!mz_zip_reader_init_mem(&res_zip, zip_data.data(), zip_data.size(), 0)) {
@@ -62,4 +62,4 @@ size_t ModBundleZip::getFileSize(const std::string& fileName) {
     return stat.m_uncomp_size;
 }
 
-}  // namespace dusk::modding
+}  // namespace dusk::mods::loader

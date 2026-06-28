@@ -1,0 +1,40 @@
+#pragma once
+
+#include "dusk/mod_loader.hpp"
+#include "mods/svc/hook.h"
+#include "mods/svc/host.h"
+#include "mods/svc/log.h"
+#include "mods/svc/resource.h"
+#include "mods/svc/ui.h"
+
+#include <cstdint>
+#include <string>
+
+namespace dusk::mods::svc {
+
+struct ServiceRecord {
+    std::string id;
+    uint16_t majorVersion = 0;
+    uint16_t minorVersion = 0;
+    const void* service = nullptr;
+    LoadedMod* provider = nullptr;
+    bool deferred = false;
+};
+
+bool valid_service_id(const char* serviceId);
+ModResult register_service(const char* serviceId, uint16_t majorVersion, uint16_t minorVersion,
+    const void* service, LoadedMod* provider, bool deferred);
+ModResult publish_deferred_service(
+    LoadedMod& provider, const char* serviceId, uint16_t majorVersion, const void* service);
+void remove_services_for_provider(const LoadedMod& provider);
+const ServiceRecord* find_service(
+    const char* serviceId, uint16_t majorVersion, uint16_t minMinorVersion);
+void clear_services();
+
+const HostService& host_service();
+const LogService& log_service();
+const ResourceService& resource_service();
+const UiService& ui_service();
+const HookService& hook_service();
+
+}  // namespace dusk::mods::svc

@@ -1544,13 +1544,21 @@ set(DUSK_FILES
         src/dusk/OSThread.cpp
         src/dusk/OSMutex.cpp
         src/dusk/hook_system.cpp
-        src/dusk/modding/mod_loader.cpp
-        src/dusk/modding/mod_loader_api.cpp
-        src/dusk/modding/mod_loader_overlay.cpp
-        src/dusk/modding/native_module.cpp
-        src/dusk/modding/native_module.hpp
-        src/dusk/modding/bundle_disk.cpp
-        src/dusk/modding/bundle_zip.cpp
+        src/dusk/mods/loader/bundle_disk.cpp
+        src/dusk/mods/loader/bundle_zip.cpp
+        src/dusk/mods/loader/context.cpp
+        src/dusk/mods/loader/loader.cpp
+        src/dusk/mods/loader/loader.hpp
+        src/dusk/mods/loader/native_module.cpp
+        src/dusk/mods/loader/native_module.hpp
+        src/dusk/mods/loader/overlay.cpp
+        src/dusk/mods/svc/hook.cpp
+        src/dusk/mods/svc/host.cpp
+        src/dusk/mods/svc/log.cpp
+        src/dusk/mods/svc/registry.cpp
+        src/dusk/mods/svc/registry.hpp
+        src/dusk/mods/svc/resource.cpp
+        src/dusk/mods/svc/ui.cpp
         src/dusk/gx_helper.cpp
         src/dusk/discord.cpp
         src/dusk/discord.hpp

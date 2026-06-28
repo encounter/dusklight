@@ -3,94 +3,108 @@
 #include "d/d_com_inf_game.h"
 #include "d/d_meter2_info.h"
 #include "d/d_msg_object.h"
-#include "dusk/hook.hpp"
-#include "dusk/mod_api.h"
-#include "dusk/mod_utils.h"
 #include "f_op/f_op_actor.h"
 #include "f_op/f_op_actor_mng.h"
 #include "f_op/f_op_overlap_mng.h"
 #include "m_Do/m_Do_audio.h"
 #include "m_Do/m_Do_controller_pad.h"
+#include "mods/hook.hpp"
+#include "mods/service.hpp"
+#include "mods/svc/hook.h"
+#include "mods/svc/log.h"
+#include "mods/svc/ui.h"
 
-#include <cstdio>
-#include <cstring>
+DEFINE_MOD();
+IMPORT_SERVICE(LogService, svc_log);
+IMPORT_SERVICE(UiService, svc_ui);
+IMPORT_SERVICE(HookService, svc_hook);
 
-static constexpr s16 ACTOR_NPC_NE    = 269;
-static constexpr u16 NOTIFY_MSG_ID   = 0xFFFE;
-static const char*   DEATH_MSG_TEXT  = "It seems Chloe has died...";
+namespace {
 
-using GetStringEntry = dusk::HookEntry<&dMsgObject_c::getString>;
+constexpr s16 kActorNpcNe = 269;
+constexpr u16 kNotifyMsgId = 0xFFFE;
+constexpr int kCatMaxHp = 1;
+const char* kDeathMsgText = "It seems Chloe has died...";
 
-static void on_getString_post(void* args, void* retval) {
-    if (dusk::arg<u32>(args, 0) != NOTIFY_MSG_ID) {
-        return;
+fpc_ProcID s_cat_id = fpcM_ERROR_PROCESS_ID_e;
+int s_cat_hp = kCatMaxHp;
+bool s_cat_dead = false;
+
+bool s_summon_carry = false;
+
+bool s_has_spawn = false;
+cXyz s_spawn_pos = {};
+s8 s_spawn_room = -1;
+char s_spawn_stage[8] = {};
+
+ElemHandle s_el_hp = nullptr;
+ElemHandle s_el_hp_bar = nullptr;
+ElemHandle s_el_status = nullptr;
+
+ModResult require_ok(const ModResult result, ModError* error, const char* message) {
+    if (result != MOD_OK) {
+        return dusk::mods::set_error(error, result, message);
     }
-
-    strcpy(dusk::arg<char*>(args, 5), DEATH_MSG_TEXT);
-    strcpy(dusk::arg<char*>(args, 7), DEATH_MSG_TEXT);
-
-    if (retval) {
-        *static_cast<bool*>(retval) = true;
-    }
+    return MOD_OK;
 }
-static constexpr int CAT_MAX_HP   = 1;
 
-static fpc_ProcID  s_cat_id   = fpcM_ERROR_PROCESS_ID_e;
-static int         s_cat_hp   = CAT_MAX_HP;
-static bool        s_cat_dead = false;
+void log_info(const char* message) {
+    SERVICE_CALL(svc_log, info, message);
+}
 
-static bool  s_summon_carry = false;
-
-static bool  s_has_spawn          = false;
-static cXyz  s_spawn_pos          = {};
-static s8    s_spawn_room         = -1;
-static char  s_spawn_stage[8]     = {};
-
-static DuskElemHandle s_el_hp       = nullptr;
-static DuskElemHandle s_el_hp_bar   = nullptr;
-static DuskElemHandle s_el_status   = nullptr;
-
-static fopAc_ac_c* getCat() {
+fopAc_ac_c* get_cat() {
     if (s_cat_id == fpcM_ERROR_PROCESS_ID_e) {
         return nullptr;
     }
     fopAc_ac_c* cat = fopAcM_SearchByID(s_cat_id);
-    if (!cat) {
+    if (cat == nullptr) {
         s_cat_id = fpcM_ERROR_PROCESS_ID_e;
     }
     return cat;
 }
 
-static void killCat() {
-    fopAc_ac_c* cat = getCat();
-    if (cat) {
+void kill_cat() {
+    fopAc_ac_c* cat = get_cat();
+    if (cat != nullptr) {
         fopAcM_delete(cat);
         s_cat_id = fpcM_ERROR_PROCESS_ID_e;
     }
     mDoAud_seStartMenu(Z2SE_CAT_CRY_ANNOY);
     s_cat_dead = true;
-    dMeter2Info_setFloatingMessage(NOTIFY_MSG_ID, 150, false);
-    dusk::g_api->log_info("cat_mod: the cat has died");
+    dMeter2Info_setFloatingMessage(kNotifyMsgId, 150, false);
+    log_info("cat_mod: the cat has died");
 }
 
-static bool inSpawnStage() {
-    return strncmp(dComIfGp_getStartStageName(), s_spawn_stage, sizeof(s_spawn_stage)) == 0;
+bool in_spawn_stage() {
+    return std::strncmp(dComIfGp_getStartStageName(), s_spawn_stage, sizeof(s_spawn_stage)) == 0;
 }
 
-static void spawnCat(bool carry = false) {
+fpc_ProcID create_actor_in_play_scene(s16 procName, u32 params, const cXyz* pos, int roomNo,
+    const csXyz* angle, const cXyz* scale, s8 argument) {
+    layer_class* savedLayer = fpcLy_CurrentLayer();
+    base_process_class* playScene = fpcM_SearchByName(fpcNm_PLAY_SCENE_e);
+    if (playScene != nullptr) {
+        fpcLy_SetCurrentLayer(&reinterpret_cast<process_node_class*>(playScene)->layer);
+    }
+    fpc_ProcID result = fopAcM_create(procName, params, pos, roomNo, angle, scale, argument);
+    fpcLy_SetCurrentLayer(savedLayer);
+    return result;
+}
+
+void spawn_cat(bool carry = false) {
     if (s_cat_dead || dComIfGp_event_runCheck()) {
         return;
     }
     daAlink_c* link = daAlink_getAlinkActorClass();
-    if (!link) {
+    if (link == nullptr) {
         return;
     }
 
     cXyz pos;
     s8 roomNo;
     csXyz angle = {};
-    if (s_has_spawn && inSpawnStage()) {
-        pos    = s_spawn_pos;
+    if (s_has_spawn && in_spawn_stage()) {
+        pos = s_spawn_pos;
         roomNo = s_spawn_room;
     } else {
         f32 yaw = link->shape_angle.y;
@@ -98,153 +112,192 @@ static void spawnCat(bool carry = false) {
         pos.x += cM_ssin(yaw) * 30.0f;
         pos.z += cM_scos(yaw) * 30.0f;
         roomNo = link->current.roomNo;
-        angle.y = (s16)(link->shape_angle.y + (s16)0x8000);
+        angle.y = static_cast<s16>(link->shape_angle.y + static_cast<s16>(0x8000));
     }
     cXyz scale = {1.0f, 1.0f, 1.0f};
 
-    s_cat_id = fopAcM_createInPlayScene(
-        ACTOR_NPC_NE, -1, &pos, roomNo, &angle, &scale, -1);
+    s_cat_id = create_actor_in_play_scene(kActorNpcNe, -1, &pos, roomNo, &angle, &scale, -1);
 
     if (s_cat_id != fpcM_ERROR_PROCESS_ID_e) {
-        dusk::g_api->log_info("cat_mod: cat spawned (hp %d/%d)", s_cat_hp, CAT_MAX_HP);
+        char buf[96];
+        std::snprintf(buf, sizeof(buf), "cat_mod: cat spawned (hp %d/%d)", s_cat_hp, kCatMaxHp);
+        log_info(buf);
         s_summon_carry = carry;
     }
 }
 
-static void on_setDamagePoint_post(void* args, void* /*retval*/) {
+void on_get_string_post(ModContext*, void* args, void* retval, void*) {
+    if (dusk::mods::arg<u32>(args, 0) != kNotifyMsgId) {
+        return;
+    }
+
+    std::strcpy(dusk::mods::arg<char*>(args, 5), kDeathMsgText);
+    std::strcpy(dusk::mods::arg<char*>(args, 7), kDeathMsgText);
+
+    if (retval != nullptr) {
+        *static_cast<bool*>(retval) = true;
+    }
+}
+
+void on_set_damage_point_post(ModContext*, void* args, void*, void*) {
     if (s_cat_dead) {
         return;
     }
-    int dmg = dusk::arg<int>(args, 1);
+    int dmg = dusk::mods::arg<int>(args, 1);
     if (dmg <= 0) {
         return;
     }
-    fopAc_ac_c* cat = getCat();
-    bool cat_free = cat != nullptr && !fopAcM_checkCarryNow(cat);
-    if (cat_free) {
+    fopAc_ac_c* cat = get_cat();
+    bool catFree = cat != nullptr && !fopAcM_checkCarryNow(cat);
+    if (catFree) {
         return;
     }
     s_cat_hp -= dmg;
-    dusk::g_api->log_info("cat_mod: cat took %d damage (hp %d/%d)", dmg, s_cat_hp, CAT_MAX_HP);
+
+    char buf[96];
+    std::snprintf(
+        buf, sizeof(buf), "cat_mod: cat took %d damage (hp %d/%d)", dmg, s_cat_hp, kCatMaxHp);
+    log_info(buf);
+
     if (s_cat_hp <= 0) {
         s_cat_hp = 0;
-        killCat();
-    }
-    else {
+        kill_cat();
+    } else {
         mDoAud_seStartMenu(Z2SE_CAT_CRY_CARRY);
     }
 }
 
-static void BuildPanel(DuskPanelHandle panel, void*) {
-    DuskModAPI* api = dusk::g_api;
-    api->panel_add_section(panel, "Cat");
-    s_el_status = api->panel_add_dyn_text(panel, s_cat_dead ? "Dead" : "Alive");
+ModResult build_panel(ModContext*, PanelHandle panel, void*, ModError*) {
+    SERVICE_CALL(svc_ui, panel_add_section, panel, "Cat");
+    SERVICE_CALL(svc_ui, panel_add_dyn_text, panel, s_cat_dead ? "Dead" : "Alive", &s_el_status);
 
-    float fraction = static_cast<float>(s_cat_hp) / CAT_MAX_HP;
-    s_el_hp_bar = api->panel_add_progress(panel, fraction);
-
-    char buf[32];
-    snprintf(buf, sizeof(buf), "%d / %d HP", s_cat_hp, CAT_MAX_HP);
-    s_el_hp = api->panel_add_dyn_text(panel, buf);
-}
-
-static void UpdatePanel(void*) {
-    DuskModAPI* api = dusk::g_api;
-    api->elem_set_text(s_el_status, s_cat_dead ? "Dead" : "Alive");
-
-    float fraction = static_cast<float>(s_cat_hp) / CAT_MAX_HP;
-    api->elem_set_progress(s_el_hp_bar, fraction);
+    float fraction = static_cast<float>(s_cat_hp) / kCatMaxHp;
+    SERVICE_CALL(svc_ui, panel_add_progress, panel, fraction, &s_el_hp_bar);
 
     char buf[32];
-    snprintf(buf, sizeof(buf), "%d / %d HP", s_cat_hp, CAT_MAX_HP);
-    api->elem_set_text(s_el_hp, buf);
+    std::snprintf(buf, sizeof(buf), "%d / %d HP", s_cat_hp, kCatMaxHp);
+    SERVICE_CALL(svc_ui, panel_add_dyn_text, panel, buf, &s_el_hp);
+    return MOD_OK;
 }
+
+ModResult update_panel(ModContext*, void*, ModError*) {
+    SERVICE_CALL(svc_ui, elem_set_text, s_el_status, s_cat_dead ? "Dead" : "Alive");
+
+    float fraction = static_cast<float>(s_cat_hp) / kCatMaxHp;
+    SERVICE_CALL(svc_ui, elem_set_progress, s_el_hp_bar, fraction);
+
+    char buf[32];
+    std::snprintf(buf, sizeof(buf), "%d / %d HP", s_cat_hp, kCatMaxHp);
+    SERVICE_CALL(svc_ui, elem_set_text, s_el_hp, buf);
+    return MOD_OK;
+}
+
+void consume_input(u32 pad, u32 buttonMask) {
+    mDoCPd_c::getCpadInfo(pad).mPressedButtonFlags &= ~buttonMask;
+}
+
+}  // namespace
 
 extern "C" {
 
-void mod_init(DuskModAPI* api) {
-    dusk::init(api);
-    dusk::hookAddPost<&dMsgObject_c::getString>(on_getString_post);
-    dusk::hookAddPost<&daAlink_c::setDamagePoint>(on_setDamagePoint_post);
-    api->register_tab_content(BuildPanel, nullptr);
-    api->register_tab_update(UpdatePanel, nullptr);
-    api->log_info("cat_mod: ready");
+MOD_EXPORT ModResult mod_initialize(ModError* error) {
+    ModResult result =
+        dusk::mods::hook_add_post<&dMsgObject_c::getString>(svc_hook, on_get_string_post);
+    if (result != MOD_OK) {
+        return require_ok(result, error, "failed to hook message lookup");
+    }
+
+    result =
+        dusk::mods::hook_add_post<&daAlink_c::setDamagePoint>(svc_hook, on_set_damage_point_post);
+    if (result != MOD_OK) {
+        return require_ok(result, error, "failed to hook Link damage");
+    }
+
+    UiTab tab = UI_TAB_INIT;
+    tab.build = build_panel;
+    tab.update = update_panel;
+    result = SERVICE_CALL(svc_ui, register_tab, &tab);
+    if (result != MOD_OK) {
+        return require_ok(result, error, "failed to register UI tab");
+    }
+
+    log_info("cat_mod: ready");
+    return MOD_OK;
 }
 
-void mod_tick(DuskModAPI* api) {
-    (void)api;
-
+MOD_EXPORT ModResult mod_update(ModError*) {
     if (s_cat_dead) {
-        return;
+        return MOD_OK;
     }
 
-    fopAc_ac_c* cat = getCat();
+    fopAc_ac_c* cat = get_cat();
 
     // Load zone detected: dismiss cat into inventory before the area unloads.
-    if (cat && fopAcM_checkCarryNow(cat) && fopOvlpM_IsDoingReq()) {
+    if (cat != nullptr && fopAcM_checkCarryNow(cat) && fopOvlpM_IsDoingReq()) {
         fopAcM_delete(cat);
-        s_cat_id    = fpcM_ERROR_PROCESS_ID_e;
+        s_cat_id = fpcM_ERROR_PROCESS_ID_e;
         s_has_spawn = false;
         daAlink_c* link = daAlink_getAlinkActorClass();
-        if (link) {
+        if (link != nullptr) {
             link->procPreActionUnequipInit(0, nullptr);
         }
-        return;
+        return MOD_OK;
     }
 
-    if (!cat) {
-        if (s_has_spawn && inSpawnStage() && !dComIfGp_event_runCheck()) {
-            spawnCat();
+    if (cat == nullptr) {
+        if (s_has_spawn && in_spawn_stage() && !dComIfGp_event_runCheck()) {
+            spawn_cat();
         } else if (mDoCPd_c::getHoldR(PAD_1) && mDoCPd_c::getTrigZ(PAD_1)) {
-            consumeInput(PAD_1, PAD_TRIGGER_Z);
-            spawnCat(true);
+            consume_input(PAD_1, PAD_TRIGGER_Z);
+            spawn_cat(true);
         }
-        return;
+        return MOD_OK;
     }
 
     if (s_summon_carry) {
         s_summon_carry = false;
         daAlink_c* link = daAlink_getAlinkActorClass();
-        if (link) {
+        if (link != nullptr) {
             link->field_0x27f4 = cat;
             link->procGrabReadyInit();
         }
     }
 
     if (!fopAcM_checkCarryNow(cat)) {
-        memcpy(s_spawn_stage, dComIfGp_getStartStageName(), sizeof(s_spawn_stage));
+        std::memcpy(s_spawn_stage, dComIfGp_getStartStageName(), sizeof(s_spawn_stage));
         s_spawn_room = cat->current.roomNo;
-        s_spawn_pos  = cat->current.pos;
-        s_has_spawn  = true;
+        s_spawn_pos = cat->current.pos;
+        s_has_spawn = true;
     }
 
     npc_ne_class* ne = static_cast<npc_ne_class*>(cat);
     ne->mBehavior = npc_ne_class::BHV_TAME;
     ne->mNoFollow = 0;
-    ne->mTexture  = 0;
+    ne->mTexture = 0;
     ne->mBtkFrame = 0;
 
     if (mDoCPd_c::getHoldR(PAD_1) && mDoCPd_c::getTrigZ(PAD_1) && fopAcM_checkCarryNow(cat)) {
-        consumeInput(PAD_1, PAD_TRIGGER_Z);
+        consume_input(PAD_1, PAD_TRIGGER_Z);
         fopAcM_delete(cat);
-        s_cat_id    = fpcM_ERROR_PROCESS_ID_e;
+        s_cat_id = fpcM_ERROR_PROCESS_ID_e;
         s_has_spawn = false;
         daAlink_c* link = daAlink_getAlinkActorClass();
-        if (link) {
+        if (link != nullptr) {
             link->procPreActionUnequipInit(0, nullptr);
         }
     }
+
+    return MOD_OK;
 }
 
-void mod_cleanup(DuskModAPI* api) {
-    (void)api;
-    s_cat_id       = fpcM_ERROR_PROCESS_ID_e;
-    s_cat_hp       = CAT_MAX_HP;
-    s_cat_dead     = false;
+MOD_EXPORT ModResult mod_shutdown(ModError*) {
+    s_cat_id = fpcM_ERROR_PROCESS_ID_e;
+    s_cat_hp = kCatMaxHp;
+    s_cat_dead = false;
     s_summon_carry = false;
-    s_el_hp        = nullptr;
-    s_el_hp_bar    = nullptr;
-    s_el_status    = nullptr;
+    s_el_hp = nullptr;
+    s_el_hp_bar = nullptr;
+    s_el_status = nullptr;
+    return MOD_OK;
 }
-
 }

@@ -1,7 +1,7 @@
 #include "aurora/dvd.h"
 #include "aurora/lib/logging.hpp"
 #include "dusk/mod_loader.hpp"
-#include "mod_loader.hpp"
+#include "loader.hpp"
 
 #include <cstring>
 

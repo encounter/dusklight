@@ -1,6 +1,7 @@
 #include "mods_window.hpp"
 
 #include "dusk/mod_loader.hpp"
+#include "dusk/mods/loader/loader.hpp"
 #include "fmt/format.h"
 #include "pane.hpp"
 
@@ -21,6 +22,16 @@ Rml::String build_mod_detail_rml(const dusk::LoadedMod& mod) {
         statusText = "Disabled";
     }
 
+    Rml::String failureRow;
+    if (mod.load_failed && !mod.failure_reason.empty()) {
+        failureRow = fmt::format(
+            R"(<div class="mod-info-row">)"
+            R"(<span class="mod-info-label">Failure</span>)"
+            R"(<span class="mod-info-value">{}</span>)"
+            R"(</div>)",
+            escape(mod.failure_reason));
+    }
+
     return fmt::format(
         R"(<div class="mod-info-row">)"
         R"(<span class="mod-info-label">Version</span>)"
@@ -34,6 +45,7 @@ Rml::String build_mod_detail_rml(const dusk::LoadedMod& mod) {
         R"(<span class="mod-info-label">Status</span>)"
         R"(<span class="achievement-badge {}">{}</span>)"
         R"(</div>)"
+        R"({})"
         R"(<div class="mod-info-row">)"
         R"(<span class="mod-info-label">Path</span>)"
         R"(<span class="mod-info-value mod-path">{}</span>)"
@@ -41,6 +53,7 @@ Rml::String build_mod_detail_rml(const dusk::LoadedMod& mod) {
         mod.metadata.version,
         mod.metadata.author,
         statusClass, statusText,
+        failureRow,
         mod.mod_path
     );
 }
@@ -65,11 +78,11 @@ ModsWindow::ModsWindow() {
         add_tab(mods[i].metadata.name, [this, i](Rml::Element* content) {
             mActiveModIndex = static_cast<int>(i);
 
-            const auto& curMods = dusk::ModLoader::instance().mods();
+            auto curMods = dusk::ModLoader::instance().mods();
             if (i >= curMods.size()) {
                 return;
             }
-            const auto& mod = curMods[i];
+            auto& mod = curMods[i];
 
             auto& pane = add_child<Pane>(content, Pane::Type::Uncontrolled);
 
@@ -81,8 +94,20 @@ ModsWindow::ModsWindow() {
                 pane.add_text(mod.metadata.description);
             }
 
-            for (const auto& cb : mod.tab_content) {
-                cb.build_fn(static_cast<void*>(pane.root()), cb.userdata);
+            for (const auto& cb : mod.ui_tabs) {
+                if (cb.tab.build == nullptr) {
+                    continue;
+                }
+                ModError error = MOD_ERROR_INIT;
+                const auto result =
+                    cb.tab.build(cb.context, static_cast<void*>(pane.root()), cb.tab.userdata,
+                        &error);
+                if (result != MOD_OK) {
+                    dusk::mods::loader::fail_mod(
+                        mod, result,
+                        error.message[0] != '\0' ? error.message : "mod UI build failed");
+                    break;
+                }
             }
 
             pane.finalize();
@@ -114,8 +139,19 @@ void ModsWindow::update() {
     }
 
     if (mActiveModIndex >= 0 && static_cast<size_t>(mActiveModIndex) < mods.size()) {
-        for (const auto& cb : mods[mActiveModIndex].tab_updates) {
-            cb.update_fn(cb.userdata);
+        auto& mod = mods[mActiveModIndex];
+        for (const auto& cb : mod.ui_tabs) {
+            if (cb.tab.update == nullptr) {
+                continue;
+            }
+            ModError error = MOD_ERROR_INIT;
+            const auto result = cb.tab.update(cb.context, cb.tab.userdata, &error);
+            if (result != MOD_OK) {
+                dusk::mods::loader::fail_mod(
+                    mod, result,
+                    error.message[0] != '\0' ? error.message : "mod UI update failed");
+                break;
+            }
         }
     }
 
