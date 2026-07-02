@@ -8,6 +8,8 @@
 
 namespace dusk::ui {
 
+class Pane;
+
 class ModsWindow : public Window {
 public:
     ModsWindow();
@@ -20,12 +22,17 @@ private:
         bool load_failed;
         bool enabled;
         bool suspended;
-        // Bumped by every native re-extraction: catches reloads, which leave the
-        // other fields unchanged but invalidate the mod-built panel contents
         u32 cacheGeneration;
     };
+
+    void build_content(Rml::Element* content);
+    void build_detail(Pane& pane, mods::LoadedMod& mod);
+    void mark_current_entry();
+
     std::vector<ModSnapshot> mSnapshot;
-    mods::LoadedMod* mActiveMod = nullptr;
+    std::vector<Component*> mEntries;
+    std::vector<mods::LoadedMod*> mEntryMods;
+    mods::LoadedMod* mSelectedMod = nullptr;
 };
 
 }  // namespace dusk::ui

@@ -137,6 +137,32 @@ static void validate_mod_id(std::string_view const str) {
     }
 }
 
+static bool bundle_has_file(ModBundle& bundle, const std::string& path) {
+    try {
+        bundle.getFileSize(path);
+        return true;
+    } catch (const std::runtime_error&) {
+        return false;
+    }
+}
+
+static std::string resolve_image_path(ModBundle& bundle, const std::string& modId,
+    std::string_view key, const std::string& manifestPath, const std::string& defaultPath) {
+    if (!manifestPath.empty()) {
+        if (!is_safe_resource_path(manifestPath)) {
+            Log.warn("{}: invalid {} path '{}' in mod.json", modId, key, manifestPath);
+        } else if (!bundle_has_file(bundle, manifestPath)) {
+            Log.warn("{}: {} path '{}' not found in bundle", modId, key, manifestPath);
+        } else {
+            return manifestPath;
+        }
+    }
+    if (bundle_has_file(bundle, defaultPath)) {
+        return defaultPath;
+    }
+    return {};
+}
+
 static ModMetadata load_metadata(const std::filesystem::path& modPath, ModBundle& bundle) {
     const auto metaJson = bundle.readFile("mod.json");
     auto j = nlohmann::json::parse(metaJson);
@@ -146,6 +172,8 @@ static ModMetadata load_metadata(const std::filesystem::path& modPath, ModBundle
     std::string metaVersion = j.value("version", "");
     std::string metaAuthor = j.value("author", "");
     std::string metaDescription = j.value("description", "");
+    std::string metaIcon = j.value("icon", "");
+    std::string metaBanner = j.value("banner", "");
 
     validate_mod_id(metaId);
 
@@ -159,12 +187,18 @@ static ModMetadata load_metadata(const std::filesystem::path& modPath, ModBundle
         metaAuthor = "unknown"s;
     }
 
+    std::string iconPath = resolve_image_path(bundle, metaId, "icon", metaIcon, "res/icon.png"s);
+    std::string bannerPath =
+        resolve_image_path(bundle, metaId, "banner", metaBanner, "res/banner.png"s);
+
     return ModMetadata{
         std::move(metaId),
         std::move(metaName),
         std::move(metaVersion),
         std::move(metaAuthor),
         std::move(metaDescription),
+        std::move(iconPath),
+        std::move(bannerPath),
     };
 }
 
@@ -783,6 +817,7 @@ bool ModLoader::reload_bundle(LoadedMod& mod) {
         newInfo = build_manifest_info(*mod.native->manifest);
     } else {
         mod.nativeStatus = NativeModStatus::None;
+        ++mod.cacheGeneration;
     }
 
     if (newInfo != mod.manifestInfo) {

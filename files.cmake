@@ -1496,6 +1496,8 @@ set(DUSK_FILES
         src/dusk/ui/input.hpp
         src/dusk/ui/icon_provider.cpp
         src/dusk/ui/icon_provider.hpp
+        src/dusk/ui/mod_texture_provider.cpp
+        src/dusk/ui/mod_texture_provider.hpp
         src/dusk/ui/modal.cpp
         src/dusk/ui/modal.hpp
         src/dusk/ui/mod_window.cpp

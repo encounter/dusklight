@@ -58,6 +58,8 @@ struct ModMetadata {
     std::string version;
     std::string author;
     std::string description;
+    std::string iconPath;
+    std::string bannerPath;
 };
 
 struct NativeMod {
@@ -132,7 +134,9 @@ struct LoadedMod {
     // Deactivated because a provider it imports from was disabled, not by its own cvar.
     bool suspendedByProvider = false;
     // Bumped per native lib extraction so every dlopen sees a fresh path (and thus a fresh
-    // image with fresh statics, even if a previous dlclose did not fully unmap).
+    // image with fresh statics, even if a previous dlclose did not fully unmap). Also bumped
+    // by asset-only reloads: doubles as the display generation for UI rebuilds and mod://
+    // image cache busting.
     uint32_t cacheGeneration = 0;
     // Currently extracted native library, empty if none.
     std::string nativePath;

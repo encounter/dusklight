@@ -11,5 +11,6 @@ set(DUSK_MODS_OUTPUT_DIR "${CMAKE_SOURCE_DIR}/mods" CACHE PATH "Directory to wri
 add_dusk_mod(mod_test_dep
     SOURCES  src/mod.cpp
     MOD_JSON mod.json
+    RES_DIR  res
 )
 target_include_directories(mod_test_dep PRIVATE include)

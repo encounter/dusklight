@@ -389,6 +389,18 @@ void on_open_dialog(ModContext*, void*) {
 }
 
 ModResult build_panel(ModContext*, UiElementHandle panel, void*, ModError*) {
+    UiControlDesc button = UI_CONTROL_DESC_INIT;
+    button.kind = UI_CONTROL_BUTTON;
+    button.label = "Open Test Window";
+    button.on_pressed = on_open_window;
+    add_control(panel, button);
+
+    button = UI_CONTROL_DESC_INIT;
+    button.kind = UI_CONTROL_BUTTON;
+    button.label = "Open Test Dialog";
+    button.on_pressed = on_open_dialog;
+    add_control(panel, button);
+
     svc_ui->pane_add_section(mod_ctx, panel, "Hooks");
     svc_ui->pane_add_badge_row(
         mod_ctx, panel, "pre-hook fired (posMove)", g_pre_fired, &g_el_pre_badge);
@@ -446,23 +458,10 @@ ModResult build_panel(ModContext*, UiElementHandle panel, void*, ModError*) {
         mod_ctx, panel, "mod_dir non-empty", g_mod_dir_snippet[0] != '\0', nullptr);
     svc_ui->pane_add_text(mod_ctx, panel, g_mod_dir_snippet, nullptr);
 
-    svc_ui->pane_add_section(mod_ctx, panel, "Actions");
-    UiControlDesc button = UI_CONTROL_DESC_INIT;
+    button = UI_CONTROL_DESC_INIT;
     button.kind = UI_CONTROL_BUTTON;
     button.label = "Reset Results";
     button.on_pressed = on_reset;
-    add_control(panel, button);
-
-    button = UI_CONTROL_DESC_INIT;
-    button.kind = UI_CONTROL_BUTTON;
-    button.label = "Open Test Window";
-    button.on_pressed = on_open_window;
-    add_control(panel, button);
-
-    button = UI_CONTROL_DESC_INIT;
-    button.kind = UI_CONTROL_BUTTON;
-    button.label = "Open Test Dialog";
-    button.on_pressed = on_open_dialog;
     add_control(panel, button);
 
     svc_ui->pane_add_text(mod_ctx, panel, "", &g_el_link_angle);

@@ -70,11 +70,15 @@ A `.dusk` may contain one library per platform/architecture. The loader only con
     "name":        "My Mod",
     "version":     "1.0.0",
     "author":      "Your Name",
-    "description": "A short description shown in the mod manager."
+    "description": "A short description shown in the mod manager.",
+    "icon":        "res/my_icon.png",
+    "banner":      "res/my_banner.png"
 }
 ```
 
 `id` is required: a unique, stable identifier (reverse-DNS style; periods, underscores, and alphanumerics). Everything else is optional but recommended — `name` falls back to the filename. Whether a mod has code is inferred from the libraries in the bundle; asset-overlay-only mods simply ship none.
+
+`icon` and `banner` are bundle-relative paths to PNG images shown in the Mods window: the icon (square, e.g. 512x512) next to your mod in the list, the banner (wide, roughly 3.5:1) as the detail-page header — it is scaled and center-cropped to cover the header area, so keep important content away from the edges. Both keys are optional; if omitted, `res/icon.png` and `res/banner.png` are picked up automatically when present.
 
 ---
 
