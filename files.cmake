@@ -1498,6 +1498,8 @@ set(DUSK_FILES
         src/dusk/ui/icon_provider.hpp
         src/dusk/ui/modal.cpp
         src/dusk/ui/modal.hpp
+        src/dusk/ui/mod_window.cpp
+        src/dusk/ui/mod_window.hpp
         src/dusk/ui/nav_types.hpp
         src/dusk/ui/number_button.cpp
         src/dusk/ui/number_button.hpp
@@ -1556,6 +1558,7 @@ set(DUSK_FILES
         src/dusk/mods/loader/native_module.hpp
         src/dusk/mods/loader/overlay.cpp
         src/dusk/mods/loader/textures.cpp
+        src/dusk/mods/loader/ui.cpp
         src/dusk/mods/svc/config.cpp
         src/dusk/mods/svc/hook.cpp
         src/dusk/mods/svc/host.cpp

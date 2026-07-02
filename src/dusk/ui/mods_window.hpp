@@ -20,6 +20,9 @@ private:
         bool load_failed;
         bool enabled;
         bool suspended;
+        // Bumped by every native re-extraction: catches reloads, which leave the
+        // other fields unchanged but invalidate the mod-built panel contents
+        u32 cacheGeneration;
     };
     std::vector<ModSnapshot> mSnapshot;
     mods::LoadedMod* mActiveMod = nullptr;

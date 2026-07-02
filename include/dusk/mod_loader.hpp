@@ -10,7 +10,6 @@
 #include "dusk/config.hpp"
 #include "dusk/config_var.hpp"
 #include "mods/api.h"
-#include "mods/svc/ui.h"
 
 namespace dusk::mods {
 struct LoadedMod;
@@ -26,11 +25,6 @@ class NativeModule;
 }  // namespace dusk::mods::loader
 
 namespace dusk::mods {
-
-struct ModUiTabCallback {
-    ModContext* context = nullptr;
-    UiTab tab{};
-};
 
 struct ModDependencyEdge {
     LoadedMod* mod = nullptr;
@@ -156,8 +150,6 @@ struct LoadedMod {
     // Populated before initialization; entries stay valid until ModLoader::shutdown.
     std::vector<ModDependencyEdge> dependencies;
     std::vector<ModDependencyEdge> dependents;
-
-    std::vector<ModUiTabCallback> uiTabs;
 };
 
 class ModLoader {

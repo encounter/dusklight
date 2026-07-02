@@ -12,7 +12,7 @@ typedef uint64_t ConfigVarHandle;
 typedef uint64_t ConfigSubscriptionHandle;
 
 typedef enum ConfigVarType {
-    CONFIG_VAR_BOOL = 0,   /* uint32_t, 0 or 1 */
+    CONFIG_VAR_BOOL = 0,   /* bool */
     CONFIG_VAR_INT = 1,    /* int64_t */
     CONFIG_VAR_FLOAT = 2,  /* double */
     CONFIG_VAR_STRING = 3, /* UTF-8 */
@@ -24,21 +24,21 @@ typedef struct ConfigVarDesc {
      * "mod.<escaped mod id>.<name>", persisted in config.json alongside host settings.
      * "enabled" is reserved by the loader. */
     const char* name;
-    uint32_t type; /* ConfigVarType */
+    ConfigVarType type;
     /* Default value; only the field matching `type` is read. */
-    uint32_t default_bool; /* 0 or 1 */
+    bool default_bool;
     int64_t default_int;
     double default_float;
     const char* default_string; /* NULL means "" */
 } ConfigVarDesc;
 
-#define CONFIG_VAR_DESC_INIT {sizeof(ConfigVarDesc), NULL, CONFIG_VAR_BOOL, 0u, 0, 0.0, NULL}
+#define CONFIG_VAR_DESC_INIT {sizeof(ConfigVarDesc), NULL, CONFIG_VAR_BOOL, false, 0, 0.0, NULL}
 
 /* Snapshot of a var's value; only the field matching `type` is meaningful. */
 typedef struct ConfigVarValue {
     uint32_t struct_size;
-    uint32_t type; /* ConfigVarType */
-    uint32_t bool_value; /* 0 or 1 */
+    ConfigVarType type;
+    bool bool_value;
     int64_t int_value;
     double float_value;
     const char* string_value; /* NUL-terminated; NULL for non-string vars */
@@ -49,13 +49,13 @@ typedef struct ConfigVarValue {
  * Fired on the game thread whenever the var's effective value actually changes at runtime:
  * the calling mod's own set_* calls and any other runtime writer. Writes that leave the value
  * unchanged do not fire, and neither do values applied from config.json or --cvar during
- * registration — read the value after register_var for the starting state. `previous` holds
- * the value before the change and is valid only for the duration of the call (copy
- * string_value if you need to keep it); read the current value back through the typed getters.
- * Setting the same var from inside its own callback applies the write but is not re-notified.
+ * registration — read the value after register_var for the starting state. `value` holds the
+ * new (current) value and `previous` the one it replaced; both snapshots are valid only for
+ * the duration of the call (copy string_value if you need to keep it). Setting the same var
+ * from inside its own callback applies the write but is not re-notified.
  */
-typedef void (*ConfigChangedFn)(
-    ModContext* ctx, ConfigVarHandle var, const ConfigVarValue* previous, void* user_data);
+typedef void (*ConfigChangedFn)(ModContext* ctx, ConfigVarHandle var, const ConfigVarValue* value,
+    const ConfigVarValue* previous, void* user_data);
 
 /*
  * Scoped configuration variables.
@@ -77,8 +77,8 @@ typedef struct ConfigService {
     ModResult (*unregister_var)(ModContext* ctx, ConfigVarHandle var);
 
     /* Typed accessors; the type must match the registration (MOD_INVALID_ARGUMENT otherwise). */
-    ModResult (*get_bool)(ModContext* ctx, ConfigVarHandle var, uint32_t* out_value);
-    ModResult (*set_bool)(ModContext* ctx, ConfigVarHandle var, uint32_t value);
+    ModResult (*get_bool)(ModContext* ctx, ConfigVarHandle var, bool* out_value);
+    ModResult (*set_bool)(ModContext* ctx, ConfigVarHandle var, bool value);
     ModResult (*get_int)(ModContext* ctx, ConfigVarHandle var, int64_t* out_value);
     ModResult (*set_int)(ModContext* ctx, ConfigVarHandle var, int64_t value);
     ModResult (*get_float)(ModContext* ctx, ConfigVarHandle var, double* out_value);

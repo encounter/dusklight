@@ -47,6 +47,12 @@ bool Modal::focus() {
     return false;
 }
 
+bool Modal::request_dismiss() {
+    mDoAud_seStartMenu(kSoundWindowClose);
+    dismiss();
+    return true;
+}
+
 void Modal::dismiss() {
     if (mProps.onDismiss) {
         mProps.onDismiss(*this);

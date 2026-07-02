@@ -27,11 +27,10 @@ Rml::String build_mod_detail_rml(const mods::LoadedMod& mod) {
 
     Rml::String failureRow;
     if (mod.loadFailed && !mod.failureReason.empty()) {
-        failureRow = fmt::format(
-            R"(<div class="mod-info-row">)"
-            R"(<span class="mod-info-label">Failure</span>)"
-            R"(<span class="mod-info-value">{}</span>)"
-            R"(</div>)",
+        failureRow = fmt::format(R"(<div class="mod-info-row">)"
+                                 R"(<span class="mod-info-label">Failure</span>)"
+                                 R"(<span class="mod-info-value">{}</span>)"
+                                 R"(</div>)",
             escape(mod.failureReason));
     } else if (mod.suspendedByProvider) {
         std::string providers;
@@ -43,38 +42,32 @@ Rml::String build_mod_detail_rml(const mods::LoadedMod& mod) {
                 providers += edge.mod->metadata.name;
             }
         }
-        failureRow = fmt::format(
-            R"(<div class="mod-info-row">)"
-            R"(<span class="mod-info-label">Waiting on</span>)"
-            R"(<span class="mod-info-value">{}</span>)"
-            R"(</div>)",
+        failureRow = fmt::format(R"(<div class="mod-info-row">)"
+                                 R"(<span class="mod-info-label">Waiting on</span>)"
+                                 R"(<span class="mod-info-value">{}</span>)"
+                                 R"(</div>)",
             escape(providers));
     }
 
-    return fmt::format(
-        R"(<div class="mod-info-row">)"
-        R"(<span class="mod-info-label">Version</span>)"
-        R"(<span class="mod-info-value">{}</span>)"
-        R"(</div>)"
-        R"(<div class="mod-info-row">)"
-        R"(<span class="mod-info-label">Author</span>)"
-        R"(<span class="mod-info-value">{}</span>)"
-        R"(</div>)"
-        R"(<div class="mod-info-row">)"
-        R"(<span class="mod-info-label">Status</span>)"
-        R"(<span class="achievement-badge {}">{}</span>)"
-        R"(</div>)"
-        R"({})"
-        R"(<div class="mod-info-row">)"
-        R"(<span class="mod-info-label">Path</span>)"
-        R"(<span class="mod-info-value mod-path">{}</span>)"
-        R"(</div>)",
-        mod.metadata.version,
-        mod.metadata.author,
-        statusClass, statusText,
-        failureRow,
-        mod.modPath
-    );
+    return fmt::format(R"(<div class="mod-info-row">)"
+                       R"(<span class="mod-info-label">Version</span>)"
+                       R"(<span class="mod-info-value">{}</span>)"
+                       R"(</div>)"
+                       R"(<div class="mod-info-row">)"
+                       R"(<span class="mod-info-label">Author</span>)"
+                       R"(<span class="mod-info-value">{}</span>)"
+                       R"(</div>)"
+                       R"(<div class="mod-info-row">)"
+                       R"(<span class="mod-info-label">Status</span>)"
+                       R"(<span class="achievement-badge {}">{}</span>)"
+                       R"(</div>)"
+                       R"({})"
+                       R"(<div class="mod-info-row">)"
+                       R"(<span class="mod-info-label">Path</span>)"
+                       R"(<span class="mod-info-value mod-path">{}</span>)"
+                       R"(</div>)",
+        mod.metadata.version, mod.metadata.author, statusClass, statusText, failureRow,
+        mod.modPath);
 }
 
 }  // namespace
@@ -94,8 +87,14 @@ ModsWindow::ModsWindow() {
     // Tabs hold stable LoadedMod pointers, not indices: a reload that changes a mod's
     // imports/exports reorders m_mods mid-session.
     for (auto& trackedMod : mods) {
-        mSnapshot.push_back({&trackedMod, trackedMod.active, trackedMod.loadFailed,
-            trackedMod.cvarIsEnabled->getValue(), trackedMod.suspendedByProvider});
+        mSnapshot.push_back({
+            &trackedMod,
+            trackedMod.active,
+            trackedMod.loadFailed,
+            trackedMod.cvarIsEnabled->getValue(),
+            trackedMod.suspendedByProvider,
+            trackedMod.cacheGeneration,
+        });
 
         add_tab(trackedMod.metadata.name, [this, tracked = &trackedMod](Rml::Element* content) {
             mActiveMod = tracked;
@@ -137,18 +136,8 @@ ModsWindow::ModsWindow() {
                     fmt::format("Disabling or reloading also restarts: {}", activeDependents));
             }
 
-            for (const auto& cb : mod.uiTabs) {
-                if (cb.tab.build == nullptr) {
-                    continue;
-                }
-                ModError error = MOD_ERROR_INIT;
-                const auto result = cb.tab.build(
-                    cb.context, static_cast<void*>(pane.root()), cb.tab.userdata, &error);
-                if (result != MOD_OK) {
-                    mods::fail_mod(mod, result,
-                        error.message[0] != '\0' ? error.message : "mod UI build failed");
-                    break;
-                }
+            if (mod.active) {
+                mods::ui_build_mods_panels(mod, pane);
             }
 
             pane.finalize();
@@ -162,12 +151,14 @@ void ModsWindow::update() {
         const auto& mod = *snapshot.mod;
         if (mod.active != snapshot.active || mod.loadFailed != snapshot.load_failed ||
             mod.cvarIsEnabled->getValue() != snapshot.enabled ||
-            mod.suspendedByProvider != snapshot.suspended)
+            mod.suspendedByProvider != snapshot.suspended ||
+            mod.cacheGeneration != snapshot.cacheGeneration)
         {
             snapshot.active = mod.active;
             snapshot.load_failed = mod.loadFailed;
             snapshot.enabled = mod.cvarIsEnabled->getValue();
             snapshot.suspended = mod.suspendedByProvider;
+            snapshot.cacheGeneration = mod.cacheGeneration;
             dirty = true;
         }
     }
@@ -175,20 +166,8 @@ void ModsWindow::update() {
         refresh_active_tab();
     }
 
-    if (mActiveMod != nullptr) {
-        auto& mod = *mActiveMod;
-        for (const auto& cb : mod.uiTabs) {
-            if (cb.tab.update == nullptr) {
-                continue;
-            }
-            ModError error = MOD_ERROR_INIT;
-            const auto result = cb.tab.update(cb.context, cb.tab.userdata, &error);
-            if (result != MOD_OK) {
-                mods::fail_mod(
-                    mod, result, error.message[0] != '\0' ? error.message : "mod UI update failed");
-                break;
-            }
-        }
+    if (mActiveMod != nullptr && mActiveMod->active) {
+        mods::ui_update_mods_panels(*mActiveMod);
     }
 
     Window::update();

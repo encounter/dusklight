@@ -555,7 +555,7 @@ void ModLoader::deactivate_mod(LoadedMod& mod) {
     overlay_remove_mod(mod);
     textures_remove_mod(mod);
     config_remove_mod(mod);
-    mod.uiTabs.clear();
+    ui_remove_mod(mod);
     unload_native(mod);
 
     mod.active = false;

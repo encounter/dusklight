@@ -239,20 +239,104 @@ svc_config->get_float(mod_ctx, var, &speed);
 svc_config->set_float(mod_ctx, var, 2.0);
 
 // Optional: get notified when the value changes.
-void on_speed_changed(ModContext* ctx, ConfigVarHandle var, const ConfigVarValue* previous,
-    void* user_data) { /* previous->float_value holds the old value */ }
+void on_speed_changed(ModContext* ctx, ConfigVarHandle var, const ConfigVarValue* value,
+    const ConfigVarValue* previous, void* user_data) {
+    /* value->float_value is the new value, previous->float_value the old one */
+}
 svc_config->subscribe(mod_ctx, var, on_speed_changed, nullptr, nullptr);
 ```
 
-Types: `CONFIG_VAR_BOOL` (`uint32_t` 0/1), `CONFIG_VAR_INT` (`int64_t`), `CONFIG_VAR_FLOAT` (`double`), `CONFIG_VAR_STRING` (UTF-8; `get_string` copies into a caller buffer — pass a `NULL` buffer with size 0 to query the length). Accessors are typed and must match the registration.
+Types: `CONFIG_VAR_BOOL` (`bool`), `CONFIG_VAR_INT` (`int64_t`), `CONFIG_VAR_FLOAT` (`double`), `CONFIG_VAR_STRING` (UTF-8; `get_string` copies into a caller buffer — pass a `NULL` buffer with size 0 to query the length). Accessors are typed and must match the registration.
 
 If a value was saved in an earlier session (or supplied via `--cvar mod.<escaped id>.<name>=<value>`), it takes effect at registration; otherwise the var starts at its default. Writes are debounced — they reach `config.json` within a couple of seconds, not per call, and always on clean shutdown. Registrations and subscriptions follow your mod's lifecycle (removed on disable/reload/failure), but persisted values survive and are restored by the next registration of the same name.
 
-Change callbacks fire on the game thread whenever the value actually changes at runtime — your own `set_*` calls included; writes that store the same value are silent. Values applied from `config.json` or `--cvar` at registration do **not** fire callbacks — read the value after `register_var` for your starting state. The callback receives the previous value as a `ConfigVarValue` snapshot (valid only during the call; copy `string_value` if you need to keep it) and reads the current value back through the typed getters. Setting the same var from inside its own callback applies the write but is not re-notified.
+Change callbacks fire on the game thread whenever the value actually changes at runtime — your own `set_*` calls included; writes that store the same value are silent. Values applied from `config.json` or `--cvar` at registration do **not** fire callbacks — read the value after `register_var` for your starting state. The callback receives the new value and the one it replaced as `ConfigVarValue` snapshots (valid only during the call; copy `string_value` if you need to keep it). Setting the same var from inside its own callback applies the write but is not re-notified.
 
-### UI service
+### UiService (`mods/svc/ui.h`)
 
-Dusklight also ships a UI service for adding panels to the Mods window. It is being rewritten and intentionally undocumented — if you need it in the meantime, see `include/mods/svc/ui.h` and its usage in [mod_test](../tools/mod_test/src/mod.cpp), but expect breaking changes.
+UI primitives built on the host's RmlUi layer: a panel inside your mod's tab of the Mods window, mod-owned tabbed windows, modal dialogs, RCSS style sheets scoped to classes of host documents, and document-stack queries. All calls must happen on the game thread, from your mod's callbacks (initialize, update, hooks, or UI callbacks). [mod_test](../tools/mod_test/src/mod.cpp) exercises the whole surface.
+
+**Handles.** Every object is an opaque, generation-checked `uint64_t` handle (0 is never valid). A stale, foreign, or wrong-kind handle fails with `MOD_INVALID_ARGUMENT` and an error log — never undefined behavior. Element handles die with the content that owns them: a panel or tab rebuild (e.g. a tab switch) destroys the previous build's elements, so re-acquire handles inside your build callback instead of caching them across builds. Strings are UTF-8 and valid only for the duration of a call, in both directions.
+
+**Mods-window panel.** Registers a panel rendered in your mod's tab of the host Mods window; `build` runs (again) every time the tab content is (re)built, `update` runs every frame while it is the visible tab:
+
+```cpp
+IMPORT_SERVICE_VERSION(UiService, svc_ui, 2);
+
+UiElementHandle statusText = 0;
+
+ModResult build(ModContext*, UiElementHandle panel, void*, ModError*) {
+    svc_ui->pane_add_section(mod_ctx, panel, "Status");
+    svc_ui->pane_add_text(mod_ctx, panel, "starting...", &statusText);
+    svc_ui->pane_add_badge_row(mod_ctx, panel, "self-test", /*ok=*/1, nullptr);
+    svc_ui->pane_add_progress(mod_ctx, panel, 0.5f, nullptr);
+    return MOD_OK;
+}
+ModResult update(ModContext*, void*, ModError*) {
+    svc_ui->elem_set_text(mod_ctx, statusText, "running");
+    return MOD_OK;
+}
+
+// in mod_initialize:
+UiModsPanelDesc panel = UI_MODS_PANEL_DESC_INIT;
+panel.build = build;
+panel.update = update;
+svc_ui->register_mods_panel(mod_ctx, &panel);
+```
+
+Element setters must match the element kind: `elem_set_text`/`elem_set_rml` on text rows, `elem_set_badge` on badge rows, `elem_set_progress` on progress bars. A non-`MOD_OK` result from `build`/`update` fails your mod, as do exceptions escaping any UI callback.
+
+**Controls.** `pane_add_control` adds an input row described by a tagged `UiControlDesc`: `UI_CONTROL_BUTTON` (action), `UI_CONTROL_TOGGLE` (bool), `UI_CONTROL_NUMBER` (integer stepper with `min`/`max`/`step`/`prefix`/`suffix`), `UI_CONTROL_STRING` (text input), `UI_CONTROL_SELECT` (one of `options`; the value is the option index). Values bind one of two ways:
+
+- `UI_BINDING_CALLBACKS`: you supply `get`/`set` functions trading `UiControlValue`s. Getters are polled every frame while the control is visible — keep them cheap.
+- `UI_BINDING_CONFIG_VAR`: the control reads and writes one of your [ConfigService](#configservice-modssvcconfigh) vars directly — persistence, change notifications, and the modified indicator (value ≠ default) come for free. The var type must match the control: TOGGLE = bool, NUMBER and SELECT = int, STRING = string. Float vars are not bindable — use callbacks and convert.
+
+```cpp
+UiControlDesc control = UI_CONTROL_DESC_INIT;
+control.kind = UI_CONTROL_TOGGLE;
+control.label = "Enable rainbows";
+control.help_rml = "Shown in the help pane while focused.";
+control.binding = UI_BINDING_CONFIG_VAR;
+control.config_var = myBoolVar;  // from svc_config->register_var
+svc_ui->pane_add_control(mod_ctx, leftPane, &control, nullptr);
+```
+
+`help_rml` (and SELECT's option list) render in the help pane, so they only work inside mod window tabs; Mods-window panels have a single pane, where `help_rml` is ignored and SELECT fails with `MOD_UNSUPPORTED`.
+
+**Windows.** `window_push` pushes a tabbed two-pane window (the same shell as the host Settings window) onto the document stack and shows it. Stacking works like host windows: the document that was on top hides while yours is open, and closing yours brings it back (if nothing was visible when you pushed — say, from a gameplay hook — closing simply returns to the game). Each tab's `build` receives the window handle plus fresh left (interactive) and right (help) pane handles on every activation; the optional per-tab `update` runs each frame while that tab is active. `on_closed` fires when the window is destroyed for any reason — user close, `window_close`, shutdown — except your own mod's teardown (your `mod_shutdown` has already run by then); the handle is already invalid inside the callback. `desc.rcss` optionally styles that window's document only; mod windows carry a `mod-window` root class so scoped RCSS can target them (`window.mod-window ...`).
+
+```cpp
+UiTabDesc tabs[1] = {UI_TAB_DESC_INIT};
+tabs[0].title = "My Mod";
+tabs[0].build = my_tab_build;  // (ctx, window, left_pane, right_pane, user_data, error)
+
+UiWindowDesc desc = UI_WINDOW_DESC_INIT;
+desc.tabs = tabs;
+desc.tab_count = 1;
+desc.on_closed = my_on_closed;
+UiWindowHandle window = 0;
+svc_ui->window_push(mod_ctx, &desc, &window);
+```
+
+**Dialogs.** `dialog_push` shows a modal dialog wrapping the host's dialog shell. `variant` picks the style (`UI_DIALOG_NORMAL`, `UI_DIALOG_WARNING`, `UI_DIALOG_DANGER` — red styling), `icon` optionally overrides the variant's default icon (`"warning"`, `"error"`, `"question-mark"`, ...). Actions become buttons; after an action's `on_pressed` returns the dialog closes unless `keep_open` is set. Cancel (B/Escape) fires `on_dismiss` (if any) and always closes. Dialogs are for messages and confirmation — input controls inside dialogs ("form dialogs") are not supported yet.
+
+```cpp
+UiDialogAction actions[2] = {
+    {"Cancel", nullptr, nullptr, 0},
+    {"Delete", on_delete_confirmed, nullptr, 0},
+};
+UiDialogDesc dialog = UI_DIALOG_DESC_INIT;
+dialog.title = "Delete save?";
+dialog.body_rml = "This cannot be undone.";
+dialog.variant = UI_DIALOG_DANGER;
+dialog.actions = actions;
+dialog.action_count = 2;
+svc_ui->dialog_push(mod_ctx, &dialog, nullptr);
+```
+
+**Scoped styles.** `register_styles(scope, rcss, &handle)` applies an RCSS sheet to every document of a scope — existing documents restyle immediately, future ones pick it up at creation — until `unregister_styles` or your mod is disabled/reloaded (styles re-apply when it comes back). `register_styles_file(scope, path, &handle)` does the same but reads the RCSS from your bundle's `res/` directory (same path rules as `ResourceService::load`; `MOD_UNAVAILABLE` if missing). Scopes: `UI_SCOPE_PRELAUNCH`, `UI_SCOPE_WINDOW` (every tabbed/small window, host and mod alike), `UI_SCOPE_MENU_BAR`, `UI_SCOPE_OVERLAY` (toasts, FPS counter), `UI_SCOPE_TOUCH_CONTROLS`, `UI_SCOPE_GRAPHICS_TUNER`. Sheets apply after the host's styles in registration order. RCSS that fails to parse is rejected with `MOD_INVALID_ARGUMENT` (note RCSS parsing is lenient; most typos only produce console warnings). This is cooperative — a `UI_SCOPE_WINDOW` sheet restyles the host Settings window too, so scope selectors tightly (e.g. to `window.mod-window`) unless changing host UI is the point.
+
+**Document stack.** `is_any_document_visible` reports whether any focus-stack document is showing (game input is blocked while one is). `focus_top_document` shows and focuses the top of the stack. `close_top_document` asks the top document to close: window-like documents (host and mod windows, dialogs) comply; permanent documents (menu bar, pre-launch) refuse with `MOD_UNSUPPORTED`. This can close a host window the user has open — cooperative model, use judiciously.
 
 ---
 

@@ -37,9 +37,9 @@ cXyz s_spawn_pos = {};
 s8 s_spawn_room = -1;
 char s_spawn_stage[8] = {};
 
-ElemHandle s_el_hp = nullptr;
-ElemHandle s_el_hp_bar = nullptr;
-ElemHandle s_el_status = nullptr;
+UiElementHandle s_el_hp = 0;
+UiElementHandle s_el_hp_bar = 0;
+UiElementHandle s_el_status = 0;
 
 ModResult require_ok(const ModResult result, ModError* error, const char* message) {
     if (result != MOD_OK) {
@@ -167,16 +167,16 @@ void on_set_damage_point_post(ModContext*, void* args, void*, void*) {
     }
 }
 
-ModResult build_panel(ModContext*, PanelHandle panel, void*, ModError*) {
-    svc_ui->panel_add_section(mod_ctx, panel, "Cat");
-    svc_ui->panel_add_dyn_text(mod_ctx, panel, s_cat_dead ? "Dead" : "Alive", &s_el_status);
+ModResult build_panel(ModContext*, UiElementHandle panel, void*, ModError*) {
+    svc_ui->pane_add_section(mod_ctx, panel, "Cat");
+    svc_ui->pane_add_text(mod_ctx, panel, s_cat_dead ? "Dead" : "Alive", &s_el_status);
 
     float fraction = static_cast<float>(s_cat_hp) / kCatMaxHp;
-    svc_ui->panel_add_progress(mod_ctx, panel, fraction, &s_el_hp_bar);
+    svc_ui->pane_add_progress(mod_ctx, panel, fraction, &s_el_hp_bar);
 
     char buf[32];
     std::snprintf(buf, sizeof(buf), "%d / %d HP", s_cat_hp, kCatMaxHp);
-    svc_ui->panel_add_dyn_text(mod_ctx, panel, buf, &s_el_hp);
+    svc_ui->pane_add_text(mod_ctx, panel, buf, &s_el_hp);
     return MOD_OK;
 }
 
@@ -213,12 +213,12 @@ MOD_EXPORT ModResult mod_initialize(ModError* error) {
         return require_ok(result, error, "failed to hook Link damage");
     }
 
-    UiTab tab = UI_TAB_INIT;
-    tab.build = build_panel;
-    tab.update = update_panel;
-    result = svc_ui->register_tab(mod_ctx, &tab);
+    UiModsPanelDesc panel = UI_MODS_PANEL_DESC_INIT;
+    panel.build = build_panel;
+    panel.update = update_panel;
+    result = svc_ui->register_mods_panel(mod_ctx, &panel);
     if (result != MOD_OK) {
-        return require_ok(result, error, "failed to register UI tab");
+        return require_ok(result, error, "failed to register UI panel");
     }
 
     log_info("cat_mod: ready");
@@ -295,9 +295,9 @@ MOD_EXPORT ModResult mod_shutdown(ModError*) {
     s_cat_hp = kCatMaxHp;
     s_cat_dead = false;
     s_summon_carry = false;
-    s_el_hp = nullptr;
-    s_el_hp_bar = nullptr;
-    s_el_status = nullptr;
+    s_el_hp = 0;
+    s_el_hp_bar = 0;
+    s_el_status = 0;
     return MOD_OK;
 }
 }

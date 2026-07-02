@@ -34,7 +34,7 @@ std::optional<aurora::texture::ReplacementKey> translate_key(const TextureKey* k
             .width = key->width,
             .height = key->height,
             .format = key->gx_format,
-            .hasTlut = key->has_tlut != 0,
+            .hasTlut = key->has_tlut,
         }};
     default:
         return std::nullopt;

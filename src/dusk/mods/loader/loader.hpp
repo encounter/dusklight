@@ -9,6 +9,11 @@
 
 #include "dusk/mod_loader.hpp"
 #include "mods/svc/config.h"
+#include "mods/svc/ui.h"
+
+namespace dusk::ui {
+class Pane;
+}  // namespace dusk::ui
 
 namespace dusk::mods {
 
@@ -101,5 +106,35 @@ ModResult config_unsubscribe(LoadedMod& mod, uint64_t handle);
 void config_remove_mod(LoadedMod& mod);
 void config_mark_dirty();
 void config_flush_if_dirty(bool force);
+
+// UI service plumbing (loader/ui.cpp). Game thread only, like config.
+ModResult ui_register_mods_panel(LoadedMod& mod, const UiModsPanelDesc& desc);
+// Called by the host ModsWindow to build/update the mod's registered panels into its tab.
+void ui_build_mods_panels(LoadedMod& mod, dusk::ui::Pane& pane);
+void ui_update_mods_panels(LoadedMod& mod);
+ModResult ui_pane_add_section(LoadedMod& mod, uint64_t pane, const char* title);
+ModResult ui_pane_add_text(LoadedMod& mod, uint64_t pane, const char* text, uint64_t* outElem);
+ModResult ui_pane_add_rml(LoadedMod& mod, uint64_t pane, const char* rml, uint64_t* outElem);
+ModResult ui_pane_add_badge_row(
+    LoadedMod& mod, uint64_t pane, const char* label, bool ok, uint64_t* outElem);
+ModResult ui_pane_add_progress(LoadedMod& mod, uint64_t pane, float value, uint64_t* outElem);
+ModResult ui_pane_add_control(
+    LoadedMod& mod, uint64_t pane, const UiControlDesc& desc, uint64_t* outElem);
+ModResult ui_elem_set_text(LoadedMod& mod, uint64_t elem, const char* text);
+ModResult ui_elem_set_rml(LoadedMod& mod, uint64_t elem, const char* rml);
+ModResult ui_elem_set_badge(LoadedMod& mod, uint64_t elem, bool ok);
+ModResult ui_elem_set_progress(LoadedMod& mod, uint64_t elem, float value);
+ModResult ui_window_push(LoadedMod& mod, const UiWindowDesc& desc, uint64_t& outHandle);
+ModResult ui_window_close(LoadedMod& mod, uint64_t handle);
+ModResult ui_dialog_push(LoadedMod& mod, const UiDialogDesc& desc, uint64_t& outHandle);
+ModResult ui_dialog_close(LoadedMod& mod, uint64_t handle);
+bool ui_any_document_visible();
+void ui_focus_top_document();
+ModResult ui_close_top_document(LoadedMod& mod);
+ModResult ui_register_styles(LoadedMod& mod, uint32_t scope, const char* rcss, uint64_t& outHandle);
+ModResult ui_register_styles_file(
+    LoadedMod& mod, uint32_t scope, const char* path, uint64_t& outHandle);
+ModResult ui_unregister_styles(LoadedMod& mod, uint64_t handle);
+void ui_remove_mod(LoadedMod& mod);
 
 }  // namespace dusk::mods

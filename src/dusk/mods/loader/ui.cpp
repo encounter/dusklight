@@ -1,0 +1,992 @@
+#include "dusk/ui/ui.hpp"
+#include "aurora/lib/logging.hpp"
+#include "dusk/mod_loader.hpp"
+#include "dusk/ui/mod_window.hpp"
+#include "dusk/ui/modal.hpp"
+#include "loader.hpp"
+
+#include <RmlUi/Core.h>
+#include <aurora/rmlui.hpp>
+#include <fmt/format.h>
+
+#include <algorithm>
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
+namespace dusk::mods {
+namespace {
+
+aurora::Module Log("dusk::mods::ui");
+
+enum class UiSlotKind : u8 {
+    Free,
+    Window,
+    Dialog,
+    Pane,
+    Text,
+    Badge,
+    Progress,
+    Control,
+    Style,
+};
+
+const char* slot_kind_name(UiSlotKind kind) {
+    switch (kind) {
+    case UiSlotKind::Window:
+        return "window";
+    case UiSlotKind::Dialog:
+        return "dialog";
+    case UiSlotKind::Pane:
+        return "pane";
+    case UiSlotKind::Text:
+        return "text";
+    case UiSlotKind::Badge:
+        return "badge";
+    case UiSlotKind::Progress:
+        return "progress";
+    case UiSlotKind::Control:
+        return "control";
+    case UiSlotKind::Style:
+        return "style";
+    default:
+        return "free";
+    }
+}
+
+// Generation-checked handle slots. Game thread only: all mutations happen in service calls made
+// from mod code, in UI callbacks (ui::update), or in the loader's deactivate paths.
+struct UiSlot {
+    // Bumped on free, which invalidates every outstanding handle to this slot.
+    uint32_t generation = 1;
+    UiSlotKind kind = UiSlotKind::Free;
+    LoadedMod* owner = nullptr;
+    // Pane/Text/Badge/Progress/Control: freed automatically when the element is destroyed
+    Rml::Element* element = nullptr;
+    // Pane payload
+    ui::Pane* pane = nullptr;
+    ui::Pane* helpPane = nullptr;
+    // Window/Dialog payload (non-owning; the document stack owns the document)
+    ui::Document* document = nullptr;
+    UiWindowClosedFn onClosed = nullptr;
+    void* onClosedUserData = nullptr;
+    // Style payload
+    ui::DocumentScope styleScope = ui::DocumentScope::None;
+    std::string styleId;
+};
+
+std::vector<UiSlot> s_slots;
+std::vector<uint32_t> s_freeSlots;
+
+struct ModUiPanel {
+    UiPanelBuildFn build = nullptr;
+    UiPanelUpdateFn update = nullptr;
+    void* userData = nullptr;
+};
+std::unordered_map<const LoadedMod*, std::vector<ModUiPanel> > s_modPanels;
+
+uint64_t handle_for(uint32_t index) {
+    return (uint64_t{s_slots[index].generation} << 32) | index;
+}
+
+uint32_t slot_index(const UiSlot& slot) {
+    return static_cast<uint32_t>(&slot - s_slots.data());
+}
+
+UiSlot* slot_from_handle(uint64_t handle) {
+    const auto index = static_cast<uint32_t>(handle & 0xFFFFFFFFu);
+    const auto generation = static_cast<uint32_t>(handle >> 32);
+    if (index >= s_slots.size()) {
+        return nullptr;
+    }
+    auto& slot = s_slots[index];
+    if (slot.kind == UiSlotKind::Free || slot.generation != generation) {
+        return nullptr;
+    }
+    return &slot;
+}
+
+// Note: s_slots may reallocate on any later allocation, so callers must not hold the returned
+// slot reference across calls that can allocate (e.g. mod build callbacks); re-resolve instead.
+UiSlot& alloc_slot(LoadedMod& mod, UiSlotKind kind, uint64_t& outHandle) {
+    uint32_t index;
+    if (!s_freeSlots.empty()) {
+        index = s_freeSlots.back();
+        s_freeSlots.pop_back();
+    } else {
+        index = static_cast<uint32_t>(s_slots.size());
+        s_slots.emplace_back();
+    }
+    auto& slot = s_slots[index];
+    slot.kind = kind;
+    slot.owner = &mod;
+    outHandle = handle_for(index);
+    return slot;
+}
+
+void free_slot(UiSlot& slot) {
+    slot.generation++;
+    slot.kind = UiSlotKind::Free;
+    slot.owner = nullptr;
+    slot.element = nullptr;
+    slot.pane = nullptr;
+    slot.helpPane = nullptr;
+    slot.document = nullptr;
+    slot.onClosed = nullptr;
+    slot.onClosedUserData = nullptr;
+    slot.styleScope = ui::DocumentScope::None;
+    slot.styleId.clear();
+    s_freeSlots.push_back(slot_index(slot));
+}
+
+UiSlot* resolve(LoadedMod& mod, uint64_t handle, UiSlotKind kind, const char* what) {
+    auto* slot = slot_from_handle(handle);
+    if (slot == nullptr || slot->owner != &mod || slot->kind != kind) {
+        Log.error("[{}] {}: stale or invalid {} handle {:#x}", mod.metadata.id, what,
+            slot_kind_name(kind), handle);
+        return nullptr;
+    }
+    return slot;
+}
+
+// Whether the registration a callback was created under is still live. Callbacks captured by
+// host-owned UI (the Mods window panel outlives a mod reload; input events can hit it before
+// the rebuild) must check this before calling into the mod: `mod->active` alone is true again
+// once a reload completes, but captured fn pointers still target the unloaded image. Teardown
+// frees the slots (ui_remove_mod), which invalidates every callback built under them.
+bool slot_live(uint64_t handle) {
+    return slot_from_handle(handle) != nullptr;
+}
+
+// Frees the slot when the tracked element is destroyed (tab rebuilds, window teardown, ...).
+// The generation check makes a late detach of an already-recycled slot a no-op.
+class SlotDetachListener final : public Rml::EventListener {
+public:
+    SlotDetachListener(uint32_t index, uint32_t generation)
+        : m_index{index}, m_generation{generation} {}
+
+    void ProcessEvent(Rml::Event&) override {}
+
+    void OnDetach(Rml::Element*) override {
+        if (m_index < s_slots.size()) {
+            auto& slot = s_slots[m_index];
+            if (slot.kind != UiSlotKind::Free && slot.generation == m_generation) {
+                free_slot(slot);
+            }
+        }
+        delete this;
+    }
+
+private:
+    uint32_t m_index;
+    uint32_t m_generation;
+};
+
+void track_element(UiSlot& slot, Rml::Element& element) {
+    slot.element = &element;
+    element.AddEventListener(
+        Rml::EventId::Click, new SlotDetachListener(slot_index(slot), slot.generation));
+}
+
+template <typename T, typename Fn>
+T guarded_call(LoadedMod& mod, const char* what, T fallback, Fn&& fn) {
+    if (!mod.active) {
+        return fallback;
+    }
+    try {
+        return fn();
+    } catch (const std::exception& e) {
+        fail_mod(mod, MOD_ERROR, fmt::format("exception in {}: {}", what, e.what()));
+    } catch (...) {
+        fail_mod(mod, MOD_ERROR, fmt::format("unknown exception in {}", what));
+    }
+    return fallback;
+}
+
+// Shared by panel/tab build and update callbacks: translates a non-OK result or an escaped
+// exception into fail_mod, mirroring mod_update handling.
+template <typename Fn>
+void invoke_mod_ui_callback(LoadedMod& mod, const char* what, Fn&& fn) {
+    ModError error = MOD_ERROR_INIT;
+    const ModResult result = guarded_call(mod, what, MOD_OK, [&] { return fn(&error); });
+    if (result != MOD_OK && mod.active) {
+        fail_mod(
+            mod, result, error.message[0] != '\0' ? error.message : fmt::format("{} failed", what));
+    }
+}
+
+uint64_t wrap_pane(LoadedMod& mod, ui::Pane& pane, ui::Pane* helpPane) {
+    uint64_t handle = 0;
+    auto& slot = alloc_slot(mod, UiSlotKind::Pane, handle);
+    slot.pane = &pane;
+    slot.helpPane = helpPane;
+    track_element(slot, *pane.root());
+    return handle;
+}
+
+int clamp_to_int(int64_t value) {
+    return static_cast<int>(std::clamp<int64_t>(value, INT_MIN, INT_MAX));
+}
+
+// --- UiControlDesc -> ModControlSpec translation ---
+
+std::function<bool()> wrap_predicate(
+    LoadedMod& mod, UiPredicateFn fn, void* userData, uint64_t guardHandle) {
+    if (fn == nullptr) {
+        return {};
+    }
+    return [modPtr = &mod, fn, userData, guardHandle] {
+        if (!slot_live(guardHandle)) {
+            return false;
+        }
+        return guarded_call(*modPtr, "control predicate", false,
+            [&] { return fn(modPtr->context.get(), userData); });
+    };
+}
+
+void wire_callback_binding(
+    LoadedMod& mod, const UiControlDesc& desc, ui::ModControlSpec& spec, uint64_t guardHandle) {
+    auto* modPtr = &mod;
+    const auto get = desc.get;
+    const auto set = desc.set;
+    auto* userData = desc.user_data;
+    const auto getValue = [modPtr, get, userData, guardHandle] {
+        UiControlValue value = UI_CONTROL_VALUE_INIT;
+        if (!slot_live(guardHandle)) {
+            return value;
+        }
+        guarded_call(*modPtr, "control getter", 0, [&] {
+            get(modPtr->context.get(), userData, &value);
+            return 0;
+        });
+        return value;
+    };
+    const auto setValue = [modPtr, set, userData, guardHandle](const UiControlValue& value) {
+        if (!slot_live(guardHandle)) {
+            return;
+        }
+        guarded_call(*modPtr, "control setter", 0, [&] {
+            set(modPtr->context.get(), userData, &value);
+            return 0;
+        });
+    };
+    switch (desc.kind) {
+    case UI_CONTROL_TOGGLE:
+        spec.getBool = [getValue] { return getValue().bool_value; };
+        spec.setBool = [setValue](bool value) {
+            UiControlValue raw = UI_CONTROL_VALUE_INIT;
+            raw.bool_value = value;
+            setValue(raw);
+        };
+        break;
+    case UI_CONTROL_NUMBER:
+    case UI_CONTROL_SELECT:
+        spec.getInt = [getValue] { return clamp_to_int(getValue().int_value); };
+        spec.setInt = [setValue](int value) {
+            UiControlValue raw = UI_CONTROL_VALUE_INIT;
+            raw.int_value = value;
+            setValue(raw);
+        };
+        break;
+    case UI_CONTROL_STRING:
+        spec.getString = [getValue]() -> Rml::String {
+            const UiControlValue value = getValue();
+            return value.string_value != nullptr ? value.string_value : "";
+        };
+        spec.setString = [setValue](Rml::String value) {
+            UiControlValue raw = UI_CONTROL_VALUE_INIT;
+            raw.string_value = value.c_str();
+            setValue(raw);
+        };
+        break;
+    default:
+        break;
+    }
+}
+
+// The lambdas re-resolve the var on every call, so a control whose var was unregistered
+// mid-flight degrades to a no-op instead of a dangling read.
+bool wire_config_var_binding(LoadedMod& mod, const UiControlDesc& desc, ui::ModControlSpec& spec) {
+    auto* modPtr = &mod;
+    const uint64_t varHandle = desc.config_var;
+    switch (desc.kind) {
+    case UI_CONTROL_TOGGLE: {
+        const auto find = [modPtr, varHandle] {
+            return static_cast<ConfigVar<bool>*>(
+                config_find_var(*modPtr, varHandle, CONFIG_VAR_BOOL));
+        };
+        if (find() == nullptr) {
+            return false;
+        }
+        spec.getBool = [find] {
+            const auto* var = find();
+            return var != nullptr && var->getValue();
+        };
+        spec.setBool = [find](bool value) {
+            auto* var = find();
+            if (var == nullptr || var->getValue() == value) {
+                return;
+            }
+            var->setValue(value);
+            config_mark_dirty();
+        };
+        if (!spec.isModified) {
+            spec.isModified = [find] {
+                const auto* var = find();
+                return var != nullptr && var->getValue() != var->getDefaultValue();
+            };
+        }
+        return true;
+    }
+    case UI_CONTROL_NUMBER:
+    case UI_CONTROL_SELECT: {
+        const auto find = [modPtr, varHandle] {
+            return static_cast<ConfigVar<s64>*>(
+                config_find_var(*modPtr, varHandle, CONFIG_VAR_INT));
+        };
+        if (find() == nullptr) {
+            return false;
+        }
+        spec.getInt = [find] {
+            const auto* var = find();
+            return var != nullptr ? clamp_to_int(var->getValue()) : 0;
+        };
+        spec.setInt = [find](int value) {
+            auto* var = find();
+            if (var == nullptr || var->getValue() == value) {
+                return;
+            }
+            var->setValue(value);
+            config_mark_dirty();
+        };
+        if (!spec.isModified) {
+            spec.isModified = [find] {
+                const auto* var = find();
+                return var != nullptr && var->getValue() != var->getDefaultValue();
+            };
+        }
+        return true;
+    }
+    case UI_CONTROL_STRING: {
+        const auto find = [modPtr, varHandle] {
+            return static_cast<ConfigVar<std::string>*>(
+                config_find_var(*modPtr, varHandle, CONFIG_VAR_STRING));
+        };
+        if (find() == nullptr) {
+            return false;
+        }
+        spec.getString = [find]() -> Rml::String {
+            const auto* var = find();
+            return var != nullptr ? var->getValue() : "";
+        };
+        spec.setString = [find](Rml::String value) {
+            auto* var = find();
+            if (var == nullptr || var->getValue() == value) {
+                return;
+            }
+            var->setValue(std::move(value));
+            config_mark_dirty();
+        };
+        if (!spec.isModified) {
+            spec.isModified = [find] {
+                const auto* var = find();
+                return var != nullptr && var->getValue() != var->getDefaultValue();
+            };
+        }
+        return true;
+    }
+    default:
+        return false;
+    }
+}
+
+void on_mod_window_destroyed(uint64_t handle) {
+    auto* slot = slot_from_handle(handle);
+    if (slot == nullptr || slot->kind != UiSlotKind::Window) {
+        return;
+    }
+    LoadedMod* mod = slot->owner;
+    const UiWindowClosedFn onClosed = slot->onClosed;
+    void* userData = slot->onClosedUserData;
+    free_slot(*slot);
+    if (mod != nullptr && onClosed != nullptr) {
+        guarded_call(*mod, "window on_closed callback", 0, [&] {
+            onClosed(mod->context.get(), handle, userData);
+            return 0;
+        });
+    }
+}
+
+void on_mod_dialog_destroyed(uint64_t handle) {
+    auto* slot = slot_from_handle(handle);
+    if (slot != nullptr && slot->kind == UiSlotKind::Dialog) {
+        free_slot(*slot);
+    }
+}
+
+class ModDialog final : public ui::Modal {
+public:
+    ModDialog(Props props, bool showTopOnClose, std::function<void()> onDestroyed)
+        : Modal{std::move(props)}, m_onDestroyed{std::move(onDestroyed)},
+          m_showTopOnClose{showTopOnClose} {}
+
+    ~ModDialog() override {
+        if (m_onDestroyed) {
+            m_onDestroyed();
+        }
+    }
+
+    // Re-shows the document below only if it was visible at push time (a
+    // dialog pushed during gameplay must not pop the hidden menu bar open)
+    void close() { pop(m_showTopOnClose); }
+    // Marks the document closed without the close animation (mod teardown)
+    void force_close() { Document::hide(true); }
+
+private:
+    std::function<void()> m_onDestroyed;
+    bool m_showTopOnClose;
+};
+
+// Pushes a mod window/dialog the way host documents stack (Document::push):
+// the current top document hides while the new one shows. The close paths
+// re-show it only if it was visible here — that decision is baked into the
+// pushed document (ModWindow::Desc::showTopOnClose / ModDialog) beforehand.
+void push_stacked_document(std::unique_ptr<ui::Document> document) {
+    if (auto* previousTop = ui::top_document()) {
+        previousTop->push(std::move(document));
+    } else {
+        dusk::ui::push_document(std::move(document));
+    }
+}
+
+}  // namespace
+
+ModResult ui_register_mods_panel(LoadedMod& mod, const UiModsPanelDesc& desc) {
+    s_modPanels[&mod].push_back({desc.build, desc.update, desc.user_data});
+    return MOD_OK;
+}
+
+void ui_build_mods_panels(LoadedMod& mod, ui::Pane& pane) {
+    const auto it = s_modPanels.find(&mod);
+    if (it == s_modPanels.end() || it->second.empty()) {
+        return;
+    }
+    const uint64_t paneHandle = wrap_pane(mod, pane, nullptr);
+    for (const auto& panel : it->second) {
+        if (!mod.active || panel.build == nullptr) {
+            break;
+        }
+        invoke_mod_ui_callback(mod, "mod UI panel build", [&](ModError* error) {
+            return panel.build(mod.context.get(), paneHandle, panel.userData, error);
+        });
+    }
+}
+
+void ui_update_mods_panels(LoadedMod& mod) {
+    const auto it = s_modPanels.find(&mod);
+    if (it == s_modPanels.end()) {
+        return;
+    }
+    for (const auto& panel : it->second) {
+        if (!mod.active || panel.update == nullptr) {
+            break;
+        }
+        invoke_mod_ui_callback(mod, "mod UI panel update", [&](ModError* error) {
+            return panel.update(mod.context.get(), panel.userData, error);
+        });
+    }
+}
+
+ModResult ui_pane_add_section(LoadedMod& mod, uint64_t pane, const char* title) {
+    auto* slot = resolve(mod, pane, UiSlotKind::Pane, "pane_add_section");
+    if (slot == nullptr) {
+        return MOD_INVALID_ARGUMENT;
+    }
+    auto* elem = ui::append(slot->element, "div");
+    elem->SetClass("section-heading", true);
+    elem->SetInnerRML(ui::escape(title));
+    return MOD_OK;
+}
+
+ModResult ui_pane_add_text(LoadedMod& mod, uint64_t pane, const char* text, uint64_t* outElem) {
+    auto* slot = resolve(mod, pane, UiSlotKind::Pane, "pane_add_text");
+    if (slot == nullptr) {
+        return MOD_INVALID_ARGUMENT;
+    }
+    auto* elem = ui::append(slot->element, "div");
+    elem->SetInnerRML(ui::escape(text));
+    if (outElem != nullptr) {
+        auto& elemSlot = alloc_slot(mod, UiSlotKind::Text, *outElem);
+        track_element(elemSlot, *elem);
+    }
+    return MOD_OK;
+}
+
+ModResult ui_pane_add_rml(LoadedMod& mod, uint64_t pane, const char* rml, uint64_t* outElem) {
+    auto* slot = resolve(mod, pane, UiSlotKind::Pane, "pane_add_rml");
+    if (slot == nullptr) {
+        return MOD_INVALID_ARGUMENT;
+    }
+    auto* elem = ui::append(slot->element, "div");
+    elem->SetInnerRML(rml);
+    if (outElem != nullptr) {
+        auto& elemSlot = alloc_slot(mod, UiSlotKind::Text, *outElem);
+        track_element(elemSlot, *elem);
+    }
+    return MOD_OK;
+}
+
+ModResult ui_pane_add_badge_row(
+    LoadedMod& mod, uint64_t pane, const char* label, bool ok, uint64_t* outElem) {
+    auto* slot = resolve(mod, pane, UiSlotKind::Pane, "pane_add_badge_row");
+    if (slot == nullptr) {
+        return MOD_INVALID_ARGUMENT;
+    }
+    auto* row = ui::append(slot->element, "div");
+    row->SetClass("mod-info-row", true);
+
+    auto* badge = ui::append(row, "span");
+    badge->SetClass("achievement-badge", true);
+    badge->SetClass(ok ? "unlocked" : "locked", true);
+    badge->SetInnerRML(ok ? "PASS" : "WAIT");
+
+    auto* text = ui::append(row, "span");
+    text->SetClass("mod-info-value", true);
+    text->SetInnerRML(ui::escape(label));
+
+    if (outElem != nullptr) {
+        auto& elemSlot = alloc_slot(mod, UiSlotKind::Badge, *outElem);
+        track_element(elemSlot, *badge);
+    }
+    return MOD_OK;
+}
+
+ModResult ui_pane_add_progress(LoadedMod& mod, uint64_t pane, float value, uint64_t* outElem) {
+    auto* slot = resolve(mod, pane, UiSlotKind::Pane, "pane_add_progress");
+    if (slot == nullptr) {
+        return MOD_INVALID_ARGUMENT;
+    }
+    auto* elem = ui::append(slot->element, "progress");
+    elem->SetClass("progress-health", true);
+    elem->SetAttribute("value", value);
+    if (outElem != nullptr) {
+        auto& elemSlot = alloc_slot(mod, UiSlotKind::Progress, *outElem);
+        track_element(elemSlot, *elem);
+    }
+    return MOD_OK;
+}
+
+ModResult ui_pane_add_control(
+    LoadedMod& mod, uint64_t pane, const UiControlDesc& desc, uint64_t* outElem) {
+    auto* slot = resolve(mod, pane, UiSlotKind::Pane, "pane_add_control");
+    if (slot == nullptr) {
+        return MOD_INVALID_ARGUMENT;
+    }
+
+    ui::ModControlSpec spec;
+    spec.label = desc.label;
+    spec.helpRml = desc.help_rml != nullptr ? desc.help_rml : "";
+    spec.isDisabled = wrap_predicate(mod, desc.is_disabled, desc.user_data, pane);
+    spec.isModified = wrap_predicate(mod, desc.is_modified, desc.user_data, pane);
+    switch (desc.kind) {
+    case UI_CONTROL_BUTTON:
+        spec.kind = ui::ModControlSpec::Kind::Button;
+        spec.onPressed = [modPtr = &mod, fn = desc.on_pressed, userData = desc.user_data,
+                             guardHandle = pane] {
+            if (!slot_live(guardHandle)) {
+                return;
+            }
+            guarded_call(*modPtr, "control on_pressed callback", 0, [&] {
+                fn(modPtr->context.get(), userData);
+                return 0;
+            });
+        };
+        break;
+    case UI_CONTROL_TOGGLE:
+        spec.kind = ui::ModControlSpec::Kind::Toggle;
+        break;
+    case UI_CONTROL_NUMBER:
+        spec.kind = ui::ModControlSpec::Kind::Number;
+        if (desc.min != desc.max) {
+            spec.min = clamp_to_int(desc.min);
+            spec.max = clamp_to_int(desc.max);
+            if (spec.max < spec.min) {
+                std::swap(spec.min, spec.max);
+            }
+        }
+        spec.step = desc.step < 1 ? 1 : clamp_to_int(desc.step);
+        spec.prefix = desc.prefix != nullptr ? desc.prefix : "";
+        spec.suffix = desc.suffix != nullptr ? desc.suffix : "";
+        break;
+    case UI_CONTROL_STRING:
+        spec.kind = ui::ModControlSpec::Kind::String;
+        spec.maxLength = desc.max_length < 1 ? -1 : desc.max_length;
+        break;
+    case UI_CONTROL_SELECT:
+        spec.kind = ui::ModControlSpec::Kind::Select;
+        if (slot->helpPane == nullptr) {
+            Log.error("[{}] pane_add_control: SELECT controls need a help pane (mod window tabs)",
+                mod.metadata.id);
+            return MOD_UNSUPPORTED;
+        }
+        for (size_t i = 0; i < desc.option_count; ++i) {
+            spec.options.emplace_back(desc.options[i]);
+        }
+        break;
+    default:
+        return MOD_INVALID_ARGUMENT;
+    }
+
+    if (desc.kind != UI_CONTROL_BUTTON) {
+        if (desc.binding == UI_BINDING_CONFIG_VAR) {
+            if (!wire_config_var_binding(mod, desc, spec)) {
+                Log.error("[{}] pane_add_control: config var handle {:#x} is unknown or its type "
+                          "does not match the control kind",
+                    mod.metadata.id, desc.config_var);
+                return MOD_INVALID_ARGUMENT;
+            }
+        } else {
+            wire_callback_binding(mod, desc, spec, pane);
+        }
+    }
+
+    // Copy the pane pointers out: allocating the control's slot below may reallocate s_slots
+    auto* paneComponent = slot->pane;
+    auto* helpPane = slot->helpPane;
+    auto* control = dusk::ui::build_mod_control(*paneComponent, helpPane, std::move(spec));
+    if (control == nullptr) {
+        return MOD_UNSUPPORTED;
+    }
+    if (outElem != nullptr) {
+        auto& elemSlot = alloc_slot(mod, UiSlotKind::Control, *outElem);
+        track_element(elemSlot, *control->root());
+    }
+    return MOD_OK;
+}
+
+ModResult ui_elem_set_text(LoadedMod& mod, uint64_t elem, const char* text) {
+    auto* slot = resolve(mod, elem, UiSlotKind::Text, "elem_set_text");
+    if (slot == nullptr) {
+        return MOD_INVALID_ARGUMENT;
+    }
+    slot->element->SetInnerRML(ui::escape(text));
+    return MOD_OK;
+}
+
+ModResult ui_elem_set_rml(LoadedMod& mod, uint64_t elem, const char* rml) {
+    auto* slot = resolve(mod, elem, UiSlotKind::Text, "elem_set_rml");
+    if (slot == nullptr) {
+        return MOD_INVALID_ARGUMENT;
+    }
+    slot->element->SetInnerRML(rml);
+    return MOD_OK;
+}
+
+ModResult ui_elem_set_badge(LoadedMod& mod, uint64_t elem, bool ok) {
+    auto* slot = resolve(mod, elem, UiSlotKind::Badge, "elem_set_badge");
+    if (slot == nullptr) {
+        return MOD_INVALID_ARGUMENT;
+    }
+    slot->element->SetClass("unlocked", ok);
+    slot->element->SetClass("locked", !ok);
+    slot->element->SetInnerRML(ok ? "PASS" : "WAIT");
+    return MOD_OK;
+}
+
+ModResult ui_elem_set_progress(LoadedMod& mod, uint64_t elem, float value) {
+    auto* slot = resolve(mod, elem, UiSlotKind::Progress, "elem_set_progress");
+    if (slot == nullptr) {
+        return MOD_INVALID_ARGUMENT;
+    }
+    slot->element->SetAttribute("value", value);
+    return MOD_OK;
+}
+
+ModResult ui_window_push(LoadedMod& mod, const UiWindowDesc& desc, uint64_t& outHandle) {
+    outHandle = 0;
+    if (!aurora::rmlui::is_initialized()) {
+        return MOD_UNAVAILABLE;
+    }
+    // Validate the per-window RCSS up front so a parse error is a clean failure
+    // instead of a silently unstyled window
+    if (desc.rcss != nullptr && desc.rcss[0] != '\0' &&
+        Rml::Factory::InstanceStyleSheetString(desc.rcss) == nullptr)
+    {
+        Log.error("[{}] window_push: failed to parse window RCSS", mod.metadata.id);
+        return MOD_INVALID_ARGUMENT;
+    }
+
+    uint64_t handle = 0;
+    {
+        auto& slot = alloc_slot(mod, UiSlotKind::Window, handle);
+        slot.onClosed = desc.on_closed;
+        slot.onClosedUserData = desc.user_data;
+    }
+
+    ui::ModWindow::Desc windowDesc;
+    windowDesc.rcss = desc.rcss != nullptr ? desc.rcss : "";
+    windowDesc.onDestroyed = [handle] { on_mod_window_destroyed(handle); };
+    for (size_t i = 0; i < desc.tab_count; ++i) {
+        const UiTabDesc& tab = desc.tabs[i];
+        ui::ModWindow::Tab hostTab;
+        hostTab.title = tab.title;
+        hostTab.build = [modPtr = &mod, handle, build = tab.build, userData = tab.user_data](
+                            ui::ModWindow&, ui::Pane& left, ui::Pane& right) {
+            if (build == nullptr || !slot_live(handle) || !modPtr->active) {
+                return;
+            }
+            const uint64_t leftHandle = wrap_pane(*modPtr, left, &right);
+            const uint64_t rightHandle = wrap_pane(*modPtr, right, nullptr);
+            invoke_mod_ui_callback(*modPtr, "mod UI tab build", [&](ModError* error) {
+                return build(
+                    modPtr->context.get(), handle, leftHandle, rightHandle, userData, error);
+            });
+        };
+        if (tab.update != nullptr) {
+            hostTab.update = [modPtr = &mod, handle, update = tab.update,
+                                 userData = tab.user_data] {
+                if (!slot_live(handle) || !modPtr->active) {
+                    return;
+                }
+                invoke_mod_ui_callback(*modPtr, "mod UI tab update", [&](ModError* error) {
+                    return update(modPtr->context.get(), userData, error);
+                });
+            };
+        }
+        windowDesc.tabs.push_back(std::move(hostTab));
+    }
+
+    // Closing restores the document we are about to hide only if the user
+    // could actually see it (see push_stacked_document)
+    auto* previousTop = ui::top_document();
+    windowDesc.showTopOnClose = previousTop != nullptr && previousTop->visible();
+
+    // The first tab builds during construction, which can allocate slots; only
+    // re-resolve the window slot afterwards.
+    auto window = std::make_unique<ui::ModWindow>(std::move(windowDesc));
+    if (auto* slot = slot_from_handle(handle)) {
+        slot->document = window.get();
+    }
+    push_stacked_document(std::move(window));
+    outHandle = handle;
+    return MOD_OK;
+}
+
+ModResult ui_window_close(LoadedMod& mod, uint64_t handle) {
+    auto* slot = resolve(mod, handle, UiSlotKind::Window, "window_close");
+    if (slot == nullptr || slot->document == nullptr) {
+        return MOD_INVALID_ARGUMENT;
+    }
+    slot->document->request_dismiss();
+    return MOD_OK;
+}
+
+ModResult ui_dialog_push(LoadedMod& mod, const UiDialogDesc& desc, uint64_t& outHandle) {
+    outHandle = 0;
+    if (!aurora::rmlui::is_initialized()) {
+        return MOD_UNAVAILABLE;
+    }
+    uint64_t handle = 0;
+    alloc_slot(mod, UiSlotKind::Dialog, handle);
+
+    const char* defaultIcon = "";
+    ui::Modal::Props props;
+    switch (desc.variant) {
+    case UI_DIALOG_WARNING:
+        defaultIcon = "warning";
+        break;
+    case UI_DIALOG_DANGER:
+        props.variant = "danger";
+        defaultIcon = "error";
+        break;
+    default:
+        break;
+    }
+    props.title = ui::escape(desc.title);
+    props.bodyRml = desc.body_rml;
+    props.icon = desc.icon != nullptr ? desc.icon : defaultIcon;
+    props.onDismiss = [modPtr = &mod, handle, fn = desc.on_dismiss, userData = desc.user_data](
+                          ui::Modal& modal) {
+        if (!slot_live(handle)) {
+            return;  // already being torn down
+        }
+        if (fn != nullptr) {
+            guarded_call(*modPtr, "dialog on_dismiss callback", 0, [&] {
+                fn(modPtr->context.get(), handle, userData);
+                return 0;
+            });
+        }
+        static_cast<ModDialog&>(modal).close();
+    };
+    for (size_t i = 0; i < desc.action_count; ++i) {
+        const UiDialogAction& action = desc.actions[i];
+        props.actions.push_back({
+            .label = ui::escape(action.label),
+            .onPressed =
+                [modPtr = &mod, handle, fn = action.on_pressed, userData = action.user_data,
+                    keepOpen = action.keep_open != 0](ui::Modal& modal) {
+                    if (!slot_live(handle)) {
+                        return;  // already being torn down
+                    }
+                    if (fn != nullptr) {
+                        guarded_call(*modPtr, "dialog action callback", 0, [&] {
+                            fn(modPtr->context.get(), handle, userData);
+                            return 0;
+                        });
+                    }
+                    // The callback may have closed the dialog already
+                    if (!keepOpen && slot_live(handle)) {
+                        static_cast<ModDialog&>(modal).close();
+                    }
+                },
+        });
+    }
+
+    auto* previousTop = ui::top_document();
+    const bool showTopOnClose = previousTop != nullptr && previousTop->visible();
+    auto dialog = std::make_unique<ModDialog>(
+        std::move(props), showTopOnClose, [handle] { on_mod_dialog_destroyed(handle); });
+    if (auto* slot = slot_from_handle(handle)) {
+        slot->document = dialog.get();
+    }
+    push_stacked_document(std::move(dialog));
+    outHandle = handle;
+    return MOD_OK;
+}
+
+ModResult ui_dialog_close(LoadedMod& mod, uint64_t handle) {
+    auto* slot = resolve(mod, handle, UiSlotKind::Dialog, "dialog_close");
+    if (slot == nullptr || slot->document == nullptr) {
+        return MOD_INVALID_ARGUMENT;
+    }
+    // Programmatic close: no dismiss notification, no sound
+    static_cast<ModDialog*>(slot->document)->close();
+    return MOD_OK;
+}
+
+bool ui_any_document_visible() {
+    return ui::any_document_visible();
+}
+
+void ui_focus_top_document() {
+    ui::focus_top_document(true);
+}
+
+ModResult ui_close_top_document(LoadedMod& mod) {
+    auto* doc = ui::top_document();
+    if (doc == nullptr) {
+        return MOD_UNAVAILABLE;
+    }
+    if (!doc->request_dismiss()) {
+        Log.warn("[{}] close_top_document: the top document cannot be dismissed", mod.metadata.id);
+        return MOD_UNSUPPORTED;
+    }
+    return MOD_OK;
+}
+
+ModResult ui_register_styles(LoadedMod& mod, uint32_t scope, const char* rcss, uint64_t& outHandle) {
+    outHandle = 0;
+    ui::DocumentScope docScope;
+    switch (scope) {
+    case UI_SCOPE_PRELAUNCH:
+        docScope = ui::DocumentScope::Prelaunch;
+        break;
+    case UI_SCOPE_WINDOW:
+        docScope = ui::DocumentScope::Window;
+        break;
+    case UI_SCOPE_MENU_BAR:
+        docScope = ui::DocumentScope::MenuBar;
+        break;
+    case UI_SCOPE_OVERLAY:
+        docScope = ui::DocumentScope::Overlay;
+        break;
+    case UI_SCOPE_TOUCH_CONTROLS:
+        docScope = ui::DocumentScope::TouchControls;
+        break;
+    case UI_SCOPE_GRAPHICS_TUNER:
+        docScope = ui::DocumentScope::GraphicsTuner;
+        break;
+    default:
+        return MOD_INVALID_ARGUMENT;
+    }
+
+    uint64_t handle = 0;
+    auto& slot = alloc_slot(mod, UiSlotKind::Style, handle);
+    slot.styleScope = docScope;
+    slot.styleId = fmt::format("{}:{:x}", mod.metadata.id, handle);
+    if (!dusk::ui::register_scoped_styles(docScope, slot.styleId, rcss)) {
+        Log.error("[{}] register_styles: failed to parse RCSS", mod.metadata.id);
+        free_slot(slot);
+        return MOD_INVALID_ARGUMENT;
+    }
+    outHandle = handle;
+    return MOD_OK;
+}
+
+ModResult ui_register_styles_file(
+    LoadedMod& mod, uint32_t scope, const char* path, uint64_t& outHandle) {
+    outHandle = 0;
+    if (mod.bundle == nullptr) {
+        return MOD_UNAVAILABLE;
+    }
+    std::vector<u8> data;
+    const std::string entry = std::string{"res/"} + path;
+    try {
+        data = mod.bundle->readFile(entry);
+    } catch (const std::runtime_error& e) {
+        Log.error("[{}] register_styles_file '{}' failed: {}", mod.metadata.id, entry, e.what());
+        return MOD_UNAVAILABLE;
+    }
+    const std::string rcss{data.begin(), data.end()};
+    return ui_register_styles(mod, scope, rcss.c_str(), outHandle);
+}
+
+ModResult ui_unregister_styles(LoadedMod& mod, uint64_t handle) {
+    auto* slot = resolve(mod, handle, UiSlotKind::Style, "unregister_styles");
+    if (slot == nullptr) {
+        return MOD_INVALID_ARGUMENT;
+    }
+    dusk::ui::unregister_scoped_styles(slot->styleScope, slot->styleId);
+    free_slot(*slot);
+    return MOD_OK;
+}
+
+void ui_remove_mod(LoadedMod& mod) {
+    s_modPanels.erase(&mod);
+    for (auto& slot : s_slots) {
+        if (slot.kind == UiSlotKind::Free || slot.owner != &mod) {
+            continue;
+        }
+        // Freeing first makes the destructor notifications and element detach
+        // listeners below no-ops; on_closed is deliberately not fired during
+        // teardown (mod_shutdown has already run).
+        switch (slot.kind) {
+        case UiSlotKind::Window: {
+            auto* window = static_cast<ui::ModWindow*>(slot.document);
+            free_slot(slot);
+            if (window != nullptr) {
+                window->force_close();
+            }
+            break;
+        }
+        case UiSlotKind::Dialog: {
+            auto* dialog = static_cast<ModDialog*>(slot.document);
+            free_slot(slot);
+            if (dialog != nullptr) {
+                dialog->force_close();
+            }
+            break;
+        }
+        case UiSlotKind::Style:
+            dusk::ui::unregister_scoped_styles(slot.styleScope, slot.styleId);
+            free_slot(slot);
+            break;
+        default:
+            free_slot(slot);
+            break;
+        }
+    }
+}
+
+}  // namespace dusk::mods

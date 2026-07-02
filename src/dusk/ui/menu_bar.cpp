@@ -42,7 +42,9 @@ const Rml::String kDocumentSource = R"RML(
 
 }
 
-MenuBar::MenuBar() : Document(kDocumentSource), mRoot(mDocument->GetElementById("popup")) {
+MenuBar::MenuBar()
+    : Document(kDocumentSource, false, DocumentScope::MenuBar),
+      mRoot(mDocument->GetElementById("popup")) {
     mTabBar = std::make_unique<TabBar>(mRoot, TabBar::Props{
                                                   .onClose =
                                                       [this] {

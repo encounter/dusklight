@@ -28,6 +28,7 @@ public:
     void update() override;
     bool focus() override;
     bool visible() const override;
+    bool request_dismiss() override;
     bool set_active_tab(int index);
 
 protected:
@@ -65,6 +66,7 @@ public:
     void show() override;
     void hide(bool close) override;
     bool visible() const override;
+    bool request_dismiss() override;
 
 protected:
     Rml::Element* mRoot = nullptr;

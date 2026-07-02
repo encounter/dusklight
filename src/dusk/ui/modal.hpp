@@ -25,6 +25,7 @@ public:
     explicit Modal(Props props);
 
     bool focus() override;
+    bool request_dismiss() override;
 
 protected:
     bool handle_nav_command(Rml::Event& event, NavCommand cmd) override;

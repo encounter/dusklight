@@ -15,6 +15,18 @@ class Document;
 
 using clock = std::chrono::steady_clock;
 
+// Class of document a scoped style sheet applies to; each Document subclass
+// tags itself with the scope it belongs to (None = not extensible).
+enum class DocumentScope : u8 {
+    None,
+    Prelaunch,
+    Window,
+    MenuBar,
+    Overlay,
+    TouchControls,
+    GraphicsTuner,
+};
+
 struct Toast {
     Rml::String type;
     Rml::String title;
@@ -74,6 +86,16 @@ void update() noexcept;
 
 Document& push_document(
     std::unique_ptr<Document> doc, bool show = true, bool passive = false) noexcept;
+
+// Register an extra RCSS sheet applied to every document of the given scope.
+// Existing documents restyle immediately; future documents pick it up at
+// construction. Re-registering the same (scope, id) replaces the sheet.
+// Returns false if the RCSS fails to parse.
+bool register_scoped_styles(DocumentScope scope, std::string id, const std::string& rcss) noexcept;
+void unregister_scoped_styles(DocumentScope scope, std::string_view id) noexcept;
+// Applies the registered sheets for a document's scope (called at construction
+// and after per-document style changes).
+void apply_scoped_styles(Document& doc) noexcept;
 void focus_top_document(bool show) noexcept;
 bool any_document_visible() noexcept;
 bool is_prelaunch_open() noexcept;

@@ -20,7 +20,7 @@ DEFINE_MOD();
 IMPORT_SERVICE(HostService, svc_host);
 IMPORT_SERVICE(LogService, svc_log);
 IMPORT_SERVICE(ResourceService, svc_resource);
-IMPORT_SERVICE(UiService, svc_ui);
+IMPORT_SERVICE_VERSION(UiService, svc_ui, 2);
 IMPORT_SERVICE(HookService, svc_hook);
 IMPORT_SERVICE(OverlayService, svc_overlay);
 IMPORT_SERVICE(TextureService, svc_texture);
@@ -57,9 +57,34 @@ bool g_config_change_ok = false;
 bool g_config_neg_ok = false;
 int g_config_change_count = 0;
 int64_t g_config_prev_value = -1;
+int64_t g_config_curr_value = -1;
+bool g_ui_stack_ok = false;
+bool g_ui_rcss_ok = false;
+bool g_ui_neg_ok = false;
 
-void on_config_changed(ModContext*, ConfigVarHandle, const ConfigVarValue* previous, void* userData) {
+// Kept live for the UI test window's cvar-bound controls.
+ConfigVarHandle g_cfg_flag = 0;
+ConfigVarHandle g_cfg_int = 0;
+ConfigVarHandle g_cfg_string = 0;
+ConfigVarHandle g_cfg_choice = 0;
+ConfigVarHandle g_cfg_pride = 0;
+// The registered Pride Mode style, 0 while disabled.
+UiStyleHandle g_style = 0;
+UiWindowHandle g_test_window = 0;
+UiElementHandle g_el_win_counter = 0;
+int g_window_updates = 0;
+
+// Backing state for the callback-bound controls.
+bool g_cb_toggle = false;
+int64_t g_cb_number = 5;
+char g_cb_string[64] = "callback";
+
+void on_config_changed(ModContext*, ConfigVarHandle, const ConfigVarValue* value,
+    const ConfigVarValue* previous, void* userData) {
     ++*static_cast<int*>(userData);
+    if (value != nullptr && value->type == CONFIG_VAR_INT) {
+        g_config_curr_value = value->int_value;
+    }
     if (previous != nullptr && previous->type == CONFIG_VAR_INT) {
         g_config_prev_value = previous->int_value;
     }
@@ -77,14 +102,14 @@ constexpr TestMainService s_testMainService{
     .initialized = test_main_initialized,
 };
 
-ElemHandle g_el_pre_badge = nullptr;
-ElemHandle g_el_post_badge = nullptr;
-ElemHandle g_el_replace_badge = nullptr;
-ElemHandle g_el_argwrite_badge = nullptr;
-ElemHandle g_el_cancel_count = nullptr;
-ElemHandle g_el_post_count = nullptr;
-ElemHandle g_el_link_angle = nullptr;
-ElemHandle g_el_overlay_read_badge = nullptr;
+UiElementHandle g_el_pre_badge = 0;
+UiElementHandle g_el_post_badge = 0;
+UiElementHandle g_el_replace_badge = 0;
+UiElementHandle g_el_argwrite_badge = 0;
+UiElementHandle g_el_cancel_count = 0;
+UiElementHandle g_el_post_count = 0;
+UiElementHandle g_el_link_angle = 0;
+UiElementHandle g_el_overlay_read_badge = 0;
 
 ModResult require_ok(const ModResult result, ModError* error, const char* message) {
     if (result != MOD_OK) {
@@ -163,65 +188,284 @@ void on_reset(ModContext*, void*) {
     g_post_count = 0;
 }
 
-ModResult build_panel(ModContext*, PanelHandle panel, void*, ModError*) {
-    ElemHandle unused = nullptr;
+// --- UI test window (interactive) ---
 
-    svc_ui->panel_add_section(mod_ctx, panel, "Hooks");
-    svc_ui->panel_add_badge_row(
+void cb_toggle_get(ModContext*, void*, UiControlValue* value) {
+    value->bool_value = g_cb_toggle;
+}
+void cb_toggle_set(ModContext*, void*, const UiControlValue* value) {
+    g_cb_toggle = value->bool_value;
+}
+void cb_number_get(ModContext*, void*, UiControlValue* value) {
+    value->int_value = g_cb_number;
+}
+void cb_number_set(ModContext*, void*, const UiControlValue* value) {
+    g_cb_number = value->int_value;
+}
+void cb_string_get(ModContext*, void*, UiControlValue* value) {
+    value->string_value = g_cb_string;
+}
+void cb_string_set(ModContext*, void*, const UiControlValue* value) {
+    std::snprintf(g_cb_string, sizeof(g_cb_string), "%s",
+        value->string_value != nullptr ? value->string_value : "");
+}
+
+void apply_pride_mode(bool on) {
+    if (on && g_style == 0) {
+        svc_ui->register_styles_file(mod_ctx, UI_SCOPE_WINDOW, "pride.rcss", &g_style);
+    } else if (!on && g_style != 0) {
+        svc_ui->unregister_styles(mod_ctx, g_style);
+        g_style = 0;
+    }
+}
+
+void on_pride_changed(
+    ModContext*, ConfigVarHandle, const ConfigVarValue* value, const ConfigVarValue*, void*) {
+    apply_pride_mode(value->bool_value);
+}
+
+void on_close_window_pressed(ModContext*, void*) {
+    svc_ui->window_close(mod_ctx, g_test_window);
+}
+
+void on_close_top_pressed(ModContext*, void*) {
+    svc_ui->close_top_document(mod_ctx);
+}
+
+void add_control(UiElementHandle pane, const UiControlDesc& desc) {
+    svc_ui->pane_add_control(mod_ctx, pane, &desc, nullptr);
+}
+
+ModResult build_window_controls_tab(ModContext*, UiWindowHandle, UiElementHandle left,
+    UiElementHandle right, void*, ModError*) {
+    (void)right;  // help_rml and SELECT options render there automatically
+
+    svc_ui->pane_add_section(mod_ctx, left, "Config");
+    UiControlDesc control = UI_CONTROL_DESC_INIT;
+    control.kind = UI_CONTROL_TOGGLE;
+    control.label = "Pride Mode";
+    control.help_rml = "Rainbow-animates window borders and tab highlights everywhere. Bound to "
+                       "<span class=\"tip\">prideMode</span>; persists in config.json.";
+    control.binding = UI_BINDING_CONFIG_VAR;
+    control.config_var = g_cfg_pride;
+    add_control(left, control);
+
+    control = UI_CONTROL_DESC_INIT;
+    control.kind = UI_CONTROL_NUMBER;
+    control.label = "Test Int";
+    control.help_rml = "Bound to <span class=\"tip\">testInt</span>.";
+    control.binding = UI_BINDING_CONFIG_VAR;
+    control.config_var = g_cfg_int;
+    control.min = 0;
+    control.max = 10000;
+    control.step = 100;
+    add_control(left, control);
+
+    control = UI_CONTROL_DESC_INIT;
+    control.kind = UI_CONTROL_STRING;
+    control.label = "Test String";
+    control.help_rml = "Bound to <span class=\"tip\">testString</span>.";
+    control.binding = UI_BINDING_CONFIG_VAR;
+    control.config_var = g_cfg_string;
+    control.max_length = 32;
+    add_control(left, control);
+
+    static const char* kChoices[] = {"Ordon", "Faron", "Eldin", "Lanayru"};
+    control = UI_CONTROL_DESC_INIT;
+    control.kind = UI_CONTROL_SELECT;
+    control.label = "Test Choice";
+    control.help_rml = "Bound to <span class=\"tip\">testChoice</span> (option index).";
+    control.binding = UI_BINDING_CONFIG_VAR;
+    control.config_var = g_cfg_choice;
+    control.options = kChoices;
+    control.option_count = 4;
+    add_control(left, control);
+
+    svc_ui->pane_add_section(mod_ctx, left, "Callback-bound");
+    control = UI_CONTROL_DESC_INIT;
+    control.kind = UI_CONTROL_TOGGLE;
+    control.label = "CB Toggle";
+    control.get = cb_toggle_get;
+    control.set = cb_toggle_set;
+    add_control(left, control);
+
+    control = UI_CONTROL_DESC_INIT;
+    control.kind = UI_CONTROL_NUMBER;
+    control.label = "CB Number";
+    control.get = cb_number_get;
+    control.set = cb_number_set;
+    control.min = -10;
+    control.max = 10;
+    control.suffix = " pts";
+    add_control(left, control);
+
+    control = UI_CONTROL_DESC_INIT;
+    control.kind = UI_CONTROL_STRING;
+    control.label = "CB String";
+    control.get = cb_string_get;
+    control.set = cb_string_set;
+    control.max_length = 32;
+    add_control(left, control);
+
+    svc_ui->pane_add_section(mod_ctx, left, "Actions");
+    control = UI_CONTROL_DESC_INIT;
+    control.kind = UI_CONTROL_BUTTON;
+    control.label = "Close (window_close)";
+    control.on_pressed = on_close_window_pressed;
+    add_control(left, control);
+
+    control = UI_CONTROL_DESC_INIT;
+    control.kind = UI_CONTROL_BUTTON;
+    control.label = "Close (close_top_document)";
+    control.on_pressed = on_close_top_pressed;
+    add_control(left, control);
+    return MOD_OK;
+}
+
+ModResult build_window_info_tab(ModContext*, UiWindowHandle, UiElementHandle left,
+    UiElementHandle right, void*, ModError*) {
+    (void)right;
+    svc_ui->pane_add_section(mod_ctx, left, "Info");
+    svc_ui->pane_add_text(mod_ctx, left,
+        "Switching tabs rebuilt this content; stale handles from the previous build are "
+        "rejected, not dereferenced.",
+        nullptr);
+    svc_ui->pane_add_text(mod_ctx, left, "updates: 0", &g_el_win_counter);
+    return MOD_OK;
+}
+
+ModResult update_window_info_tab(ModContext*, void*, ModError*) {
+    char buf[32];
+    std::snprintf(buf, sizeof(buf), "updates: %d", ++g_window_updates);
+    svc_ui->elem_set_text(mod_ctx, g_el_win_counter, buf);
+    return MOD_OK;
+}
+
+void on_test_window_closed(ModContext*, UiWindowHandle, void*) {
+    svc_log->info(mod_ctx, "mod_test: test window closed");
+    g_test_window = 0;
+}
+
+void on_open_window(ModContext*, void*) {
+    if (g_test_window != 0) {
+        return;
+    }
+    UiTabDesc tabs[2] = {UI_TAB_DESC_INIT, UI_TAB_DESC_INIT};
+    tabs[0].title = "Controls";
+    tabs[0].build = build_window_controls_tab;
+    tabs[1].title = "Info";
+    tabs[1].build = build_window_info_tab;
+    tabs[1].update = update_window_info_tab;
+
+    UiWindowDesc desc = UI_WINDOW_DESC_INIT;
+    desc.tabs = tabs;
+    desc.tab_count = 2;
+    desc.rcss = "window.mod-window tab-bar tab { color: #8fd; }";
+    desc.on_closed = on_test_window_closed;
+    svc_ui->window_push(mod_ctx, &desc, &g_test_window);
+}
+
+void on_dialog_proceed(ModContext*, UiDialogHandle, void*) {
+    svc_log->info(mod_ctx, "mod_test: dialog Proceed pressed");
+}
+
+void on_dialog_dismissed(ModContext*, UiDialogHandle, void*) {
+    svc_log->info(mod_ctx, "mod_test: dialog dismissed");
+}
+
+void on_open_dialog(ModContext*, void*) {
+    UiDialogAction actions[2] = {
+        {"Cancel", nullptr, nullptr, false},
+        {"Proceed", on_dialog_proceed, nullptr, false},
+    };
+    UiDialogDesc desc = UI_DIALOG_DESC_INIT;
+    desc.title = "Test Dialog";
+    desc.body_rml = "Danger variant with an <span class=\"tip\">RML body</span>. B dismisses.";
+    desc.variant = UI_DIALOG_DANGER;
+    desc.actions = actions;
+    desc.action_count = 2;
+    desc.on_dismiss = on_dialog_dismissed;
+    svc_ui->dialog_push(mod_ctx, &desc, nullptr);
+}
+
+ModResult build_panel(ModContext*, UiElementHandle panel, void*, ModError*) {
+    svc_ui->pane_add_section(mod_ctx, panel, "Hooks");
+    svc_ui->pane_add_badge_row(
         mod_ctx, panel, "pre-hook fired (posMove)", g_pre_fired, &g_el_pre_badge);
-    svc_ui->panel_add_badge_row(
+    svc_ui->pane_add_badge_row(
         mod_ctx, panel, "post-hook fired (posMove)", g_post_fired, &g_el_post_badge);
-    svc_ui->panel_add_badge_row(
+    svc_ui->pane_add_badge_row(
         mod_ctx, panel, "replace-hook fired (execute)", g_replace_fired, &g_el_replace_badge);
-    svc_ui->panel_add_badge_row(mod_ctx, panel, "arg_ref write + pre cancel (hold L)",
+    svc_ui->pane_add_badge_row(mod_ctx, panel, "arg_ref write + pre cancel (hold L)",
         g_arg_write_ok, &g_el_argwrite_badge);
 
     char countBuf[64];
     std::snprintf(countBuf, sizeof(countBuf), "pre cancels: %d", g_pre_cancel_count);
-    svc_ui->panel_add_dyn_text(mod_ctx, panel, countBuf, &g_el_cancel_count);
+    svc_ui->pane_add_text(mod_ctx, panel, countBuf, &g_el_cancel_count);
     std::snprintf(countBuf, sizeof(countBuf), "post calls: %d", g_post_count);
-    svc_ui->panel_add_dyn_text(mod_ctx, panel, countBuf, &g_el_post_count);
+    svc_ui->pane_add_text(mod_ctx, panel, countBuf, &g_el_post_count);
 
-    svc_ui->panel_add_section(mod_ctx, panel, "Resources");
-    svc_ui->panel_add_badge_row(
-        mod_ctx, panel, "ResourceService::load (hello.txt)", g_resource_ok, &unused);
+    svc_ui->pane_add_section(mod_ctx, panel, "Resources");
+    svc_ui->pane_add_badge_row(
+        mod_ctx, panel, "ResourceService::load (hello.txt)", g_resource_ok, nullptr);
     if (g_resource_text[0] != '\0') {
-        svc_ui->panel_add_dyn_text(mod_ctx, panel, g_resource_text, &unused);
+        svc_ui->pane_add_text(mod_ctx, panel, g_resource_text, nullptr);
     }
 
-    svc_ui->panel_add_section(mod_ctx, panel, "Dependencies");
-    svc_ui->panel_add_badge_row(
-        mod_ctx, panel, "mod_test_dep initialized first", g_dep_order_ok, &unused);
-    svc_ui->panel_add_badge_row(
-        mod_ctx, panel, "deferred service import", g_dep_deferred_ok, &unused);
+    svc_ui->pane_add_section(mod_ctx, panel, "Dependencies");
+    svc_ui->pane_add_badge_row(
+        mod_ctx, panel, "mod_test_dep initialized first", g_dep_order_ok, nullptr);
+    svc_ui->pane_add_badge_row(
+        mod_ctx, panel, "deferred service import", g_dep_deferred_ok, nullptr);
 
-    svc_ui->panel_add_section(mod_ctx, panel, "Assets");
-    svc_ui->panel_add_badge_row(
-        mod_ctx, panel, "OverlayService add/remove", g_overlay_add_ok, &unused);
-    svc_ui->panel_add_badge_row(
+    svc_ui->pane_add_section(mod_ctx, panel, "Assets");
+    svc_ui->pane_add_badge_row(
+        mod_ctx, panel, "OverlayService add/remove", g_overlay_add_ok, nullptr);
+    svc_ui->pane_add_badge_row(
         mod_ctx, panel, "overlay DVD read-back", g_overlay_read_ok, &g_el_overlay_read_badge);
-    svc_ui->panel_add_badge_row(
-        mod_ctx, panel, "TextureService register data+file", g_texture_reg_ok, &unused);
-    svc_ui->panel_add_badge_row(
-        mod_ctx, panel, "asset services negative tests", g_asset_neg_ok, &unused);
+    svc_ui->pane_add_badge_row(
+        mod_ctx, panel, "TextureService register data+file", g_texture_reg_ok, nullptr);
+    svc_ui->pane_add_badge_row(
+        mod_ctx, panel, "asset services negative tests", g_asset_neg_ok, nullptr);
 
-    svc_ui->panel_add_section(mod_ctx, panel, "Config");
-    svc_ui->panel_add_badge_row(
-        mod_ctx, panel, "ConfigService register/get/set", g_config_ok, &unused);
-    svc_ui->panel_add_badge_row(
-        mod_ctx, panel, "ConfigService change callbacks", g_config_change_ok, &unused);
-    svc_ui->panel_add_badge_row(
-        mod_ctx, panel, "ConfigService negative tests", g_config_neg_ok, &unused);
+    svc_ui->pane_add_section(mod_ctx, panel, "Config");
+    svc_ui->pane_add_badge_row(
+        mod_ctx, panel, "ConfigService register/get/set", g_config_ok, nullptr);
+    svc_ui->pane_add_badge_row(
+        mod_ctx, panel, "ConfigService change callbacks", g_config_change_ok, nullptr);
+    svc_ui->pane_add_badge_row(
+        mod_ctx, panel, "ConfigService negative tests", g_config_neg_ok, nullptr);
 
-    svc_ui->panel_add_section(mod_ctx, panel, "API Fields");
-    svc_ui->panel_add_badge_row(
-        mod_ctx, panel, "mod_dir non-empty", g_mod_dir_snippet[0] != '\0', &unused);
-    svc_ui->panel_add_dyn_text(mod_ctx, panel, g_mod_dir_snippet, &unused);
+    svc_ui->pane_add_section(mod_ctx, panel, "UI");
+    svc_ui->pane_add_badge_row(mod_ctx, panel, "stack queries", g_ui_stack_ok, nullptr);
+    svc_ui->pane_add_badge_row(mod_ctx, panel, "scoped RCSS registered", g_ui_rcss_ok, nullptr);
+    svc_ui->pane_add_badge_row(mod_ctx, panel, "UI negative tests", g_ui_neg_ok, nullptr);
 
-    svc_ui->panel_add_section(mod_ctx, panel, "Actions");
-    svc_ui->panel_add_button(mod_ctx, panel, "Reset Results", on_reset, nullptr);
+    svc_ui->pane_add_section(mod_ctx, panel, "API Fields");
+    svc_ui->pane_add_badge_row(
+        mod_ctx, panel, "mod_dir non-empty", g_mod_dir_snippet[0] != '\0', nullptr);
+    svc_ui->pane_add_text(mod_ctx, panel, g_mod_dir_snippet, nullptr);
 
-    svc_ui->panel_add_dyn_text(mod_ctx, panel, "", &g_el_link_angle);
+    svc_ui->pane_add_section(mod_ctx, panel, "Actions");
+    UiControlDesc button = UI_CONTROL_DESC_INIT;
+    button.kind = UI_CONTROL_BUTTON;
+    button.label = "Reset Results";
+    button.on_pressed = on_reset;
+    add_control(panel, button);
+
+    button = UI_CONTROL_DESC_INIT;
+    button.kind = UI_CONTROL_BUTTON;
+    button.label = "Open Test Window";
+    button.on_pressed = on_open_window;
+    add_control(panel, button);
+
+    button = UI_CONTROL_DESC_INIT;
+    button.kind = UI_CONTROL_BUTTON;
+    button.label = "Open Test Dialog";
+    button.on_pressed = on_open_dialog;
+    add_control(panel, button);
+
+    svc_ui->pane_add_text(mod_ctx, panel, "", &g_el_link_angle);
     return MOD_OK;
 }
 
@@ -372,18 +616,18 @@ MOD_EXPORT ModResult mod_initialize(ModError* error) {
 
     // ConfigService: registration + typed get/set round trips, an unregister/re-register cycle,
     // change callbacks, a persistence probe (asserted across runs), and negative tests.
-    ConfigVarHandle cfgFlag = 0, cfgInt = 0, cfgFloat = 0, cfgString = 0;
+    ConfigVarHandle cfgFloat = 0;
     ConfigVarDesc cfgDesc = CONFIG_VAR_DESC_INIT;
     cfgDesc.name = "testFlag";
     cfgDesc.type = CONFIG_VAR_BOOL;
-    cfgDesc.default_bool = 1;
-    g_config_ok = svc_config->register_var(mod_ctx, &cfgDesc, &cfgFlag) == MOD_OK && cfgFlag != 0;
+    cfgDesc.default_bool = true;
+    g_config_ok = svc_config->register_var(mod_ctx, &cfgDesc, &g_cfg_flag) == MOD_OK && g_cfg_flag != 0;
 
     cfgDesc = CONFIG_VAR_DESC_INIT;
     cfgDesc.name = "testInt";
     cfgDesc.type = CONFIG_VAR_INT;
     cfgDesc.default_int = 42;
-    g_config_ok = g_config_ok && svc_config->register_var(mod_ctx, &cfgDesc, &cfgInt) == MOD_OK;
+    g_config_ok = g_config_ok && svc_config->register_var(mod_ctx, &cfgDesc, &g_cfg_int) == MOD_OK;
 
     cfgDesc = CONFIG_VAR_DESC_INIT;
     cfgDesc.name = "testFloat";
@@ -395,27 +639,33 @@ MOD_EXPORT ModResult mod_initialize(ModError* error) {
     cfgDesc.name = "testString";
     cfgDesc.type = CONFIG_VAR_STRING;
     cfgDesc.default_string = "hello";
-    g_config_ok = g_config_ok && svc_config->register_var(mod_ctx, &cfgDesc, &cfgString) == MOD_OK;
+    g_config_ok = g_config_ok && svc_config->register_var(mod_ctx, &cfgDesc, &g_cfg_string) == MOD_OK;
+
+    // Backs the SELECT control in the UI test window (value = option index).
+    cfgDesc = CONFIG_VAR_DESC_INIT;
+    cfgDesc.name = "testChoice";
+    cfgDesc.type = CONFIG_VAR_INT;
+    g_config_ok = g_config_ok && svc_config->register_var(mod_ctx, &cfgDesc, &g_cfg_choice) == MOD_OK;
 
     // Values persist across sessions, so assert the set/get round trip, not the defaults.
-    uint32_t cfgBoolValue = 1;
+    bool cfgBoolValue = true;
     int64_t cfgIntValue = 0;
     double cfgFloatValue = 0.0;
     char cfgStringBuf[8] = {};
     size_t cfgStringLength = 0;
     g_config_ok = g_config_ok &&
-        svc_config->set_bool(mod_ctx, cfgFlag, 0) == MOD_OK &&
-        svc_config->get_bool(mod_ctx, cfgFlag, &cfgBoolValue) == MOD_OK && cfgBoolValue == 0 &&
-        svc_config->set_int(mod_ctx, cfgInt, 1234) == MOD_OK &&
-        svc_config->get_int(mod_ctx, cfgInt, &cfgIntValue) == MOD_OK && cfgIntValue == 1234 &&
+        svc_config->set_bool(mod_ctx, g_cfg_flag, false) == MOD_OK &&
+        svc_config->get_bool(mod_ctx, g_cfg_flag, &cfgBoolValue) == MOD_OK && !cfgBoolValue &&
+        svc_config->set_int(mod_ctx, g_cfg_int, 1234) == MOD_OK &&
+        svc_config->get_int(mod_ctx, g_cfg_int, &cfgIntValue) == MOD_OK && cfgIntValue == 1234 &&
         svc_config->set_float(mod_ctx, cfgFloat, 2.25) == MOD_OK &&
         svc_config->get_float(mod_ctx, cfgFloat, &cfgFloatValue) == MOD_OK &&
         cfgFloatValue == 2.25 &&
-        svc_config->set_string(mod_ctx, cfgString, "abc") == MOD_OK &&
+        svc_config->set_string(mod_ctx, g_cfg_string, "abc") == MOD_OK &&
         // Length query with a null buffer, then an exact-size read.
-        svc_config->get_string(mod_ctx, cfgString, nullptr, 0, &cfgStringLength) == MOD_OK &&
+        svc_config->get_string(mod_ctx, g_cfg_string, nullptr, 0, &cfgStringLength) == MOD_OK &&
         cfgStringLength == 3 &&
-        svc_config->get_string(mod_ctx, cfgString, cfgStringBuf, 4, nullptr) == MOD_OK &&
+        svc_config->get_string(mod_ctx, g_cfg_string, cfgStringBuf, 4, nullptr) == MOD_OK &&
         std::strcmp(cfgStringBuf, "abc") == 0;
 
     // Unregister releases the name for a later registration (the reload path in miniature).
@@ -437,14 +687,14 @@ MOD_EXPORT ModResult mod_initialize(ModError* error) {
     ConfigSubscriptionHandle cfgSub = 0;
     g_config_change_ok =
         svc_config->subscribe(
-            mod_ctx, cfgInt, on_config_changed, &g_config_change_count, &cfgSub) == MOD_OK &&
+            mod_ctx, g_cfg_int, on_config_changed, &g_config_change_count, &cfgSub) == MOD_OK &&
         cfgSub != 0 &&
-        svc_config->set_int(mod_ctx, cfgInt, 5678) == MOD_OK && g_config_change_count == 1 &&
-        g_config_prev_value == 1234 &&
+        svc_config->set_int(mod_ctx, g_cfg_int, 5678) == MOD_OK && g_config_change_count == 1 &&
+        g_config_prev_value == 1234 && g_config_curr_value == 5678 &&
         // Writes that don't change the value don't notify.
-        svc_config->set_int(mod_ctx, cfgInt, 5678) == MOD_OK && g_config_change_count == 1 &&
+        svc_config->set_int(mod_ctx, g_cfg_int, 5678) == MOD_OK && g_config_change_count == 1 &&
         svc_config->unsubscribe(mod_ctx, cfgSub) == MOD_OK &&
-        svc_config->set_int(mod_ctx, cfgInt, 42) == MOD_OK && g_config_change_count == 1;
+        svc_config->set_int(mod_ctx, g_cfg_int, 42) == MOD_OK && g_config_change_count == 1;
     if (g_config_change_ok) {
         svc_log->info(mod_ctx, "ConfigService change callbacks OK");
     } else {
@@ -491,10 +741,10 @@ MOD_EXPORT ModResult mod_initialize(ModError* error) {
         svc_config->register_var(mod_ctx, &cfgEmptyDesc, nullptr) == MOD_INVALID_ARGUMENT &&
         svc_config->register_var(mod_ctx, &cfgReservedDesc, nullptr) == MOD_CONFLICT &&
         svc_config->register_var(mod_ctx, &cfgDupDesc, nullptr) == MOD_CONFLICT &&
-        svc_config->get_int(mod_ctx, cfgFlag, &cfgIntValue) == MOD_INVALID_ARGUMENT &&
-        svc_config->get_string(mod_ctx, cfgString, cfgTinyBuf, sizeof(cfgTinyBuf), nullptr) ==
+        svc_config->get_int(mod_ctx, g_cfg_flag, &cfgIntValue) == MOD_INVALID_ARGUMENT &&
+        svc_config->get_string(mod_ctx, g_cfg_string, cfgTinyBuf, sizeof(cfgTinyBuf), nullptr) ==
             MOD_INVALID_ARGUMENT &&
-        svc_config->set_bool(mod_ctx, UINT64_C(0xdead), 1) == MOD_INVALID_ARGUMENT &&
+        svc_config->set_bool(mod_ctx, UINT64_C(0xdead), true) == MOD_INVALID_ARGUMENT &&
         svc_config->unregister_var(mod_ctx, UINT64_C(0xdead)) == MOD_INVALID_ARGUMENT &&
         svc_config->unsubscribe(mod_ctx, UINT64_C(0xdead)) == MOD_INVALID_ARGUMENT;
     if (g_config_neg_ok) {
@@ -520,12 +770,79 @@ MOD_EXPORT ModResult mod_initialize(ModError* error) {
         return require_ok(result, error, "failed to register game loop hook");
     }
 
-    UiTab tab = UI_TAB_INIT;
-    tab.build = build_panel;
-    tab.update = update_panel;
-    result = svc_ui->register_tab(mod_ctx, &tab);
+    UiModsPanelDesc panelDesc = UI_MODS_PANEL_DESC_INIT;
+    panelDesc.build = build_panel;
+    panelDesc.update = update_panel;
+    result = svc_ui->register_mods_panel(mod_ctx, &panelDesc);
     if (result != MOD_OK) {
-        return require_ok(result, error, "failed to register UI tab");
+        return require_ok(result, error, "failed to register UI panel");
+    }
+
+    // Stack queries work at init (don't assert the visibility state itself: it depends on
+    // which host documents are open when mods initialize).
+    bool anyVisible = false;
+    g_ui_stack_ok = svc_ui->is_any_document_visible(mod_ctx, &anyVisible) == MOD_OK &&
+                    svc_ui->is_any_document_visible(mod_ctx, nullptr) == MOD_INVALID_ARGUMENT;
+    if (g_ui_stack_ok) {
+        svc_log->info(mod_ctx, "UiService stack queries OK");
+    } else {
+        svc_log->error(mod_ctx, "UiService stack queries FAILED");
+    }
+
+    // Scoped styles: register/unregister round trips from a string and from a bundle file.
+    // The persistent visual demo is Pride Mode below, driven by its cvar.
+    UiStyleHandle tempStyle = 0;
+    UiStyleHandle tempFileStyle = 0;
+    g_ui_rcss_ok =
+        svc_ui->register_styles(mod_ctx, UI_SCOPE_OVERLAY, "toast { }", &tempStyle) == MOD_OK &&
+        tempStyle != 0 &&
+        svc_ui->unregister_styles(mod_ctx, tempStyle) == MOD_OK &&
+        svc_ui->register_styles_file(mod_ctx, UI_SCOPE_GRAPHICS_TUNER, "pride.rcss",
+            &tempFileStyle) == MOD_OK &&
+        svc_ui->unregister_styles(mod_ctx, tempFileStyle) == MOD_OK;
+    if (g_ui_rcss_ok) {
+        svc_log->info(mod_ctx, "UiService styles registered OK");
+    } else {
+        svc_log->error(mod_ctx, "UiService styles FAILED");
+    }
+
+    // Pride Mode: cvar-backed toggle in the panel; the change callback registers or
+    // unregisters the animated style, restyling every open window live. Values applied
+    // from config.json at registration are silent, so apply the starting state by hand.
+    cfgDesc = CONFIG_VAR_DESC_INIT;
+    cfgDesc.name = "prideMode";
+    cfgDesc.type = CONFIG_VAR_BOOL;
+    if (svc_config->register_var(mod_ctx, &cfgDesc, &g_cfg_pride) == MOD_OK) {
+        svc_config->subscribe(mod_ctx, g_cfg_pride, on_pride_changed, nullptr, nullptr);
+        bool prideOn = false;
+        svc_config->get_bool(mod_ctx, g_cfg_pride, &prideOn);
+        apply_pride_mode(prideOn);
+    }
+
+    // Negative tests: fabricated/stale handles, out-of-range enums, malformed descs and
+    // missing files must be rejected. Expected host error lines: stale text handle, stale
+    // dialog handle, stale style handle, missing styles file.
+    UiControlDesc badSelect = UI_CONTROL_DESC_INIT;
+    badSelect.kind = UI_CONTROL_SELECT;
+    badSelect.label = "bad";
+    badSelect.get = cb_number_get;
+    badSelect.set = cb_number_set;  // SELECT without options is invalid
+    UiWindowDesc badWindow = UI_WINDOW_DESC_INIT;  // no tabs
+    const uint64_t bogus = (UINT64_C(1) << 32) | UINT64_C(0xdead);
+    g_ui_neg_ok =
+        svc_ui->elem_set_text(mod_ctx, bogus, "x") == MOD_INVALID_ARGUMENT &&
+        svc_ui->dialog_close(mod_ctx, bogus) == MOD_INVALID_ARGUMENT &&
+        svc_ui->unregister_styles(mod_ctx, bogus) == MOD_INVALID_ARGUMENT &&
+        svc_ui->register_styles(mod_ctx, static_cast<UiStyleScope>(99), "div { }", nullptr) ==
+            MOD_INVALID_ARGUMENT &&
+        svc_ui->register_styles_file(mod_ctx, UI_SCOPE_WINDOW, "does_not_exist.rcss", nullptr) ==
+            MOD_UNAVAILABLE &&
+        svc_ui->pane_add_control(mod_ctx, bogus, &badSelect, nullptr) == MOD_INVALID_ARGUMENT &&
+        svc_ui->window_push(mod_ctx, &badWindow, nullptr) == MOD_INVALID_ARGUMENT;
+    if (g_ui_neg_ok) {
+        svc_log->info(mod_ctx, "UiService negative tests OK");
+    } else {
+        svc_log->error(mod_ctx, "UiService negative tests FAILED");
     }
 
     g_initialized = 1;
@@ -543,9 +860,11 @@ MOD_EXPORT ModResult mod_shutdown(ModError*) {
     std::snprintf(logBuf, sizeof(logBuf), "mod_test unloaded after %d ticks", g_ticks);
     svc_log->info(mod_ctx, logBuf);
 
-    g_el_pre_badge = g_el_post_badge = g_el_replace_badge = nullptr;
-    g_el_argwrite_badge = g_el_cancel_count = g_el_post_count = nullptr;
-    g_el_link_angle = g_el_overlay_read_badge = nullptr;
+    g_el_pre_badge = g_el_post_badge = g_el_replace_badge = 0;
+    g_el_argwrite_badge = g_el_cancel_count = g_el_post_count = 0;
+    g_el_link_angle = g_el_overlay_read_badge = 0;
+    g_cfg_flag = g_cfg_int = g_cfg_string = g_cfg_choice = g_cfg_pride = 0;
+    g_style = g_test_window = g_el_win_counter = 0;
     return MOD_OK;
 }
 }

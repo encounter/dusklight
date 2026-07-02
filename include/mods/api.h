@@ -5,6 +5,8 @@
 #include <cstdint>
 extern "C" {
 #else
+#include <assert.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #endif
@@ -35,6 +37,8 @@ typedef enum ModResult {
     MOD_INVALID_ARGUMENT = 5,
     MOD_RUNTIME_DISABLE = 6,
 } ModResult;
+
+static_assert(sizeof(ModResult) == 4, "mod SDK enums must be int-sized; do not build mods with -fshort-enums");
 
 typedef struct ModError {
     uint32_t struct_size;

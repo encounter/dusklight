@@ -51,7 +51,7 @@ ModResult config_register_var(
     spec.type = desc->type;
     switch (desc->type) {
     case CONFIG_VAR_BOOL:
-        spec.defaultBool = desc->default_bool != 0;
+        spec.defaultBool = desc->default_bool;
         break;
     case CONFIG_VAR_INT:
         spec.defaultInt = desc->default_int;
@@ -89,24 +89,24 @@ ModResult config_unregister_var(ModContext* context, ConfigVarHandle var) {
     return result;
 }
 
-ModResult config_get_bool(ModContext* context, ConfigVarHandle var, uint32_t* outValue) {
+ModResult config_get_bool(ModContext* context, ConfigVarHandle var, bool* outValue) {
     if (outValue != nullptr) {
-        *outValue = 0;
+        *outValue = false;
     }
     auto* cvar = find_typed_var<bool>(context, var, CONFIG_VAR_BOOL);
     if (cvar == nullptr || outValue == nullptr) {
         return MOD_INVALID_ARGUMENT;
     }
-    *outValue = cvar->getValue() ? 1u : 0u;
+    *outValue = cvar->getValue();
     return MOD_OK;
 }
 
-ModResult config_set_bool(ModContext* context, ConfigVarHandle var, uint32_t value) {
+ModResult config_set_bool(ModContext* context, ConfigVarHandle var, bool value) {
     auto* cvar = find_typed_var<bool>(context, var, CONFIG_VAR_BOOL);
     if (cvar == nullptr) {
         return MOD_INVALID_ARGUMENT;
     }
-    cvar->setValue(value != 0);
+    cvar->setValue(value);
     config_mark_dirty();
     return MOD_OK;
 }

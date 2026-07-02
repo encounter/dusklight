@@ -34,10 +34,10 @@ struct ModConfigSubscription {
 ConfigVarValue translate_previous(const uint32_t type, const void* previous) {
     ConfigVarValue value{};
     value.struct_size = sizeof(ConfigVarValue);
-    value.type = type;
+    value.type = static_cast<ConfigVarType>(type);
     switch (type) {
     case CONFIG_VAR_BOOL:
-        value.bool_value = *static_cast<const bool*>(previous) ? 1u : 0u;
+        value.bool_value = *static_cast<const bool*>(previous);
         break;
     case CONFIG_VAR_INT:
         value.int_value = *static_cast<const s64*>(previous);
@@ -51,6 +51,34 @@ ConfigVarValue translate_previous(const uint32_t type, const void* previous) {
         value.string_length = str->size();
         break;
     }
+    default:
+        break;
+    }
+    return value;
+}
+
+// Snapshot the var's current (new) value for the notification. Strings are copied into
+// stringStorage so the snapshot stays valid even if the callback writes the var again.
+ConfigVarValue translate_current(
+    const uint32_t type, config::ConfigVarBase& varBase, std::string& stringStorage) {
+    ConfigVarValue value{};
+    value.struct_size = sizeof(ConfigVarValue);
+    value.type = static_cast<ConfigVarType>(type);
+    switch (type) {
+    case CONFIG_VAR_BOOL:
+        value.bool_value = static_cast<ConfigVar<bool>&>(varBase).getValue();
+        break;
+    case CONFIG_VAR_INT:
+        value.int_value = static_cast<ConfigVar<s64>&>(varBase).getValue();
+        break;
+    case CONFIG_VAR_FLOAT:
+        value.float_value = static_cast<ConfigVar<f64>&>(varBase).getValue();
+        break;
+    case CONFIG_VAR_STRING:
+        stringStorage = static_cast<ConfigVar<std::string>&>(varBase).getValue();
+        value.string_value = stringStorage.c_str();
+        value.string_length = stringStorage.size();
+        break;
     default:
         break;
     }
@@ -174,10 +202,12 @@ ModResult config_subscribe(LoadedMod& mod, uint64_t varHandle, ConfigChangedFn c
     sub.varHandle = varHandle;
     sub.coreSubscription = config::subscribe(entry->var->getName(),
         [modPtr = &mod, callback, userData, varHandle, type = entry->type](
-            config::ConfigVarBase&, const void* previous) {
+            config::ConfigVarBase& varBase, const void* previous) {
             const ConfigVarValue previousValue = translate_previous(type, previous);
+            std::string stringStorage;
+            const ConfigVarValue currentValue = translate_current(type, varBase, stringStorage);
             try {
-                callback(modPtr->context.get(), varHandle, &previousValue, userData);
+                callback(modPtr->context.get(), varHandle, &currentValue, &previousValue, userData);
             } catch (const std::exception& e) {
                 fail_mod(*modPtr, MOD_ERROR,
                     fmt::format("exception in config change callback: {}", e.what()));

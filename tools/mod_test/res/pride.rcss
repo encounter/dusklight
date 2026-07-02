@@ -1,0 +1,12 @@
+@keyframes mod-test-pride {
+    0%, 100% { border-color: #e40303; }
+    17% { border-color: #ff8c00; }
+    33% { border-color: #ffed00; }
+    50% { border-color: #008026; }
+    67% { border-color: #24408e; }
+    83% { border-color: #732982; }
+}
+
+window, window tab-bar, tab-bar tab:selected {
+    animation: 6s linear-in-out infinite mod-test-pride;
+}

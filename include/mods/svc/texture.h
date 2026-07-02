@@ -23,17 +23,17 @@ typedef enum TextureKeyKind {
 
 typedef struct TextureKey {
     uint32_t struct_size;
-    uint32_t kind;         /* TextureKeyKind */
+    TextureKeyKind kind;
     const void* pointer;   /* TEXTURE_KEY_POINTER only */
     uint64_t texture_hash; /* TEXTURE_KEY_SOURCE */
     uint64_t tlut_hash;    /* TEXTURE_KEY_SOURCE, palette formats only */
     uint32_t width;
     uint32_t height;
     uint32_t gx_format;
-    uint32_t has_tlut; /* bool */
+    bool has_tlut;
 } TextureKey;
 
-#define TEXTURE_KEY_INIT {sizeof(TextureKey), TEXTURE_KEY_POINTER, NULL, 0u, 0u, 0u, 0u, 0u, 0u}
+#define TEXTURE_KEY_INIT {sizeof(TextureKey), TEXTURE_KEY_POINTER, NULL, 0u, 0u, 0u, 0u, 0u, false}
 
 typedef struct TextureData {
     uint32_t struct_size;
