@@ -42,10 +42,11 @@ set(DUSK_DIR "${CMAKE_CURRENT_SOURCE_DIR}/dusk" CACHE PATH "Path to dusk source 
 add_subdirectory("${DUSK_DIR}" dusk EXCLUDE_FROM_ALL)
 
 add_dusk_mod(my_mod
-    SOURCES     src/mod.cpp
-    MOD_JSON    mod.json
-    RES_DIR     res        # optional
-    OVERLAY_DIR overlay    # optional
+    SOURCES      src/mod.cpp
+    MOD_JSON     mod.json
+    RES_DIR      res        # optional
+    OVERLAY_DIR  overlay    # optional
+    TEXTURES_DIR textures   # optional
 )
 ```
 
@@ -179,6 +180,46 @@ svc_host->fail(mod_ctx, MOD_ERROR, "something unrecoverable happened");  // disa
 
 Install hooks on game functions. You'll rarely call it directly — use the typed helpers in `mods/hook.hpp` described below.
 
+### OverlayService (`mods/svc/overlay.h`)
+
+Registers DVD file overlays at runtime — the dynamic counterpart to the static `overlay/` directory (see [Asset Overlays](#asset-overlays)). Overlay a disc path with a file from your bundle, or with a caller-owned buffer (copied on registration):
+
+```cpp
+IMPORT_SERVICE(OverlayService, svc_overlay);
+
+OverlayHandle handle = 0;
+svc_overlay->add_file(mod_ctx, "/res/Msgus.arc", "res/replacement.arc", &handle);
+svc_overlay->add_buffer(mod_ctx, "/generated.txt", data, size, nullptr);
+svc_overlay->remove(mod_ctx, handle);
+```
+
+`disc_path` must be absolute (leading `/`) and is matched against the disc case-insensitively; paths that don't exist on the disc are added as new files. Changes are applied at the next frame boundary, and data the game already read stays in memory until the file is re-read (usually a scene reload). Registrations follow your mod's lifecycle — disable/reload removes them. If multiple sources overlay the same path, the last one wins: your runtime registrations beat your static `overlay/` files, and later-loaded mods beat earlier ones (a cross-mod conflict logs a warning).
+
+### TextureService (`mods/svc/texture.h`)
+
+Registers texture replacements at runtime — the dynamic counterpart to the static `textures/` directory (see [Asset Overlays](#asset-overlays)). Two forms: raw texel data with an explicit key, or an encoded `.dds`/`.png` from your bundle whose filename encodes the key:
+
+```cpp
+IMPORT_SERVICE(TextureService, svc_texture);
+
+// Encoded file; filename follows the replacement naming convention.
+TextureReplacementHandle handle = 0;
+svc_texture->register_file(mod_ctx, "res/tex1_32x32_$_6.png", &handle);
+
+// Raw data: match by texel-data pointer or by content hash (TEXTURE_KEY_SOURCE).
+TextureKey key = TEXTURE_KEY_INIT;
+key.kind = TEXTURE_KEY_POINTER;
+key.pointer = someTexObj.data;
+TextureData data = TEXTURE_DATA_INIT;
+data.data = pixels; data.size = pixelsSize;
+data.width = 32; data.height = 32; data.gx_format = GX_TF_RGBA8_PC;
+svc_texture->register_data(mod_ctx, &key, &data, nullptr);
+
+svc_texture->unregister(mod_ctx, handle);
+```
+
+Filenames use the same convention as the user's `texture_replacements` directory: `tex1_{w}x{h}_{texhash}[_{tluthash}]_{fmt}.dds|.png`, where hashes may be `$` (wildcard; `TEXTURE_HASH_WILDCARD`/`TEXTURE_TLUT_WILDCARD` in `register_data` keys). `_mipN` sidecar files next to a registered file are picked up automatically. Files are decoded lazily on first use by the renderer; raw data is copied at registration. Registrations follow your mod's lifecycle. Priority when several sources replace the same texture: later-loaded mods beat earlier ones, and any mod beats the user's `texture_replacements` config directory.
+
 ### UI service
 
 Dusklight also ships a UI service for adding panels to the Mods window. It is being rewritten and intentionally undocumented — if you need it in the meantime, see `include/mods/svc/ui.h` and its usage in [mod_test](../tools/mod_test/src/mod.cpp), but expect breaking changes.
@@ -266,7 +307,11 @@ For reference parameters (e.g. `const cXyz& pos`), `arg_ref<cXyz>` yields a dire
 
 Files placed under `overlay/` in the `.dusk` archive override game files at the corresponding path. For example, `overlay/res/Stage/...` shadows that file on the game disc image. This requires no code — an archive with just `mod.json` and `overlay/` is a complete mod.
 
-Overlays follow the mod's lifecycle: disabling the mod removes its overrides (files revert to the disc contents on their next open; added files stop existing), and reloading serves the new bundle's content. Game data the engine already read stays as-is until it is loaded again — asset changes typically need a scene reload to become visible.
+Files placed under `textures/` register as texture replacements the same way. Filenames follow the replacement naming convention (`tex1_{w}x{h}_{texhash}[_{tluthash}]_{fmt}.dds|.png`, `$` as a hash wildcard, `_mipN` sidecars for mip levels) — the same one the game's texture-dumping option produces, so a dump-rename-repack loop needs no code either. Subdirectories are fine; only the filename determines what a file replaces.
+
+Both follow the mod's lifecycle: disabling the mod removes its overrides (files revert to the disc contents on their next open; added files stop existing), and reloading serves the new bundle's content. Game data the engine already read stays as-is until it is loaded again — asset changes typically need a scene reload to become visible. When mods collide, later-loaded mods win, and mods' texture replacements beat the user's `texture_replacements` config directory; cross-mod conflicts log a warning.
+
+To decide overlays and replacements at runtime instead, see [OverlayService](#overlayservice-modssvcoverlayh) and [TextureService](#textureservice-modssvctextureh).
 
 ---
 
@@ -274,7 +319,7 @@ Overlays follow the mod's lifecycle: disabling the mod removes its overrides (fi
 
 Mods can be disabled, re-enabled, and reloaded from the Mods window without restarting the game. Write your mod assuming this happens:
 
-- **Disable** calls `mod_shutdown`, removes your hooks, services, UI, and overlays, and unloads your library.
+- **Disable** calls `mod_shutdown`, removes your hooks, services, UI, overlays, and texture replacements (both static and runtime-registered), and unloads your library.
 - **Enable** and **Reload** load a *fresh copy* of your library — all statics are back at their initial values, imports are re-resolved, and `mod_initialize` runs again. You never see a second `mod_initialize` on the same image, so idempotence hacks are unnecessary; just make `mod_shutdown` release anything the loader doesn't manage for you (threads, files, game-side state you mutated).
 - **Reload** additionally re-reads the `.dusk` from disk, picking up a rebuilt library and changed assets. This is the fast iteration loop during development: rebuild, click Reload.
 

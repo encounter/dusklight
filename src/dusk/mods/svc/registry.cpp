@@ -149,6 +149,10 @@ void ModLoader::init_services() {
         &mods::svc::ui_service(), nullptr, false);
     mods::svc::register_service(HOOK_SERVICE_ID, HOOK_SERVICE_MAJOR, HOOK_SERVICE_MINOR,
         &mods::svc::hook_service(), nullptr, false);
+    mods::svc::register_service(OVERLAY_SERVICE_ID, OVERLAY_SERVICE_MAJOR, OVERLAY_SERVICE_MINOR,
+        &mods::svc::overlay_service(), nullptr, false);
+    mods::svc::register_service(TEXTURE_SERVICE_ID, TEXTURE_SERVICE_MAJOR, TEXTURE_SERVICE_MINOR,
+        &mods::svc::texture_service(), nullptr, false);
 }
 
 bool ModLoader::register_static_service_exports(LoadedMod& mod) {

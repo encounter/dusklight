@@ -10,35 +10,15 @@
 
 namespace {
 
-bool is_safe_resource_path(std::string_view path) {
-    if (path.empty() || path.starts_with('/') || path.starts_with('\\') ||
-        path.find(':') != std::string_view::npos)
-    {
-        return false;
-    }
-
-    while (!path.empty()) {
-        const auto slash = path.find_first_of("/\\");
-        const auto segment = path.substr(0, slash);
-        if (segment.empty() || segment == "." || segment == "..") {
-            return false;
-        }
-        if (slash == std::string_view::npos) {
-            break;
-        }
-        path.remove_prefix(slash + 1);
-    }
-
-    return true;
-}
-
 ModResult resource_load(ModContext* context, const char* relativePath, ResourceBuffer* outBuffer) {
     auto* mod = dusk::mods::loader::mod_from_context(context);
     if (outBuffer == nullptr) {
         return MOD_INVALID_ARGUMENT;
     }
     *outBuffer = ResourceBuffer{sizeof(ResourceBuffer), nullptr, 0u};
-    if (mod == nullptr || relativePath == nullptr || !is_safe_resource_path(relativePath)) {
+    if (mod == nullptr || relativePath == nullptr ||
+        !dusk::mods::loader::is_safe_resource_path(relativePath))
+    {
         return MOD_INVALID_ARGUMENT;
     }
 

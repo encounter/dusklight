@@ -1554,12 +1554,15 @@ set(DUSK_FILES
         src/dusk/mods/loader/native_module.cpp
         src/dusk/mods/loader/native_module.hpp
         src/dusk/mods/loader/overlay.cpp
+        src/dusk/mods/loader/textures.cpp
         src/dusk/mods/svc/hook.cpp
         src/dusk/mods/svc/host.cpp
         src/dusk/mods/svc/log.cpp
+        src/dusk/mods/svc/overlay.cpp
         src/dusk/mods/svc/registry.cpp
         src/dusk/mods/svc/registry.hpp
         src/dusk/mods/svc/resource.cpp
+        src/dusk/mods/svc/texture.cpp
         src/dusk/mods/svc/ui.cpp
         src/dusk/gx_helper.cpp
         src/dusk/discord.cpp

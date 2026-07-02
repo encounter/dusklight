@@ -9,9 +9,10 @@ endif ()
 set(DUSK_MODS_OUTPUT_DIR "${CMAKE_SOURCE_DIR}/mods" CACHE PATH "Directory to write .dusk packages into")
 
 add_dusk_mod(mod_test
-    SOURCES     src/mod.cpp
-    MOD_JSON    mod.json
-    RES_DIR     res
-    OVERLAY_DIR overlay
+    SOURCES      src/mod.cpp
+    MOD_JSON     mod.json
+    RES_DIR      res
+    OVERLAY_DIR  overlay
+    TEXTURES_DIR textures
 )
 target_include_directories(mod_test PRIVATE ../mod_test_dep/include)

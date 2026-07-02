@@ -1,5 +1,5 @@
 # add_dusk_mod(<target> SOURCES <file>... MOD_JSON <mod.json> [RES_DIR <res>] [OVERLAY_DIR <overlay>]
-#              [OUTPUT_DIR <dir>])
+#              [TEXTURES_DIR <textures>] [OUTPUT_DIR <dir>])
 set(DUSK_MODS_OUTPUT_DIR "${CMAKE_SOURCE_DIR}/mods" CACHE PATH "Directory to write .dusk packages into")
 
 # The loader matches libraries by platform extension + architecture suffix
@@ -27,7 +27,7 @@ function(_dusk_mod_arch_suffix out_var)
 endfunction()
 
 function(add_dusk_mod target_name)
-    cmake_parse_arguments(ARG "" "MOD_JSON;RES_DIR;OVERLAY_DIR;OUTPUT_DIR" "SOURCES" ${ARGN})
+    cmake_parse_arguments(ARG "" "MOD_JSON;RES_DIR;OVERLAY_DIR;TEXTURES_DIR;OUTPUT_DIR" "SOURCES" ${ARGN})
     if(NOT ARG_MOD_JSON)
         message(FATAL_ERROR "add_dusk_mod: MOD_JSON is required")
     endif()
@@ -72,6 +72,11 @@ function(add_dusk_mod target_name)
         list(APPEND _zip_args overlay)
         list(APPEND _extra_cmds COMMAND ${CMAKE_COMMAND} -E copy_directory
                 "${CMAKE_CURRENT_SOURCE_DIR}/${ARG_OVERLAY_DIR}" "${_stage}/overlay")
+    endif()
+    if(ARG_TEXTURES_DIR)
+        list(APPEND _zip_args textures)
+        list(APPEND _extra_cmds COMMAND ${CMAKE_COMMAND} -E copy_directory
+                "${CMAKE_CURRENT_SOURCE_DIR}/${ARG_TEXTURES_DIR}" "${_stage}/textures")
     endif()
 
     add_custom_command(TARGET ${target_name} POST_BUILD

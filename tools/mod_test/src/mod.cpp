@@ -1,6 +1,7 @@
 // Tests every feature of the Dusklight mod API. Results are shown in the mod tab.
 
 #include "d/actor/d_a_alink.h"
+#include "dolphin/dvd.h"
 #include "f_ap/f_ap_game.h"
 #include "m_Do/m_Do_controller_pad.h"
 #include "mods/hook.hpp"
@@ -8,7 +9,9 @@
 #include "mods/svc/hook.h"
 #include "mods/svc/host.h"
 #include "mods/svc/log.h"
+#include "mods/svc/overlay.h"
 #include "mods/svc/resource.h"
+#include "mods/svc/texture.h"
 #include "mods/svc/ui.h"
 #include "test_services.h"
 
@@ -18,6 +21,8 @@ IMPORT_SERVICE(LogService, svc_log);
 IMPORT_SERVICE(ResourceService, svc_resource);
 IMPORT_SERVICE(UiService, svc_ui);
 IMPORT_SERVICE(HookService, svc_hook);
+IMPORT_SERVICE(OverlayService, svc_overlay);
+IMPORT_SERVICE(TextureService, svc_texture);
 // Both provided by mod_test_dep, which sorts *after* mod_test.dusk in the mods directory;
 // dependency ordering must initialize it first regardless. The deferred service only
 // resolves if mod_test_dep published it during its initialization.
@@ -41,6 +46,13 @@ char g_mod_dir_snippet[64] = {};
 int32_t g_initialized = 0;
 bool g_dep_order_ok = false;
 bool g_dep_deferred_ok = false;
+bool g_overlay_add_ok = false;
+bool g_overlay_read_ok = false;
+bool g_texture_reg_ok = false;
+bool g_asset_neg_ok = false;
+
+constexpr char kRuntimeOverlayData[] = "runtime overlay data OK";
+alignas(32) const uint8_t s_rawTexture[8 * 8 * 4] = {0xff};
 
 int32_t test_main_initialized(ModContext*) {
     return g_initialized;
@@ -58,6 +70,7 @@ ElemHandle g_el_argwrite_badge = nullptr;
 ElemHandle g_el_cancel_count = nullptr;
 ElemHandle g_el_post_count = nullptr;
 ElemHandle g_el_link_angle = nullptr;
+ElemHandle g_el_overlay_read_badge = nullptr;
 
 ModResult require_ok(const ModResult result, ModError* error, const char* message) {
     if (result != MOD_OK) {
@@ -107,6 +120,22 @@ int g_game_loop_dispatches = 0;
 HookAction on_game_loop_pre(ModContext*, void*, void*, void*) {
     if (g_game_loop_dispatches++ == 0) {
         svc_log->info(mod_ctx, "mod_test: game loop hook active");
+
+        // Runtime overlays registered in mod_initialize were pushed at startup.
+        // Read one back through the DVD API end to end.
+        DVDFileInfo fileInfo;
+        if (DVDOpen("/mod_test_runtime.txt", &fileInfo)) {
+            alignas(32) char buf[64] = {};
+            const s32 read = DVDReadPrio(&fileInfo, buf, 32, 0, 2);
+            constexpr s32 expected = sizeof(kRuntimeOverlayData) - 1;
+            g_overlay_read_ok = read == expected && std::memcmp(buf, kRuntimeOverlayData, expected) == 0;
+            DVDClose(&fileInfo);
+        }
+        if (g_overlay_read_ok) {
+            svc_log->info(mod_ctx, "OverlayService runtime read OK");
+        } else {
+            svc_log->error(mod_ctx, "OverlayService runtime read FAILED");
+        }
     }
     return HOOK_CONTINUE;
 }
@@ -152,6 +181,16 @@ ModResult build_panel(ModContext*, PanelHandle panel, void*, ModError*) {
     svc_ui->panel_add_badge_row(
         mod_ctx, panel, "deferred service import", g_dep_deferred_ok, &unused);
 
+    svc_ui->panel_add_section(mod_ctx, panel, "Assets");
+    svc_ui->panel_add_badge_row(
+        mod_ctx, panel, "OverlayService add/remove", g_overlay_add_ok, &unused);
+    svc_ui->panel_add_badge_row(
+        mod_ctx, panel, "overlay DVD read-back", g_overlay_read_ok, &g_el_overlay_read_badge);
+    svc_ui->panel_add_badge_row(
+        mod_ctx, panel, "TextureService register data+file", g_texture_reg_ok, &unused);
+    svc_ui->panel_add_badge_row(
+        mod_ctx, panel, "asset services negative tests", g_asset_neg_ok, &unused);
+
     svc_ui->panel_add_section(mod_ctx, panel, "API Fields");
     svc_ui->panel_add_badge_row(
         mod_ctx, panel, "mod_dir non-empty", g_mod_dir_snippet[0] != '\0', &unused);
@@ -169,6 +208,7 @@ ModResult update_panel(ModContext*, void*, ModError*) {
     svc_ui->elem_set_badge(mod_ctx, g_el_post_badge, g_post_fired);
     svc_ui->elem_set_badge(mod_ctx, g_el_replace_badge, g_replace_fired);
     svc_ui->elem_set_badge(mod_ctx, g_el_argwrite_badge, g_arg_write_ok);
+    svc_ui->elem_set_badge(mod_ctx, g_el_overlay_read_badge, g_overlay_read_ok);
 
     char buf[64];
     std::snprintf(buf, sizeof(buf), "pre cancels: %d", g_pre_cancel_count);
@@ -243,6 +283,71 @@ MOD_EXPORT ModResult mod_initialize(ModError* error) {
         svc_resource->free(mod_ctx, &missing);
     }
 
+    // OverlayService: a memory-backed overlay (read back once the game loop runs), a
+    // bundle-backed overlay, and a register/remove round trip.
+    OverlayHandle overlayHandle = 0;
+    ModResult overlayResult = svc_overlay->add_buffer(mod_ctx, "/mod_test_runtime.txt",
+        kRuntimeOverlayData, sizeof(kRuntimeOverlayData) - 1, &overlayHandle);
+    g_overlay_add_ok = overlayResult == MOD_OK && overlayHandle != 0;
+    overlayResult = svc_overlay->add_file(mod_ctx, "/mod_test_file.txt", "res/hello.txt", nullptr);
+    g_overlay_add_ok = g_overlay_add_ok && overlayResult == MOD_OK;
+
+    OverlayHandle removeHandle = 0;
+    overlayResult = svc_overlay->add_buffer(mod_ctx, "/mod_test_tmp.txt", "x", 1, &removeHandle);
+    g_overlay_add_ok = g_overlay_add_ok && overlayResult == MOD_OK &&
+                       svc_overlay->remove(mod_ctx, removeHandle) == MOD_OK;
+    if (g_overlay_add_ok) {
+        svc_log->info(mod_ctx, "OverlayService add/remove OK");
+    } else {
+        svc_log->error(mod_ctx, "OverlayService add/remove FAILED");
+    }
+
+    // TextureService: raw data with a pointer key, an encoded file from the bundle, and an
+    // unregister round trip.
+    TextureKey texKey = TEXTURE_KEY_INIT;
+    texKey.kind = TEXTURE_KEY_POINTER;
+    texKey.pointer = s_rawTexture;
+    TextureData texData = TEXTURE_DATA_INIT;
+    texData.data = s_rawTexture;
+    texData.size = sizeof(s_rawTexture);
+    texData.width = 8;
+    texData.height = 8;
+    texData.gx_format = GX_TF_RGBA8_PC;
+    TextureReplacementHandle texHandle = 0;
+    ModResult texResult = svc_texture->register_data(mod_ctx, &texKey, &texData, &texHandle);
+    g_texture_reg_ok = texResult == MOD_OK && texHandle != 0;
+    if (g_texture_reg_ok) {
+        svc_log->info(mod_ctx, "TextureService register_data OK");
+        g_texture_reg_ok = svc_texture->unregister(mod_ctx, texHandle) == MOD_OK;
+    } else {
+        svc_log->error(mod_ctx, "TextureService register_data FAILED");
+    }
+
+    texResult = svc_texture->register_file(mod_ctx, "res/tex1_16x16_$_6.png", nullptr);
+    g_texture_reg_ok = g_texture_reg_ok && texResult == MOD_OK;
+    if (texResult == MOD_OK) {
+        svc_log->info(mod_ctx, "TextureService register_file OK");
+    } else {
+        svc_log->error(mod_ctx, "TextureService register_file FAILED");
+    }
+
+    // Negative tests: both services must reject bad paths, missing files and bogus handles.
+    g_asset_neg_ok =
+        svc_overlay->add_file(mod_ctx, "no_leading_slash.txt", "res/hello.txt", nullptr) ==
+            MOD_INVALID_ARGUMENT &&
+        svc_overlay->add_file(mod_ctx, "/x.txt", "res/does_not_exist.bin", nullptr) ==
+            MOD_UNAVAILABLE &&
+        svc_overlay->remove(mod_ctx, UINT64_C(0xdead)) == MOD_INVALID_ARGUMENT &&
+        svc_texture->register_file(mod_ctx, "res/hello.txt", nullptr) == MOD_INVALID_ARGUMENT &&
+        svc_texture->register_file(mod_ctx, "res/tex1_4x4_$_6.png", nullptr) == MOD_UNAVAILABLE &&
+        svc_texture->register_data(mod_ctx, &texKey, nullptr, nullptr) == MOD_INVALID_ARGUMENT &&
+        svc_texture->unregister(mod_ctx, UINT64_C(0xdead)) == MOD_INVALID_ARGUMENT;
+    if (g_asset_neg_ok) {
+        svc_log->info(mod_ctx, "asset services negative tests OK");
+    } else {
+        svc_log->error(mod_ctx, "asset services negative tests FAILED");
+    }
+
     ModResult result = dusk::mods::hook_add_pre<&daAlink_c::posMove>(svc_hook, on_pos_move_pre);
     if (result != MOD_OK) {
         return require_ok(result, error, "failed to register pre hook");
@@ -285,7 +390,7 @@ MOD_EXPORT ModResult mod_shutdown(ModError*) {
 
     g_el_pre_badge = g_el_post_badge = g_el_replace_badge = nullptr;
     g_el_argwrite_badge = g_el_cancel_count = g_el_post_count = nullptr;
-    g_el_link_angle = nullptr;
+    g_el_link_angle = g_el_overlay_read_badge = nullptr;
     return MOD_OK;
 }
 }

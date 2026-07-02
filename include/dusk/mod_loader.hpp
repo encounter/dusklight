@@ -224,6 +224,9 @@ private:
     void fail_mod(LoadedMod& mod, ModResult code, std::string_view message);
     // Re-registers active mods' overlay files with the DVD layer (replace semantics).
     void sync_overlay_files();
+    // Registers newly active mods' static textures/ files with Aurora and re-registers mods
+    // whose load-order priority changed (m_mods can be re-sorted by a reload).
+    void sync_texture_replacements();
 
     LoadedMod* find_mod(std::string_view id);
     void drain_retired_natives();

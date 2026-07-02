@@ -6,6 +6,7 @@
 #include <cstring>
 #include <mutex>
 #include <unordered_map>
+#include <utility>
 
 using namespace std::string_literals;
 
@@ -16,17 +17,48 @@ aurora::Module Log("dusk::modLoader::overlay");
 struct OverlayFileData {
     std::string bundlePath;
     std::shared_ptr<dusk::mods::loader::ModBundle> bundle;
+    std::shared_ptr<const std::vector<u8>> buffer;
 };
 
 // Keyed by the id passed to Aurora as per-file userdata. Guarded by s_overlayMutex: Aurora may
 // call cbOpen from a DVD thread while the game thread replaces the set in syncOverlayFiles.
-// The shared bundle pointer keeps a disabled/reloaded mod's old bundle readable until the last
+// The shared bundle/buffer pointer keeps a disabled/reloaded mod's data readable until the last
 // open completes.
 std::unordered_map<uintptr_t, OverlayFileData> s_overlayFiles;
 uintptr_t s_nextOverlayId = 1;
 std::mutex s_overlayMutex;
 
-void findOverlayFiles(std::vector<AuroraOverlayFile>& files, dusk::LoadedMod& mod) {
+struct RuntimeOverlayEntry {
+    uint64_t handle = 0;
+    std::string discPath;
+    std::string bundlePath;                         // bundle-backed if non-empty
+    std::shared_ptr<const std::vector<u8>> buffer;  // buffer-backed otherwise
+    size_t size = 0;
+};
+std::unordered_map<const dusk::LoadedMod*, std::vector<RuntimeOverlayEntry>> s_runtimeOverlays;
+uint64_t s_nextRuntimeHandle = 1;
+bool s_overlaysDirty = false;
+
+// Aurora matches overlay paths against the disc case-insensitively and later entries win, so
+// claims are tracked by lowercased path and re-claims by a different mod warn.
+void claim_overlay_path(std::unordered_map<std::string, const dusk::LoadedMod*>& claims,
+    const std::string& discPath, const dusk::LoadedMod& mod) {
+    std::string key = discPath;
+    for (auto& ch : key) {
+        if (ch >= 'A' && ch <= 'Z') {
+            ch += 'a' - 'A';
+        }
+    }
+    const auto [it, inserted] = claims.try_emplace(std::move(key), &mod);
+    if (!inserted && it->second != &mod) {
+        Log.warn("Overlay conflict: '{}' is provided by both '{}' and '{}'; '{}' wins.", discPath,
+            it->second->metadata.id, mod.metadata.id, mod.metadata.id);
+        it->second = &mod;
+    }
+}
+
+void find_overlay_files(std::vector<AuroraOverlayFile>& files, dusk::LoadedMod& mod,
+    std::unordered_map<std::string, const dusk::LoadedMod*>& claims) {
     for (const auto& file : mod.bundle->getFileNames()) {
         if (!file.starts_with("overlay/")) {
             continue;
@@ -39,7 +71,8 @@ void findOverlayFiles(std::vector<AuroraOverlayFile>& files, dusk::LoadedMod& mo
         const auto size = mod.bundle->getFileSize(file);
 
         const auto id = s_nextOverlayId++;
-        s_overlayFiles.emplace(id, OverlayFileData{file, mod.bundle});
+        s_overlayFiles.emplace(id, OverlayFileData{file, mod.bundle, nullptr});
+        claim_overlay_path(claims, overlayPath, mod);
         files.emplace_back(
             strdup(overlayPath.c_str()),
             reinterpret_cast<void*>(id),
@@ -47,9 +80,36 @@ void findOverlayFiles(std::vector<AuroraOverlayFile>& files, dusk::LoadedMod& mo
     }
 }
 
+void append_runtime_overlays(std::vector<AuroraOverlayFile>& files, dusk::LoadedMod& mod,
+    std::unordered_map<std::string, const dusk::LoadedMod*>& claims) {
+    const auto it = s_runtimeOverlays.find(&mod);
+    if (it == s_runtimeOverlays.end()) {
+        return;
+    }
+
+    for (const auto& entry : it->second) {
+        const auto id = s_nextOverlayId++;
+        if (entry.buffer != nullptr) {
+            s_overlayFiles.emplace(id, OverlayFileData{{}, nullptr, entry.buffer});
+        } else {
+            s_overlayFiles.emplace(id, OverlayFileData{entry.bundlePath, mod.bundle, nullptr});
+        }
+        claim_overlay_path(claims, entry.discPath, mod);
+        files.emplace_back(
+            strdup(entry.discPath.c_str()),
+            reinterpret_cast<void*>(id),
+            entry.size);
+    }
+}
+
 struct OpenOverlayFile {
-    std::vector<u8> data;
-    size_t pos;
+    std::vector<u8> ownedData;
+    std::shared_ptr<const std::vector<u8>> shared;
+    size_t pos = 0;
+
+    [[nodiscard]] const std::vector<u8>& data() const {
+        return shared != nullptr ? *shared : ownedData;
+    }
 };
 
 void* cbOpen(void* userdata) {
@@ -65,9 +125,13 @@ void* cbOpen(void* userdata) {
         fileData = it->second;
     }
 
+    if (fileData.buffer != nullptr) {
+        return new OpenOverlayFile{.shared = std::move(fileData.buffer)};
+    }
+
     try {
         auto fileContents = fileData.bundle->readFile(fileData.bundlePath);
-        return new OpenOverlayFile(std::move(fileContents), 0);
+        return new OpenOverlayFile{.ownedData = std::move(fileContents)};
     } catch (const std::runtime_error& e) {
         Log.error("Failed to read overlay file {}: {}", fileData.bundlePath, e.what());
         return nullptr;
@@ -82,9 +146,9 @@ void cbClose(void* handle) {
 int64_t cbRead(void* handle, uint8_t *buf, const size_t len) {
     auto& openFile = *static_cast<OpenOverlayFile*>(handle);
 
-    const auto remainingSpace = openFile.data.size() - openFile.pos;
+    const auto remainingSpace = openFile.data().size() - openFile.pos;
     const auto toRead = std::min(remainingSpace, len);
-    std::memcpy(buf, openFile.data.data() + openFile.pos, toRead);
+    std::memcpy(buf, openFile.data().data() + openFile.pos, toRead);
     openFile.pos += toRead;
     return static_cast<int64_t>(toRead);
 }
@@ -95,7 +159,7 @@ int64_t cbSeek(void* handle, int64_t offset, int32_t whence) {
     }
 
     auto& openFile = *static_cast<OpenOverlayFile*>(handle);
-    const auto posSigned = std::clamp(offset, static_cast<int64_t>(0), static_cast<int64_t>(openFile.data.size()));
+    const auto posSigned = std::clamp(offset, static_cast<int64_t>(0), static_cast<int64_t>(openFile.data().size()));
     openFile.pos = static_cast<size_t>(posSigned);
     return posSigned;
 }
@@ -118,12 +182,16 @@ void ModLoader::sync_overlay_files() {
         callbacksRegistered = true;
     }
 
+    s_overlaysDirty = false;
+
     std::vector<AuroraOverlayFile> files;
+    std::unordered_map<std::string, const LoadedMod*> claims;
     {
         std::lock_guard lock{s_overlayMutex};
         s_overlayFiles.clear();
         for (auto& mod : active_mods()) {
-            findOverlayFiles(files, mod);
+            find_overlay_files(files, mod, claims);
+            append_runtime_overlays(files, mod, claims);
         }
     }
 
@@ -136,3 +204,57 @@ void ModLoader::sync_overlay_files() {
 }
 
 }  // namespace dusk
+
+namespace dusk::mods::loader {
+
+uint64_t overlay_add_file(LoadedMod& mod, std::string discPath, std::string bundlePath, size_t size) {
+    const auto handle = s_nextRuntimeHandle++;
+    s_runtimeOverlays[&mod].push_back({
+        .handle = handle,
+        .discPath = std::move(discPath),
+        .bundlePath = std::move(bundlePath),
+        .size = size,
+    });
+    s_overlaysDirty = true;
+    return handle;
+}
+
+uint64_t overlay_add_buffer(LoadedMod& mod, std::string discPath, std::vector<u8> data) {
+    const auto handle = s_nextRuntimeHandle++;
+    const auto size = data.size();
+    s_runtimeOverlays[&mod].push_back({
+        .handle = handle,
+        .discPath = std::move(discPath),
+        .buffer = std::make_shared<const std::vector<u8>>(std::move(data)),
+        .size = size,
+    });
+    s_overlaysDirty = true;
+    return handle;
+}
+
+bool overlay_remove(LoadedMod& mod, uint64_t handle) {
+    const auto it = s_runtimeOverlays.find(&mod);
+    if (it == s_runtimeOverlays.end()) {
+        return false;
+    }
+    if (std::erase_if(it->second, [&](const auto& entry) { return entry.handle == handle; }) == 0) {
+        return false;
+    }
+    if (it->second.empty()) {
+        s_runtimeOverlays.erase(it);
+    }
+    s_overlaysDirty = true;
+    return true;
+}
+
+void overlay_remove_mod(LoadedMod& mod) {
+    if (s_runtimeOverlays.erase(&mod) != 0) {
+        s_overlaysDirty = true;
+    }
+}
+
+bool consume_overlays_dirty() {
+    return std::exchange(s_overlaysDirty, false);
+}
+
+}  // namespace dusk::mods::loader

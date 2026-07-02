@@ -4,7 +4,9 @@
 #include "mods/svc/hook.h"
 #include "mods/svc/host.h"
 #include "mods/svc/log.h"
+#include "mods/svc/overlay.h"
 #include "mods/svc/resource.h"
+#include "mods/svc/texture.h"
 #include "mods/svc/ui.h"
 
 #include <cstdint>
@@ -38,5 +40,7 @@ const LogService& log_service();
 const ResourceService& resource_service();
 const UiService& ui_service();
 const HookService& hook_service();
+const OverlayService& overlay_service();
+const TextureService& texture_service();
 
 }  // namespace dusk::mods::svc

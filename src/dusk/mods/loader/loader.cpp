@@ -356,7 +356,7 @@ static ModManifestInfo build_manifest_info(const ModManifest& manifest) {
     for (size_t i = 0; i < manifest.import_count; ++i) {
         const auto& serviceImport = manifest.imports[i];
         if (serviceImport.struct_size != sizeof(ServiceImport) ||
-            !dusk::mods::svc::valid_service_id(serviceImport.service_id))
+            !mods::svc::valid_service_id(serviceImport.service_id))
         {
             continue;
         }
@@ -367,7 +367,7 @@ static ModManifestInfo build_manifest_info(const ModManifest& manifest) {
     for (size_t i = 0; i < manifest.export_count; ++i) {
         const auto& serviceExport = manifest.exports[i];
         if (serviceExport.struct_size != sizeof(ServiceExport) ||
-            !dusk::mods::svc::valid_service_id(serviceExport.service_id))
+            !mods::svc::valid_service_id(serviceExport.service_id))
         {
             continue;
         }
@@ -414,8 +414,8 @@ static void warn_unpublished_deferred_exports(const LoadedMod& mod) {
         {
             continue;
         }
-        const auto* record = dusk::mods::svc::find_service_record(
-            serviceExport.service_id, serviceExport.major_version);
+        const auto* record =
+            mods::svc::find_service_record(serviceExport.service_id, serviceExport.major_version);
         if (record != nullptr && record->service == nullptr) {
             Log.warn("'{}' declared deferred service '{}@{}' but never published it during "
                      "initialization",
@@ -460,7 +460,7 @@ void ModLoader::try_load_mod(const std::filesystem::path& modPath, bool fromDir)
     mod.context = std::make_unique<ModContext>();
     mod.context->mod = &mod;
     mod.cvarIsEnabled =
-        std::make_unique<ConfigVar<bool>>(mod_enabled_cvar_name(mod.metadata.id), true);
+        std::make_unique<ConfigVar<bool> >(mod_enabled_cvar_name(mod.metadata.id), true);
 
     if (const auto [dllEntry, anyLibs] = locate_dll_in_bundle(*mod.bundle); anyLibs) {
         mod.nativeStatus = NativeModStatus::Unknown;
@@ -556,6 +556,8 @@ void ModLoader::deactivate_mod(LoadedMod& mod) {
         mods::svc::remove_services_for_provider(mod);
         mod.servicesRegistered = false;
     }
+    overlay_remove_mod(mod);
+    textures_remove_mod(mod);
     mod.uiTabs.clear();
     unload_native(mod);
 
@@ -627,7 +629,7 @@ void ModLoader::init() {
 
     // Providers must initialize (and publish deferred services) before their importers, so
     // imports are resolved per mod, interleaved with initialization, in dependency order.
-    mods::loader::sort_mods_by_dependencies(m_mods);
+    sort_mods_by_dependencies(m_mods);
 
     // Config-disabled mods keep their dependency edges but must not resolve until enabled.
     for (auto& mod : mods()) {
@@ -648,6 +650,7 @@ void ModLoader::init() {
     }
 
     sync_overlay_files();
+    sync_texture_replacements();
 
     auto active = std::ranges::count_if(mods(), [](const LoadedMod& m) { return m.active; });
     Log.info("{}/{} mod(s) active", active, m_mods.size());
@@ -790,7 +793,7 @@ bool ModLoader::reload_bundle(LoadedMod& mod) {
         Log.info("'{}' changed its service imports/exports; rebuilding mod dependency graph",
             mod.metadata.id);
         mod.manifestInfo = std::move(newInfo);
-        mods::loader::sort_mods_by_dependencies(m_mods);
+        sort_mods_by_dependencies(m_mods);
     }
 
     return true;
@@ -801,7 +804,8 @@ void ModLoader::apply_lifecycle_change(LoadedMod& target, const bool reload) {
 
     // Dependents first (reverse init order), like shutdown.
     for (auto* mod : affected | std::views::reverse) {
-        const bool needsTeardown = mod->active ||
+        const bool needsTeardown =
+            mod->active ||
             (mod == &target && (mod->initialized || (reload && mod->native != nullptr)));
         if (!needsTeardown) {
             continue;
@@ -920,6 +924,7 @@ void ModLoader::apply_pending_requests() {
     }
 
     sync_overlay_files();
+    sync_texture_replacements();
 
     auto active = std::ranges::count_if(mods(), [](const LoadedMod& m) { return m.active; });
     Log.info("{}/{} mod(s) active", active, m_mods.size());
@@ -927,6 +932,9 @@ void ModLoader::apply_pending_requests() {
 
 void ModLoader::tick() {
     apply_pending_requests();
+    if (consume_overlays_dirty()) {
+        sync_overlay_files();
+    }
 
     for (auto& mod : mods()) {
         if (!mod.active || !mod.native) {
