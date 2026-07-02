@@ -789,9 +789,9 @@ int game_main(int argc, char* argv[]) {
     if (parsed_arg_options.contains("mods") &&
         !parsed_arg_options["mods"].as<std::string>().empty())
     {
-        dusk::ModLoader::instance().setModsDir(parsed_arg_options["mods"].as<std::string>());
+        dusk::ModLoader::instance().set_mods_dir(parsed_arg_options["mods"].as<std::string>());
     } else {
-        dusk::ModLoader::instance().setModsDir(dusk::ConfigPath / "mods");
+        dusk::ModLoader::instance().set_mods_dir(dusk::ConfigPath / "mods");
     }
 
     DuskLog.info("Initializing mods...");

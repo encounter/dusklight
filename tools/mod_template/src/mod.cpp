@@ -7,7 +7,7 @@ IMPORT_SERVICE(LogService, svc_log);
 extern "C" {
 
 MOD_EXPORT ModResult mod_initialize(ModError*) {
-    SERVICE_CALL(svc_log, info, "template_mod initialized");
+    svc_log->info(mod_ctx, "template_mod initialized");
     return MOD_OK;
 }
 
@@ -16,7 +16,7 @@ MOD_EXPORT ModResult mod_update(ModError*) {
 }
 
 MOD_EXPORT ModResult mod_shutdown(ModError*) {
-    SERVICE_CALL(svc_log, info, "template_mod unloaded");
+    svc_log->info(mod_ctx, "template_mod unloaded");
     return MOD_OK;
 }
 }

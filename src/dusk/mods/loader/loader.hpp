@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <mutex>
 #include <string_view>
 #include "miniz.h"
 
@@ -14,6 +15,8 @@ constexpr bool EnableCodeMods = true;
 constexpr bool EnableCodeMods = false;
 #endif
 
+// Implementations must be safe for concurrent calls: overlay file reads run on DVD threads
+// while the game thread reads resources from the same bundle.
 class ModBundle {
 public:
     virtual ~ModBundle() = default;
@@ -35,6 +38,7 @@ private:
     std::vector<uint8_t> zip_data;
     mz_zip_archive res_zip{};
     bool res_zip_open = false;
+    std::mutex m_mutex;
 };
 
 class ModBundleDisk final : public ModBundle {

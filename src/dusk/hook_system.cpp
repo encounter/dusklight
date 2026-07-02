@@ -35,9 +35,23 @@ struct HookSlot {
     std::vector<VoidHookFn> post;
 };
 
+// One per mod that requested a hook on a target: its template-generated trampoline and the
+// address of its HookEntry::g_orig, both living in the mod's dylib. Any candidate's trampoline
+// is interchangeable (dispatch walks the shared HookSlot), so when the active installer's mod
+// unloads, the funchook detour is handed off to a surviving candidate and every candidate's
+// *orig_store is rewritten to the new original pointer.
+struct HookCandidate {
+    ModContext* context = nullptr;
+    void* trampoline = nullptr;
+    void** orig_store = nullptr;
+    uint64_t order = 0;
+};
+
 struct InstalledHook {
     funchook_t* handle = nullptr;
     void* original = nullptr;
+    ModContext* active = nullptr;
+    std::vector<HookCandidate> candidates;
 };
 
 std::unordered_map<uintptr_t, HookSlot> s_registry;
@@ -93,9 +107,34 @@ void* resolve_import_thunk(void* addr) {
     return addr;
 }
 
+funchook_t* install_trampoline(void* fn_addr, void* trampoline, void** out_original) {
+    funchook_t* fh = funchook_create();
+    if (fh == nullptr) {
+        DuskLog.warn("HookSystem: funchook_create failed for {:p}", fn_addr);
+        return nullptr;
+    }
+
+    void* fn = fn_addr;
+    int prep = funchook_prepare(fh, &fn, trampoline);
+    int inst = (prep == 0) ? funchook_install(fh, 0) : -1;
+    if (prep != 0 || inst != 0) {
+        const char* message = funchook_error_message(fh);
+        DuskLog.warn("HookSystem: funchook failed for {:p} (prepare={} install={}): {}", fn_addr,
+            prep, inst, message != nullptr && message[0] != '\0' ? message : "no details");
+        funchook_destroy(fh);
+        return nullptr;
+    }
+
+    *out_original = fn;
+    return fh;
+}
+
 }  // namespace
 
-ModResult hookInstallByAddr(ModContext*, void* fn_addr, void* tramp_fn, void** orig_store) {
+// Hook installation, removal and dispatch all assume the game thread; hookRemoveMod must only
+// run when no hooked function is on the stack (the mod loader applies lifecycle changes at the
+// top of its tick).
+ModResult hookInstallByAddr(ModContext* context, void* fn_addr, void* tramp_fn, void** orig_store) {
     if (fn_addr == nullptr || tramp_fn == nullptr || orig_store == nullptr) {
         return MOD_INVALID_ARGUMENT;
     }
@@ -104,29 +143,32 @@ ModResult hookInstallByAddr(ModContext*, void* fn_addr, void* tramp_fn, void** o
     auto key = reinterpret_cast<uintptr_t>(fn_addr);
     auto it = s_installed.find(key);
     if (it != s_installed.end()) {
-        *orig_store = it->second.original;
+        auto& entry = it->second;
+        // hook_add_pre + hook_add_post on the same target share one g_orig per mod.
+        const bool known = std::ranges::any_of(entry.candidates, [&](const HookCandidate& cand) {
+            return cand.context == context && cand.orig_store == orig_store;
+        });
+        if (!known) {
+            entry.candidates.push_back(HookCandidate{context, tramp_fn, orig_store, s_nextOrder++});
+        }
+        DuskLog.debug("HookSystem: candidate {} for {:p}: tramp={:p} orig_store={:p} (known={})",
+            context_mod_id(context), fn_addr, tramp_fn, static_cast<void*>(orig_store), known);
+        *orig_store = entry.original;
         return MOD_OK;
     }
 
-    funchook_t* fh = funchook_create();
+    void* original = nullptr;
+    funchook_t* fh = install_trampoline(fn_addr, tramp_fn, &original);
     if (fh == nullptr) {
-        DuskLog.warn("HookSystem: funchook_create failed for {:p}", fn_addr);
         return MOD_ERROR;
     }
 
-    void* fn = fn_addr;
-    int prep = funchook_prepare(fh, &fn, tramp_fn);
-    int inst = (prep == 0) ? funchook_install(fh, 0) : -1;
-    if (prep != 0 || inst != 0) {
-        const char* message = funchook_error_message(fh);
-        DuskLog.warn("HookSystem: funchook failed for {:p} (prepare={} install={}): {}", fn_addr,
-            prep, inst, message != nullptr && message[0] != '\0' ? message : "no details");
-        funchook_destroy(fh);
-        return MOD_ERROR;
-    }
-
-    s_installed[key] = InstalledHook{fh, fn};
-    *orig_store = fn;
+    auto& entry = s_installed[key];
+    entry.handle = fh;
+    entry.original = original;
+    entry.active = context;
+    entry.candidates.push_back(HookCandidate{context, tramp_fn, orig_store, s_nextOrder++});
+    *orig_store = original;
     return MOD_OK;
 }
 
@@ -236,8 +278,9 @@ ModResult hookDispatchPost(ModContext*, void* fn_addr, void* args, void* retval)
     return MOD_OK;
 }
 
-void hookClearMod(ModContext* context) {
-    for (auto& [addr, slot] : s_registry) {
+void hookRemoveMod(ModContext* context) {
+    for (auto it = s_registry.begin(); it != s_registry.end();) {
+        auto& slot = it->second;
         auto erase = [&](auto& hooks) {
             hooks.erase(std::remove_if(hooks.begin(), hooks.end(),
                             [context](const auto& hook) { return hook.context == context; }),
@@ -248,6 +291,71 @@ void hookClearMod(ModContext* context) {
         if (slot.replace.context == context) {
             slot.replace = {};
         }
+        if (slot.pre.empty() && slot.post.empty() && slot.replace.replaceCallback == nullptr) {
+            it = s_registry.erase(it);
+        } else {
+            ++it;
+        }
+    }
+
+    for (auto it = s_installed.begin(); it != s_installed.end();) {
+        auto& entry = it->second;
+        // The departing mod's g_orig slots are about to be unmapped; drop its candidates before
+        // any orig_store rewrites below.
+        std::erase_if(entry.candidates,
+            [context](const HookCandidate& cand) { return cand.context == context; });
+        if (entry.active != context) {
+            ++it;
+            continue;
+        }
+
+        auto* target = reinterpret_cast<void*>(it->first);
+        const int uninst = funchook_uninstall(entry.handle, 0);
+        const int destr = funchook_destroy(entry.handle);
+        if (uninst != 0 || destr != 0) {
+            DuskLog.warn("HookSystem: funchook uninstall/destroy for {:p} returned {}/{}", target,
+                uninst, destr);
+        }
+        entry.handle = nullptr;
+        entry.active = nullptr;
+
+        if (entry.candidates.empty()) {
+            it = s_installed.erase(it);
+            continue;
+        }
+
+        // Hand the detour off to a surviving candidate (lowest registration order first; the
+        // vector is append-ordered). A candidate whose install fails stays in the list — its
+        // g_orig must still track the current original pointer.
+        for (auto& cand : entry.candidates) {
+            void* original = nullptr;
+            funchook_t* fh = install_trampoline(target, cand.trampoline, &original);
+            if (fh == nullptr) {
+                continue;
+            }
+            entry.handle = fh;
+            entry.original = original;
+            entry.active = cand.context;
+            DuskLog.info("HookSystem: reinstalled trampoline for {:p}: {} -> {} (tramp={:p})",
+                target, context_mod_id(context), context_mod_id(cand.context), cand.trampoline);
+            break;
+        }
+
+        if (entry.active == nullptr) {
+            DuskLog.warn("HookSystem: no reinstallable trampoline for {:p}; hooks there are "
+                         "disabled until a mod reinstalls one",
+                target);
+            for (auto& cand : entry.candidates) {
+                *cand.orig_store = target;
+            }
+            it = s_installed.erase(it);
+            continue;
+        }
+
+        for (auto& cand : entry.candidates) {
+            *cand.orig_store = entry.original;
+        }
+        ++it;
     }
 }
 

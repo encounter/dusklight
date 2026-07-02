@@ -1,0 +1,7 @@
+{
+    "id":          "dev.twilitrealm.test_mod_dep",
+    "name":        "API Test Dependency Mod",
+    "version":     "1.0.0",
+    "author":      "dusk",
+    "description": "Companion provider for the API test suite's dependency-ordering checks."
+}

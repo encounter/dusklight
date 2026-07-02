@@ -38,7 +38,7 @@ ModResult hook_dispatch_post(ModContext* context, void* fnAddr, void* args, void
     return dusk::hookDispatchPost(context, fnAddr, args, retval);
 }
 
-const HookService s_hookService{
+constexpr HookService s_hookService{
     .header = SERVICE_HEADER(HookService, HOOK_SERVICE_MAJOR, HOOK_SERVICE_MINOR),
     .install = hook_install,
     .add_pre = hook_add_pre,

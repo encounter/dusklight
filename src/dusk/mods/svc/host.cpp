@@ -56,7 +56,7 @@ const char* host_mod_dir(ModContext* context) {
     return mod != nullptr ? mod->dir.c_str() : "";
 }
 
-const HostService s_hostService{
+constexpr HostService s_hostService{
     .header = SERVICE_HEADER(HostService, HOST_SERVICE_MAJOR, HOST_SERVICE_MINOR),
     .get_service = host_get_service,
     .publish_service = host_publish_service,

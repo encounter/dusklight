@@ -863,4 +863,6 @@ endforeach ()
 
 if (DUSK_ENABLE_CODE_MODS)
     add_subdirectory(tools/mod_test)
+    add_subdirectory(tools/mod_test_dep)
+    add_subdirectory(tools/cat_mod)
 endif ()

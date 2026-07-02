@@ -17,6 +17,9 @@ ModResult hookDispatchPre(
     ModContext* context, void* fn_addr, void* args, void* retval, int* out_skip_original);
 ModResult hookDispatchPost(ModContext* context, void* fn_addr, void* args, void* retval);
 
-void hookClearMod(ModContext* context);
+// Removes all callbacks and trampoline candidates owned by `context`. If it owned the installed
+// trampoline for a target, the installation is handed off to a surviving candidate (or fully
+// uninstalled). Must run with no hooked function on the stack.
+void hookRemoveMod(ModContext* context);
 
 }  // namespace dusk

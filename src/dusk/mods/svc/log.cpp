@@ -44,7 +44,7 @@ void log_error(ModContext* context, const char* message) {
     log_write(context, LOG_LEVEL_ERROR, message);
 }
 
-const LogService s_logService{
+constexpr LogService s_logService{
     .header = SERVICE_HEADER(LogService, LOG_SERVICE_MAJOR, LOG_SERVICE_MINOR),
     .write = log_write,
     .trace = log_trace,

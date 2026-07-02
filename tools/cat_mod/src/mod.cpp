@@ -49,7 +49,7 @@ ModResult require_ok(const ModResult result, ModError* error, const char* messag
 }
 
 void log_info(const char* message) {
-    SERVICE_CALL(svc_log, info, message);
+    svc_log->info(mod_ctx, message);
 }
 
 fopAc_ac_c* get_cat() {
@@ -168,27 +168,27 @@ void on_set_damage_point_post(ModContext*, void* args, void*, void*) {
 }
 
 ModResult build_panel(ModContext*, PanelHandle panel, void*, ModError*) {
-    SERVICE_CALL(svc_ui, panel_add_section, panel, "Cat");
-    SERVICE_CALL(svc_ui, panel_add_dyn_text, panel, s_cat_dead ? "Dead" : "Alive", &s_el_status);
+    svc_ui->panel_add_section(mod_ctx, panel, "Cat");
+    svc_ui->panel_add_dyn_text(mod_ctx, panel, s_cat_dead ? "Dead" : "Alive", &s_el_status);
 
     float fraction = static_cast<float>(s_cat_hp) / kCatMaxHp;
-    SERVICE_CALL(svc_ui, panel_add_progress, panel, fraction, &s_el_hp_bar);
+    svc_ui->panel_add_progress(mod_ctx, panel, fraction, &s_el_hp_bar);
 
     char buf[32];
     std::snprintf(buf, sizeof(buf), "%d / %d HP", s_cat_hp, kCatMaxHp);
-    SERVICE_CALL(svc_ui, panel_add_dyn_text, panel, buf, &s_el_hp);
+    svc_ui->panel_add_dyn_text(mod_ctx, panel, buf, &s_el_hp);
     return MOD_OK;
 }
 
 ModResult update_panel(ModContext*, void*, ModError*) {
-    SERVICE_CALL(svc_ui, elem_set_text, s_el_status, s_cat_dead ? "Dead" : "Alive");
+    svc_ui->elem_set_text(mod_ctx, s_el_status, s_cat_dead ? "Dead" : "Alive");
 
     float fraction = static_cast<float>(s_cat_hp) / kCatMaxHp;
-    SERVICE_CALL(svc_ui, elem_set_progress, s_el_hp_bar, fraction);
+    svc_ui->elem_set_progress(mod_ctx, s_el_hp_bar, fraction);
 
     char buf[32];
     std::snprintf(buf, sizeof(buf), "%d / %d HP", s_cat_hp, kCatMaxHp);
-    SERVICE_CALL(svc_ui, elem_set_text, s_el_hp, buf);
+    svc_ui->elem_set_text(mod_ctx, s_el_hp, buf);
     return MOD_OK;
 }
 
@@ -216,7 +216,7 @@ MOD_EXPORT ModResult mod_initialize(ModError* error) {
     UiTab tab = UI_TAB_INIT;
     tab.build = build_panel;
     tab.update = update_panel;
-    result = SERVICE_CALL(svc_ui, register_tab, &tab);
+    result = svc_ui->register_tab(mod_ctx, &tab);
     if (result != MOD_OK) {
         return require_ok(result, error, "failed to register UI tab");
     }

@@ -21,7 +21,7 @@ extern "C" {
 #define MOD_EXTERN_C
 #endif
 
-#define MOD_ABI_VERSION 4u
+#define MOD_ABI_VERSION 5u
 #define MOD_ERROR_MESSAGE_SIZE 512u
 
 typedef struct ModContext ModContext;
@@ -44,8 +44,44 @@ typedef struct ModError {
 
 #define MOD_ERROR_INIT {sizeof(ModError), MOD_OK, {0}}
 
-extern ModContext* mod_context;
+/*
+ * Opaque per-mod context, populated by the host before mod_initialize is called.
+ * Pass it as the first argument to every service call; it identifies the calling
+ * mod for attribution (logging, resource lookup, hook ownership, etc.).
+ */
+extern ModContext* mod_ctx;
 
+/*
+ * Service versioning contract:
+ *
+ * A service is a struct of function pointers, beginning with a ServiceHeader.
+ * Compatibility is tracked with a major/minor version pair:
+ *
+ * - A major version bump is a breaking change. Different majors are distinct
+ *   services; the registry never matches an import against a different major.
+ * - A minor version bump may only append fields to the end of the struct.
+ *   Existing fields must keep their offsets and semantics.
+ *
+ * Providers: exporting minor N means every function pointer introduced at or
+ * below N is populated (non-NULL). struct_size reflects the compiled struct.
+ *
+ * Importers: importing with min_minor_version N guarantees (enforced at load
+ * time) that the resolved service is at least minor N, so any field introduced
+ * at or below N may be used unconditionally, with no availability checks.
+ * Fields newer than the declared min_minor_version must be gated behind
+ * SERVICE_HAS plus a NULL check on the pointer itself.
+ *
+ * Load ordering: a manifest import of another mod's service (required or
+ * optional) guarantees that the provider's mod_initialize completed before the
+ * importer's runs, and deferred services published during the provider's
+ * initialization resolve into import slots just like static exports. If a
+ * provider fails to load, mods that required its services fail in turn. Mods
+ * whose required imports form a cycle all fail to load; a cycle involving an
+ * optional import is broken by dropping the ordering guarantee (not the
+ * resolution) of that optional import. Dynamic lookups via
+ * HostService::get_service carry no ordering guarantee: they see whatever has
+ * been published at call time.
+ */
 typedef struct ServiceHeader {
     uint32_t struct_size;
     uint16_t major_version;

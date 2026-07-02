@@ -73,7 +73,7 @@ void resource_free(ModContext*, ResourceBuffer* buffer) {
     *buffer = ResourceBuffer{sizeof(ResourceBuffer), nullptr, 0u};
 }
 
-const ResourceService s_resourceService{
+constexpr ResourceService s_resourceService{
     .header = SERVICE_HEADER(ResourceService, RESOURCE_SERVICE_MAJOR, RESOURCE_SERVICE_MINOR),
     .load = resource_load,
     .free = resource_free,

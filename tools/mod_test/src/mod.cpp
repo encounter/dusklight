@@ -1,6 +1,7 @@
 // Tests every feature of the Dusklight mod API. Results are shown in the mod tab.
 
 #include "d/actor/d_a_alink.h"
+#include "f_ap/f_ap_game.h"
 #include "m_Do/m_Do_controller_pad.h"
 #include "mods/hook.hpp"
 #include "mods/service.hpp"
@@ -9,6 +10,7 @@
 #include "mods/svc/log.h"
 #include "mods/svc/resource.h"
 #include "mods/svc/ui.h"
+#include "test_services.h"
 
 DEFINE_MOD();
 IMPORT_SERVICE(HostService, svc_host);
@@ -16,6 +18,11 @@ IMPORT_SERVICE(LogService, svc_log);
 IMPORT_SERVICE(ResourceService, svc_resource);
 IMPORT_SERVICE(UiService, svc_ui);
 IMPORT_SERVICE(HookService, svc_hook);
+// Both provided by mod_test_dep, which sorts *after* mod_test.dusk in the mods directory;
+// dependency ordering must initialize it first regardless. The deferred service only
+// resolves if mod_test_dep published it during its initialization.
+IMPORT_SERVICE(TestDepService, svc_test_dep);
+IMPORT_SERVICE(TestDepDeferredService, svc_test_dep_deferred);
 
 namespace {
 
@@ -31,6 +38,18 @@ bool g_seen_link = false;
 bool g_resource_ok = false;
 char g_resource_text[256] = {};
 char g_mod_dir_snippet[64] = {};
+int32_t g_initialized = 0;
+bool g_dep_order_ok = false;
+bool g_dep_deferred_ok = false;
+
+int32_t test_main_initialized(ModContext*) {
+    return g_initialized;
+}
+
+constexpr TestMainService s_testMainService{
+    .header = SERVICE_HEADER(TestMainService, TEST_MAIN_SERVICE_MAJOR, TEST_MAIN_SERVICE_MINOR),
+    .initialized = test_main_initialized,
+};
 
 ElemHandle g_el_pre_badge = nullptr;
 ElemHandle g_el_post_badge = nullptr;
@@ -82,6 +101,16 @@ void on_execute_replace(ModContext*, void* args, void* retval, void*) {
     }
 }
 
+// Pre-hook on the main game loop; dispatches every frame, including headless runs (the other
+// hooks need Link in-game).
+int g_game_loop_dispatches = 0;
+HookAction on_game_loop_pre(ModContext*, void*, void*, void*) {
+    if (g_game_loop_dispatches++ == 0) {
+        svc_log->info(mod_ctx, "mod_test: game loop hook active");
+    }
+    return HOOK_CONTINUE;
+}
+
 void on_reset(ModContext*, void*) {
     g_pre_fired = false;
     g_post_fired = false;
@@ -94,77 +123,99 @@ void on_reset(ModContext*, void*) {
 ModResult build_panel(ModContext*, PanelHandle panel, void*, ModError*) {
     ElemHandle unused = nullptr;
 
-    SERVICE_CALL(svc_ui, panel_add_section, panel, "Hooks");
-    SERVICE_CALL(svc_ui, panel_add_badge_row, panel, "pre-hook fired (posMove)", g_pre_fired,
-        &g_el_pre_badge);
-    SERVICE_CALL(svc_ui, panel_add_badge_row, panel, "post-hook fired (posMove)", g_post_fired,
-        &g_el_post_badge);
-    SERVICE_CALL(svc_ui, panel_add_badge_row, panel, "replace-hook fired (execute)",
-        g_replace_fired, &g_el_replace_badge);
-    SERVICE_CALL(svc_ui, panel_add_badge_row, panel, "arg_ref write + pre cancel (hold L)",
+    svc_ui->panel_add_section(mod_ctx, panel, "Hooks");
+    svc_ui->panel_add_badge_row(
+        mod_ctx, panel, "pre-hook fired (posMove)", g_pre_fired, &g_el_pre_badge);
+    svc_ui->panel_add_badge_row(
+        mod_ctx, panel, "post-hook fired (posMove)", g_post_fired, &g_el_post_badge);
+    svc_ui->panel_add_badge_row(
+        mod_ctx, panel, "replace-hook fired (execute)", g_replace_fired, &g_el_replace_badge);
+    svc_ui->panel_add_badge_row(mod_ctx, panel, "arg_ref write + pre cancel (hold L)",
         g_arg_write_ok, &g_el_argwrite_badge);
 
     char countBuf[64];
     std::snprintf(countBuf, sizeof(countBuf), "pre cancels: %d", g_pre_cancel_count);
-    SERVICE_CALL(svc_ui, panel_add_dyn_text, panel, countBuf, &g_el_cancel_count);
+    svc_ui->panel_add_dyn_text(mod_ctx, panel, countBuf, &g_el_cancel_count);
     std::snprintf(countBuf, sizeof(countBuf), "post calls: %d", g_post_count);
-    SERVICE_CALL(svc_ui, panel_add_dyn_text, panel, countBuf, &g_el_post_count);
+    svc_ui->panel_add_dyn_text(mod_ctx, panel, countBuf, &g_el_post_count);
 
-    SERVICE_CALL(svc_ui, panel_add_section, panel, "Resources");
-    SERVICE_CALL(svc_ui, panel_add_badge_row, panel, "ResourceService::load (hello.txt)",
-        g_resource_ok, &unused);
+    svc_ui->panel_add_section(mod_ctx, panel, "Resources");
+    svc_ui->panel_add_badge_row(
+        mod_ctx, panel, "ResourceService::load (hello.txt)", g_resource_ok, &unused);
     if (g_resource_text[0] != '\0') {
-        SERVICE_CALL(svc_ui, panel_add_dyn_text, panel, g_resource_text, &unused);
+        svc_ui->panel_add_dyn_text(mod_ctx, panel, g_resource_text, &unused);
     }
 
-    SERVICE_CALL(svc_ui, panel_add_section, panel, "API Fields");
-    SERVICE_CALL(svc_ui, panel_add_badge_row, panel, "mod_dir non-empty",
-        g_mod_dir_snippet[0] != '\0', &unused);
-    SERVICE_CALL(svc_ui, panel_add_dyn_text, panel, g_mod_dir_snippet, &unused);
+    svc_ui->panel_add_section(mod_ctx, panel, "Dependencies");
+    svc_ui->panel_add_badge_row(
+        mod_ctx, panel, "mod_test_dep initialized first", g_dep_order_ok, &unused);
+    svc_ui->panel_add_badge_row(
+        mod_ctx, panel, "deferred service import", g_dep_deferred_ok, &unused);
 
-    SERVICE_CALL(svc_ui, panel_add_section, panel, "Actions");
-    SERVICE_CALL(svc_ui, panel_add_button, panel, "Reset Results", on_reset, nullptr);
+    svc_ui->panel_add_section(mod_ctx, panel, "API Fields");
+    svc_ui->panel_add_badge_row(
+        mod_ctx, panel, "mod_dir non-empty", g_mod_dir_snippet[0] != '\0', &unused);
+    svc_ui->panel_add_dyn_text(mod_ctx, panel, g_mod_dir_snippet, &unused);
 
-    SERVICE_CALL(svc_ui, panel_add_dyn_text, panel, "", &g_el_link_angle);
+    svc_ui->panel_add_section(mod_ctx, panel, "Actions");
+    svc_ui->panel_add_button(mod_ctx, panel, "Reset Results", on_reset, nullptr);
+
+    svc_ui->panel_add_dyn_text(mod_ctx, panel, "", &g_el_link_angle);
     return MOD_OK;
 }
 
 ModResult update_panel(ModContext*, void*, ModError*) {
-    SERVICE_CALL(svc_ui, elem_set_badge, g_el_pre_badge, g_pre_fired);
-    SERVICE_CALL(svc_ui, elem_set_badge, g_el_post_badge, g_post_fired);
-    SERVICE_CALL(svc_ui, elem_set_badge, g_el_replace_badge, g_replace_fired);
-    SERVICE_CALL(svc_ui, elem_set_badge, g_el_argwrite_badge, g_arg_write_ok);
+    svc_ui->elem_set_badge(mod_ctx, g_el_pre_badge, g_pre_fired);
+    svc_ui->elem_set_badge(mod_ctx, g_el_post_badge, g_post_fired);
+    svc_ui->elem_set_badge(mod_ctx, g_el_replace_badge, g_replace_fired);
+    svc_ui->elem_set_badge(mod_ctx, g_el_argwrite_badge, g_arg_write_ok);
 
     char buf[64];
     std::snprintf(buf, sizeof(buf), "pre cancels: %d", g_pre_cancel_count);
-    SERVICE_CALL(svc_ui, elem_set_text, g_el_cancel_count, buf);
+    svc_ui->elem_set_text(mod_ctx, g_el_cancel_count, buf);
 
     std::snprintf(buf, sizeof(buf), "post calls: %d", g_post_count);
-    SERVICE_CALL(svc_ui, elem_set_text, g_el_post_count, buf);
+    svc_ui->elem_set_text(mod_ctx, g_el_post_count, buf);
 
     if (g_seen_link) {
         std::snprintf(buf, sizeof(buf), "Link y angle: %d", g_last_link_y_angle);
     } else {
         std::snprintf(buf, sizeof(buf), "Link y angle: waiting");
     }
-    SERVICE_CALL(svc_ui, elem_set_text, g_el_link_angle, buf);
+    svc_ui->elem_set_text(mod_ctx, g_el_link_angle, buf);
     return MOD_OK;
 }
 
 }  // namespace
 
+// mod_test_dep optionally imports this, closing a dependency cycle the loader must break.
+EXPORT_SERVICE(s_testMainService);
+
 extern "C" {
 
 MOD_EXPORT ModResult mod_initialize(ModError* error) {
-    SERVICE_CALL(svc_log, info, "mod_test initializing");
-    SERVICE_CALL(svc_log, warn, "LogService::warn smoke test");
-    SERVICE_CALL(svc_log, error, "LogService::error smoke test");
+    svc_log->info(mod_ctx, "mod_test initializing");
+    svc_log->warn(mod_ctx, "LogService::warn smoke test");
+    svc_log->error(mod_ctx, "LogService::error smoke test");
+
+    g_dep_order_ok = svc_test_dep->initialized(mod_ctx) == 1;
+    if (g_dep_order_ok) {
+        svc_log->info(mod_ctx, "dependency ordering OK: mod_test_dep initialized first");
+    } else {
+        svc_log->error(mod_ctx, "dependency ordering FAILED: mod_test_dep not initialized");
+    }
+    g_dep_deferred_ok = svc_test_dep_deferred->magic(mod_ctx) == TEST_DEP_DEFERRED_MAGIC;
+    if (g_dep_deferred_ok) {
+        svc_log->info(mod_ctx, "deferred service import OK");
+    } else {
+        svc_log->error(mod_ctx, "deferred service import returned wrong value");
+    }
 
     std::snprintf(
-        g_mod_dir_snippet, sizeof(g_mod_dir_snippet), "%.60s", SERVICE_CALL(svc_host, mod_dir));
+        g_mod_dir_snippet, sizeof(g_mod_dir_snippet), "%.60s", svc_host->mod_dir(mod_ctx));
 
     ResourceBuffer buffer = RESOURCE_BUFFER_INIT;
-    ModResult loadResult = SERVICE_CALL(svc_resource, load, "hello.txt", &buffer);
+    ModResult loadResult = svc_resource->load(mod_ctx, "hello.txt", &buffer);
     if (loadResult == MOD_OK) {
         size_t copy =
             buffer.size < sizeof(g_resource_text) - 1 ? buffer.size : sizeof(g_resource_text) - 1;
@@ -173,23 +224,23 @@ MOD_EXPORT ModResult mod_initialize(ModError* error) {
         while (copy > 0 && g_resource_text[copy - 1] == '\n') {
             g_resource_text[--copy] = '\0';
         }
-        SERVICE_CALL(svc_resource, free, &buffer);
+        svc_resource->free(mod_ctx, &buffer);
         g_resource_ok = true;
 
         char logBuf[320];
         std::snprintf(logBuf, sizeof(logBuf), "ResourceService::load OK: \"%s\"", g_resource_text);
-        SERVICE_CALL(svc_log, info, logBuf);
+        svc_log->info(mod_ctx, logBuf);
     } else {
-        SERVICE_CALL(svc_log, error, "ResourceService::load FAILED for hello.txt");
+        svc_log->error(mod_ctx, "ResourceService::load FAILED for hello.txt");
     }
 
     ResourceBuffer missing = RESOURCE_BUFFER_INIT;
-    loadResult = SERVICE_CALL(svc_resource, load, "does_not_exist.bin", &missing);
+    loadResult = svc_resource->load(mod_ctx, "does_not_exist.bin", &missing);
     if (loadResult == MOD_UNAVAILABLE) {
-        SERVICE_CALL(svc_log, info, "missing resource correctly returned MOD_UNAVAILABLE");
+        svc_log->info(mod_ctx, "missing resource correctly returned MOD_UNAVAILABLE");
     } else if (loadResult == MOD_OK) {
-        SERVICE_CALL(svc_log, error, "missing resource unexpectedly returned data");
-        SERVICE_CALL(svc_resource, free, &missing);
+        svc_log->error(mod_ctx, "missing resource unexpectedly returned data");
+        svc_resource->free(mod_ctx, &missing);
     }
 
     ModResult result = dusk::mods::hook_add_pre<&daAlink_c::posMove>(svc_hook, on_pos_move_pre);
@@ -204,16 +255,21 @@ MOD_EXPORT ModResult mod_initialize(ModError* error) {
     if (result != MOD_OK) {
         return require_ok(result, error, "failed to register replace hook");
     }
+    result = dusk::mods::hook_add_pre<&fapGm_Execute>(svc_hook, on_game_loop_pre);
+    if (result != MOD_OK) {
+        return require_ok(result, error, "failed to register game loop hook");
+    }
 
     UiTab tab = UI_TAB_INIT;
     tab.build = build_panel;
     tab.update = update_panel;
-    result = SERVICE_CALL(svc_ui, register_tab, &tab);
+    result = svc_ui->register_tab(mod_ctx, &tab);
     if (result != MOD_OK) {
         return require_ok(result, error, "failed to register UI tab");
     }
 
-    SERVICE_CALL(svc_log, info, "mod_test ready");
+    g_initialized = 1;
+    svc_log->info(mod_ctx, "mod_test ready");
     return MOD_OK;
 }
 
@@ -225,7 +281,7 @@ MOD_EXPORT ModResult mod_update(ModError*) {
 MOD_EXPORT ModResult mod_shutdown(ModError*) {
     char logBuf[96];
     std::snprintf(logBuf, sizeof(logBuf), "mod_test unloaded after %d ticks", g_ticks);
-    SERVICE_CALL(svc_log, info, logBuf);
+    svc_log->info(mod_ctx, logBuf);
 
     g_el_pre_badge = g_el_post_badge = g_el_replace_badge = nullptr;
     g_el_argwrite_badge = g_el_cancel_count = g_el_post_count = nullptr;

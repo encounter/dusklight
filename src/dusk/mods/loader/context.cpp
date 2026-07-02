@@ -1,6 +1,7 @@
 #include "loader.hpp"
 
 #include "dusk/logging.h"
+#include "dusk/mods/svc/registry.hpp"
 #include "dusk/ui/ui.hpp"
 #include "fmt/format.h"
 
@@ -22,10 +23,18 @@ const char* mod_id_from_context(ModContext* context) {
 }
 
 void fail_mod(LoadedMod& mod, ModResult code, std::string_view message) {
-    const bool firstFailure = !mod.load_failed;
+    const bool firstFailure = !mod.loadFailed;
     mod.active = false;
-    mod.load_failed = true;
-    mod.failure_reason = message;
+    mod.loadFailed = true;
+    mod.failureReason = message;
+    // Stop the failed mod's services from resolving; mods that required them fail in turn.
+    // Pointers already handed to other mods stay callable since the library remains loaded.
+    // Hooks are deliberately not touched here: fail_mod can run mid-frame (e.g. from a failing
+    // hook callback), and full teardown happens via deactivateMod at a safe point.
+    svc::remove_services_for_provider(mod);
+    mod.servicesRegistered = false;
+    // Full teardown (hooks, dylib, dependent restart) happens at the top of the next tick.
+    ModLoader::instance().notify_mod_failure(mod);
     DuskLog.error("[{}] disabled: {} ({})", mod.metadata.id, message, static_cast<int>(code));
     if (firstFailure) {
         dusk::ui::push_toast({

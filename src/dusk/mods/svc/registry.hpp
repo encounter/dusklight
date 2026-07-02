@@ -29,6 +29,8 @@ ModResult publish_deferred_service(
 void remove_services_for_provider(const LoadedMod& provider);
 const ServiceRecord* find_service(
     const char* serviceId, uint16_t majorVersion, uint16_t minMinorVersion);
+// Unlike find_service, also returns deferred records that have not been published yet.
+const ServiceRecord* find_service_record(const char* serviceId, uint16_t majorVersion);
 void clear_services();
 
 const HostService& host_service();

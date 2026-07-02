@@ -11,13 +11,13 @@ namespace dusk::mods {
 template <class T>
 T arg(void* argsRaw, int n) noexcept {
     void** args = static_cast<void**>(argsRaw);
-    return *static_cast<std::add_pointer_t<std::remove_reference_t<T>>>(args[n]);
+    return *static_cast<std::add_pointer_t<std::remove_reference_t<T> > >(args[n]);
 }
 
 template <class T>
 std::remove_reference_t<T>& arg_ref(void* argsRaw, int n) noexcept {
     void** args = static_cast<void**>(argsRaw);
-    return *static_cast<std::add_pointer_t<std::remove_reference_t<T>>>(args[n]);
+    return *static_cast<std::add_pointer_t<std::remove_reference_t<T> > >(args[n]);
 }
 
 template <class F>
@@ -31,22 +31,22 @@ void* mfp_addr(F fn) noexcept {
 template <auto Target, class R, class Self, class Orig, class... A>
 struct HookEntryBase {
     static inline Orig g_orig = nullptr;
-    static inline ServiceRef<HookService> hooks{};
+    static inline const HookService* hooks = nullptr;
 
     static bool dispatch_pre(void* args, void* retval) {
-        if (!hooks) {
+        if (hooks == nullptr) {
             return false;
         }
 
         int skipOriginal = 0;
-        const ModResult result = SERVICE_CALL(
-            hooks, dispatch_pre, mfp_addr(Target), args, retval, &skipOriginal);
+        const ModResult result =
+            hooks->dispatch_pre(::mod_ctx, mfp_addr(Target), args, retval, &skipOriginal);
         return result == MOD_OK && skipOriginal != 0;
     }
 
     static void dispatch_post(void* args, void* retval) {
-        if (hooks) {
-            SERVICE_CALL(hooks, dispatch_post, mfp_addr(Target), args, retval);
+        if (hooks != nullptr) {
+            hooks->dispatch_post(::mod_ctx, mfp_addr(Target), args, retval);
         }
     }
 
@@ -78,22 +78,22 @@ struct HookEntryBase {
 template <auto Target, class R, class Orig, class... A>
 struct HookEntryFreeBase {
     static inline Orig g_orig = nullptr;
-    static inline ServiceRef<HookService> hooks{};
+    static inline const HookService* hooks = nullptr;
 
     static bool dispatch_pre(void* args, void* retval) {
-        if (!hooks) {
+        if (hooks == nullptr) {
             return false;
         }
 
         int skipOriginal = 0;
-        const ModResult result = SERVICE_CALL(
-            hooks, dispatch_pre, mfp_addr(Target), args, retval, &skipOriginal);
+        const ModResult result =
+            hooks->dispatch_pre(::mod_ctx, mfp_addr(Target), args, retval, &skipOriginal);
         return result == MOD_OK && skipOriginal != 0;
     }
 
     static void dispatch_post(void* args, void* retval) {
-        if (hooks) {
-            SERVICE_CALL(hooks, dispatch_post, mfp_addr(Target), args, retval);
+        if (hooks != nullptr) {
+            hooks->dispatch_post(::mod_ctx, mfp_addr(Target), args, retval);
         }
     }
 
@@ -150,51 +150,48 @@ template <class R, class... A, R (*Target)(A...)>
 struct HookEntry<Target> : HookEntryFreeBase<Target, R, R (*)(A...), A...> {};
 
 template <auto Target>
-ModResult hook_install(const ServiceRef<HookService>& hooks) {
-    if (!hooks) {
+ModResult hook_install(const HookService* hooks) {
+    if (hooks == nullptr) {
         return MOD_UNAVAILABLE;
     }
 
     using Entry = HookEntry<Target>;
     Entry::hooks = hooks;
-    return SERVICE_CALL(hooks, install, mfp_addr(Target), reinterpret_cast<void*>(Entry::trampoline),
+    return hooks->install(::mod_ctx, mfp_addr(Target), reinterpret_cast<void*>(Entry::trampoline),
         reinterpret_cast<void**>(&Entry::g_orig));
 }
 
 template <auto Target>
 ModResult hook_add_pre(
-    const ServiceRef<HookService>& hooks, HookPreFn callback, const HookOptions* options = nullptr)
-{
+    const HookService* hooks, HookPreFn callback, const HookOptions* options = nullptr) {
     const ModResult installed = hook_install<Target>(hooks);
     if (installed != MOD_OK) {
         return installed;
     }
 
-    return SERVICE_CALL(hooks, add_pre, mfp_addr(Target), callback, options);
+    return hooks->add_pre(::mod_ctx, mfp_addr(Target), callback, options);
 }
 
 template <auto Target>
 ModResult hook_add_post(
-    const ServiceRef<HookService>& hooks, HookPostFn callback, const HookOptions* options = nullptr)
-{
+    const HookService* hooks, HookPostFn callback, const HookOptions* options = nullptr) {
     const ModResult installed = hook_install<Target>(hooks);
     if (installed != MOD_OK) {
         return installed;
     }
 
-    return SERVICE_CALL(hooks, add_post, mfp_addr(Target), callback, options);
+    return hooks->add_post(::mod_ctx, mfp_addr(Target), callback, options);
 }
 
 template <auto Target>
-ModResult hook_set_replace(const ServiceRef<HookService>& hooks, HookReplaceFn callback,
-    const HookOptions* options = nullptr)
-{
+ModResult hook_set_replace(
+    const HookService* hooks, HookReplaceFn callback, const HookOptions* options = nullptr) {
     const ModResult installed = hook_install<Target>(hooks);
     if (installed != MOD_OK) {
         return installed;
     }
 
-    return SERVICE_CALL(hooks, set_replace, mfp_addr(Target), callback, options);
+    return hooks->set_replace(::mod_ctx, mfp_addr(Target), callback, options);
 }
 
 }  // namespace dusk::mods

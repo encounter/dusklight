@@ -1547,6 +1547,8 @@ set(DUSK_FILES
         src/dusk/mods/loader/bundle_disk.cpp
         src/dusk/mods/loader/bundle_zip.cpp
         src/dusk/mods/loader/context.cpp
+        src/dusk/mods/loader/depgraph.cpp
+        src/dusk/mods/loader/depgraph.hpp
         src/dusk/mods/loader/loader.cpp
         src/dusk/mods/loader/loader.hpp
         src/dusk/mods/loader/native_module.cpp

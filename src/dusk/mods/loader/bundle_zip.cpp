@@ -18,6 +18,7 @@ ModBundleZip::~ModBundleZip() {
 }
 
 std::vector<u8> ModBundleZip::readFile(const std::string& fileName) {
+    std::lock_guard lock{m_mutex};
     size_t size;
     const auto ptr = mz_zip_reader_extract_file_to_heap(&res_zip, fileName.c_str(), &size, 0);
 
@@ -34,6 +35,7 @@ std::vector<u8> ModBundleZip::readFile(const std::string& fileName) {
 }
 
 std::vector<std::string> ModBundleZip::getFileNames() {
+    std::lock_guard lock{m_mutex};
     std::vector<std::string> results;
 
     for (mz_uint i = 0, n = mz_zip_reader_get_num_files(&res_zip); i < n; ++i) {
@@ -52,6 +54,7 @@ std::vector<std::string> ModBundleZip::getFileNames() {
 }
 
 size_t ModBundleZip::getFileSize(const std::string& fileName) {
+    std::lock_guard lock{m_mutex};
     const auto idx = mz_zip_reader_locate_file(&res_zip, fileName.c_str(), nullptr, 0);
     if (idx < 0) {
         throw std::runtime_error(fmt::format("Unable to locate file in zip: {}", fileName));

@@ -49,7 +49,7 @@ ModResult ui_register_tab(ModContext* context, const UiTab* tab) {
     if (mod == nullptr || tab == nullptr || tab->build == nullptr) {
         return MOD_INVALID_ARGUMENT;
     }
-    mod->ui_tabs.push_back(dusk::ModUiTabCallback{context, *tab});
+    mod->uiTabs.push_back(dusk::ModUiTabCallback{context, *tab});
     return MOD_OK;
 }
 
@@ -180,7 +180,7 @@ ModResult ui_elem_set_progress(ModContext*, ElemHandle elem, const float value) 
     return MOD_OK;
 }
 
-const UiService s_uiService{
+constexpr UiService s_uiService{
     .header = SERVICE_HEADER(UiService, UI_SERVICE_MAJOR, UI_SERVICE_MINOR),
     .register_tab = ui_register_tab,
     .panel_add_section = ui_panel_add_section,

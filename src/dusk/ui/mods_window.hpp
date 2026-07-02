@@ -15,11 +15,14 @@ public:
 
 private:
     struct ModSnapshot {
+        LoadedMod* mod;
         bool active;
         bool load_failed;
+        bool enabled;
+        bool suspended;
     };
     std::vector<ModSnapshot> mSnapshot;
-    ModIndex mActiveModIndex = 0;
+    LoadedMod* mActiveMod = nullptr;
 };
 
 }  // namespace dusk::ui

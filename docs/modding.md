@@ -1,36 +1,35 @@
-# Dusk Mod API
+# Dusklight Mod API
 
-Mods are shared libraries packaged into a `.dusk` zip archive. The loader scans the `mods/` directory at startup, extracts each library, and calls your exports each frame.
+Mods are distributed as `.dusk` files: zip archives containing a `mod.json` manifest and, optionally, compiled code libraries and resources. The loader scans the mods directory at startup and initializes each mod.
+
+Everything a mod does besides calling game code goes through **services** — small, versioned C APIs. Dusklight provides built-in services (logging, resources, hooks, ...), and mods can define their own to talk to each other.
 
 ## Table of Contents
 
 1. [Getting Started](#getting-started)
 2. [mod.json](#modjson)
-3. [Required Exports](#required-exports)
-4. [DuskModAPI Reference](#duskmodapi-reference)
-5. [Logging](#logging)
-6. [Loading Resources](#loading-resources)
-7. [ImGui Integration](#imgui-integration)
-8. [Hooking Game Functions](#hooking-game-functions)
-   - [Pre-hooks](#pre-hooks)
-   - [Post-hooks](#post-hooks)
-   - [Replace hooks](#replace-hooks)
-   - [Reading and writing arguments](#reading-and-writing-arguments)
-9. [Inter-Mod Communication](#inter-mod-communication)
-10. [Full Example](#full-example)
+3. [Anatomy of a Code Mod](#anatomy-of-a-code-mod)
+4. [Services](#services)
+5. [Built-in Services](#built-in-services)
+6. [Hooking Game Functions](#hooking-game-functions)
+7. [Asset Overlays](#asset-overlays)
+8. [Runtime Lifecycle](#runtime-lifecycle)
+9. [Error Handling](#error-handling)
+10. [Advanced: Exporting Services](#advanced-exporting-services)
 
 ---
 
 ## Getting Started
 
-Fork the [mod template](../tools/mod_template/), it is a self-contained CMake project that references dusk as a subdirectory.
+Fork the [mod template](../tools/mod_template/), a self-contained CMake project that references Dusklight as a subdirectory:
 
 ```
 my_mod/
 ├── CMakeLists.txt
 ├── mod.json
 ├── src/mod.cpp
-└── res/ (optional bundled resources)
+├── res/       (optional bundled resources)
+└── overlay/   (optional game file overrides)
 ```
 
 **CMakeLists.txt:**
@@ -43,19 +42,22 @@ set(DUSK_DIR "${CMAKE_CURRENT_SOURCE_DIR}/dusk" CACHE PATH "Path to dusk source 
 add_subdirectory("${DUSK_DIR}" dusk EXCLUDE_FROM_ALL)
 
 add_dusk_mod(my_mod
-    SOURCES  src/mod.cpp
-    MOD_JSON mod.json
-    RES_DIR  res    # optional
+    SOURCES     src/mod.cpp
+    MOD_JSON    mod.json
+    RES_DIR     res        # optional
+    OVERLAY_DIR overlay    # optional
 )
 ```
 
-After building, `my_mod.dusk` is placed in `mods/` next to the project root (`DUSK_MODS_OUTPUT_DIR` cache variable). Copy it to the game's `mods/` folder and launch.
+Building produces `my_mod.dusk` in `mods/` next to the project root (configurable via the `DUSK_MODS_OUTPUT_DIR` cache variable). Copy it into the game's mods folder and launch:
 
-- Windows: `%APPDATA%\TwilitRealm\Dusk\mods`
-- Linux: `~/.local/share/TwilitRealm/Dusk/mods`
-- macOS: `~/Library/Application Support/TwilitRealm/Dusk/mods`
+- Windows: `%APPDATA%\TwilitRealm\Dusklight\mods`
+- Linux: `~/.local/share/TwilitRealm/Dusklight/mods`
+- macOS: `~/Library/Application Support/TwilitRealm/Dusklight/mods`
 
-The `.dusk` archive is a standard zip containing `mod.json`, the compiled library, and an optional `res/` tree. `add_dusk_mod()` creates it automatically.
+You can also pass `--mods <dir>` on the command line, which is handy during development.
+
+A `.dusk` may contain one library per platform/architecture. The loader only considers libraries with the host platform's extension (`.dll` on Windows, `.dylib` on macOS, `.so` on Linux), preferring one whose name ends in the host's architecture suffix (`_arm64`, `_x64`, `_x86`); a library with no architecture suffix is treated as arch-neutral (e.g. a macOS universal binary). If the bundle contains libraries but none matches the host platform and architecture, the mod is disabled with an error rather than loading a mismatched library. A bundle with no libraries at all is loaded as an asset-only mod. Mods can be enabled, disabled, and reloaded at runtime from the Mods window; the enabled setting persists (see [Runtime Lifecycle](#runtime-lifecycle)).
 
 ---
 
@@ -63,6 +65,7 @@ The `.dusk` archive is a standard zip containing `mod.json`, the compiled librar
 
 ```json
 {
+    "id":          "com.example.my_mod",
     "name":        "My Mod",
     "version":     "1.0.0",
     "author":      "Your Name",
@@ -70,282 +73,304 @@ The `.dusk` archive is a standard zip containing `mod.json`, the compiled librar
 }
 ```
 
-All fields are optional but recommended. `name` falls back to the filename, `version` to `"?"`.
+`id` is required: a unique, stable identifier (reverse-DNS style; periods, underscores, and alphanumerics). Everything else is optional but recommended — `name` falls back to the filename. Whether a mod has code is inferred from the libraries in the bundle; asset-overlay-only mods simply ship none.
 
 ---
 
-## Required Exports
+## Anatomy of a Code Mod
 
 ```cpp
-#include "dusk/mod_api.h"
+#include "mods/service.hpp"
+#include "mods/svc/log.h"
 
-DUSK_REQUIRE_API_VERSION  // declares mod_api_version; loader rejects the mod if the engine is older
+DEFINE_MOD();                          // once, in exactly one translation unit
+IMPORT_SERVICE(LogService, svc_log);   // resolved by the loader before mod_initialize
 
 extern "C" {
 
-void mod_init   (DuskModAPI* api);  // required, called once at startup
-void mod_tick   (DuskModAPI* api);  // required, called every frame
-void mod_cleanup(DuskModAPI* api);  // optional, called on shutdown
+MOD_EXPORT ModResult mod_initialize(ModError* error) {
+    svc_log->info(mod_ctx, "hello from my_mod");
+    return MOD_OK;
+}
 
+MOD_EXPORT ModResult mod_update(ModError* error) {   // called every frame
+    return MOD_OK;
+}
+
+MOD_EXPORT ModResult mod_shutdown(ModError* error) {
+    return MOD_OK;
+}
 }
 ```
 
-`DUSK_REQUIRE_API_VERSION` is optional but recommended. When present, the loader will refuse to initialize the mod if its API version doesn't exactly match the engine's.
+All three lifecycle exports are required. `mod_ctx` is your mod's identity token, set by the loader before `mod_initialize` runs — pass it as the first argument to every service call.
+
+Mods link against the game itself: include game headers and call game functions directly, just like engine code does.
 
 ---
 
-## DuskModAPI Reference
+## Services
 
-The `api` pointer is valid for the lifetime of the mod. When using `hook.hpp`, call `dusk::init(api)` once and `dusk::g_api` is set for you.
-
-| Field | Description |
-|-------|-------------|
-| `api_version` | ABI version, check against `DUSK_MOD_API_VERSION` if needed |
-| `mod_dir` | Absolute path to the extracted mod cache directory |
-| `log_info` / `log_warn` / `log_error` | `printf`-style logging, prefixed with the mod name |
-| `load_resource` / `free_resource` | Load files from the `res/` tree in the `.dusk` archive |
-| `register_tab_content` | Add a panel to the mod manager's per-mod tab |
-| `register_menu_item` | Add an item to the quick-access menu |
-| `hook_dispatch_pre` / `hook_dispatch_post` | Called by the trampoline, do not call directly |
-| `service_publish` | Register a named pointer in the global service registry |
-| `service_get` | Look up a named pointer registered by another mod |
-
----
-
-## Logging
+A service is a struct of C function pointers with a version header. You declare what you use at file scope, and the loader resolves it before your mod initializes:
 
 ```cpp
-api->log_info("Player health: %d", hp);
-api->log_warn("Something looks wrong");
-api->log_error("Fatal: %s", msg);
+IMPORT_SERVICE(LogService, svc_log);                    // required, any minor version
+IMPORT_SERVICE_VERSION(LogService, svc_log, 2);         // required, minor >= 2
+IMPORT_OPTIONAL_SERVICE(SomeService, svc_maybe);        // may be null — check it
 ```
 
-Output appears in the dusk console as `[My Mod] ...`
+The rules (see `include/mods/api.h` for the full contract):
 
-The format string is `printf`-compatible.
+- **A required import is guaranteed valid.** If the service is missing or too old, your mod fails to load with a clear error — you never need a null check at a call site.
+- **Anything at or below the minor version you imported can be called unconditionally.**
+- Optional imports may be null; check once in `mod_initialize`.
+- Fields newer than your imported minor must be gated behind `SERVICE_HAS(service, ServiceType, field)` plus a null check.
+
+Service versions follow one rule: a **major** bump is a breaking change (treated as a different service entirely), a **minor** bump only appends functions.
 
 ---
 
-## Loading Resources
+## Built-in Services
+
+### LogService (`mods/svc/log.h`)
 
 ```cpp
-size_t size = 0;
-void* data = api->load_resource("config.txt", &size);
-if (data) {
-    std::string text(static_cast<char*>(data), size);
-    api->free_resource(data);
+IMPORT_SERVICE(LogService, svc_log);
+
+svc_log->info(mod_ctx, "spawned the thing");
+svc_log->warn(mod_ctx, "that looks wrong");
+svc_log->error(mod_ctx, "very bad");
+svc_log->write(mod_ctx, LOG_LEVEL_DEBUG, "verbose details");
+```
+
+Messages appear in the console prefixed with your mod id. Messages are plain strings — use `snprintf` for formatting.
+
+### ResourceService (`mods/svc/resource.h`)
+
+Loads files from the `res/` tree of your `.dusk` archive. Paths are relative to `res/` (pass `"config.txt"`, not `"res/config.txt"`); absolute paths and `..` are rejected.
+
+```cpp
+IMPORT_SERVICE(ResourceService, svc_resource);
+
+ResourceBuffer buf = RESOURCE_BUFFER_INIT;
+if (svc_resource->load(mod_ctx, "config.txt", &buf) == MOD_OK) {
+    // buf.data / buf.size
+    svc_resource->free(mod_ctx, &buf);
 }
 ```
 
-- Path is relative to `res/`, pass `"config.txt"` not `"res/config.txt"`
-- Always call `free_resource`, the buffer is owned by miniz
-- For writable storage, write files under `api->mod_dir`
+Missing files return `MOD_UNAVAILABLE`. Always `free` what you `load`. For writable storage, use the directory from `svc_host->mod_dir(mod_ctx)`.
 
----
+### HostService (`mods/svc/host.h`)
 
-## ImGui Integration
-
-**Tab content:** shown in the mod's panel in the Mods window, called every frame while visible:
+Mod metadata and runtime interaction with the loader:
 
 ```cpp
-static void DrawPanel(void* userdata) {
-    ImGui::Text("Hello!");
-}
-api->register_tab_content(DrawPanel, nullptr);
+IMPORT_SERVICE(HostService, svc_host);
+
+const char* id  = svc_host->mod_id(mod_ctx);
+const char* dir = svc_host->mod_dir(mod_ctx);  // writable per-mod directory
+svc_host->fail(mod_ctx, MOD_ERROR, "something unrecoverable happened");  // disables the mod
 ```
 
-Pass a pointer through `userdata` if your callback needs state:
+`get_service`/`publish_service` provide dynamic service lookup; see [Advanced](#advanced-exporting-services).
 
-```cpp
-api->register_tab_content(DrawPanel, &g_state);
-```
+### HookService (`mods/svc/hook.h`)
 
-**Menu items:** added to the quick-access menu. Use `ImGui::MenuItem`, `ImGui::Separator`, etc.:
+Install hooks on game functions. You'll rarely call it directly — use the typed helpers in `mods/hook.hpp` described below.
 
-```cpp
-static void DrawMenuEntry(void*) {
-    if (ImGui::MenuItem("Reset rotation")) { ... }
-}
-api->register_menu_item(DrawMenuEntry, nullptr);
-```
+### UI service
+
+Dusklight also ships a UI service for adding panels to the Mods window. It is being rewritten and intentionally undocumented — if you need it in the meantime, see `include/mods/svc/ui.h` and its usage in [mod_test](../tools/mod_test/src/mod.cpp), but expect breaking changes.
 
 ---
 
 ## Hooking Game Functions
 
-Call `dusk::init(api)` first.
+`mods/hook.hpp` provides typed helpers over the hook service:
 
 ```cpp
-#include "dusk/hook.hpp"
+#include "mods/hook.hpp"
+#include "mods/svc/hook.h"
 
-extern "C" void mod_init(DuskModAPI* api) {
-    dusk::init(api);
-    dusk::hookAddPre<&ClassName::Method>(callback);
-}
+IMPORT_SERVICE(HookService, svc_hook);
 ```
-
-The trampoline is installed once per address. Multiple mods can register pre/post callbacks for the same function independently.
 
 ### Pre-hooks
 
-Run before the original. Return `0` to let it proceed, non-zero to cancel it. Post-hooks still run either way.
+Run before the original. Return `HOOK_SKIP_ORIGINAL` to cancel it (post-hooks still run).
 
 ```cpp
-static int32_t on_posMove_pre(void* args) {
-    daAlink_c* link = dusk::arg<daAlink_c*>(args, 0);  // this
-    if (link->shape_angle.y > 10000)
-        return 1;  // cancel
-    return 0;
+HookAction on_pos_move_pre(ModContext*, void* args, void* retval, void* userdata) {
+    daAlink_c* link = dusk::mods::arg<daAlink_c*>(args, 0);  // arg 0 is `this`
+    if (link->shape_angle.y > 10000) {
+        return HOOK_SKIP_ORIGINAL;
+    }
+    return HOOK_CONTINUE;
 }
-dusk::hookAddPre<&daAlink_c::posMove>(on_posMove_pre);
+
+dusk::mods::hook_add_pre<&daAlink_c::posMove>(svc_hook, on_pos_move_pre);
 ```
 
 ### Post-hooks
 
-Run after the original (or replace-hook).
+Run after the original (or after a replace-hook, or after a cancelled original). `retval` points to the return value, if any.
 
 ```cpp
-static void on_posMove_post(void* args) {
-    daAlink_c* link = dusk::arg<daAlink_c*>(args, 0);
-    dusk::g_api->log_info("New Y angle: %d", (int)link->shape_angle.y);
-}
-dusk::hookAddPost<&daAlink_c::posMove>(on_posMove_post);
+void on_pos_move_post(ModContext*, void* args, void* retval, void* userdata) { ... }
+
+dusk::mods::hook_add_post<&daAlink_c::posMove>(svc_hook, on_pos_move_post);
 ```
 
-### Replace hooks
+### Replace-hooks
 
-Completely substitutes the original. Only one replace-hook per function, a second install overwrites with a warning.
+Substitute the original entirely. Call through to it via `HookEntry<...>::g_orig` if needed:
 
 ```cpp
-static void on_posMove_replace(void* args) {
-    daAlink_c* link = dusk::arg<daAlink_c*>(args, 0);
-    link->shape_angle.y += 100;
+using ExecuteEntry = dusk::mods::HookEntry<&daAlink_c::execute>;
+
+void on_execute_replace(ModContext*, void* args, void* retval, void*) {
+    int result = ExecuteEntry::g_orig(dusk::mods::arg<daAlink_c*>(args, 0));
+    if (retval != nullptr) {
+        *static_cast<int*>(retval) = result;
+    }
 }
-dusk::hookSetReplace<&daAlink_c::posMove>(on_posMove_replace);
+
+dusk::mods::hook_set_replace<&daAlink_c::execute>(svc_hook, on_execute_replace);
 ```
 
-To call the original from inside a replace-hook:
-
-```cpp
-using Entry = dusk::HookEntry<&daAlink_c::posMove>;
-
-static void on_posMove_replace(void* args) {
-    daAlink_c* link = dusk::arg<daAlink_c*>(args, 0);
-    link->shape_angle.y = 0;
-    Entry::g_orig(link);
-}
-```
+By default a second replace-hook on the same function is a conflict; `HookOptions` (`replace_policy`, `priority`, `userdata`) controls this and callback ordering. Multiple mods can attach pre/post hooks to the same function independently.
 
 ### Reading and writing arguments
 
-`args` is a `void*[N]` array. Index `0` is `this`, subsequent indices are parameters in declaration order.
+`args` is an array of pointers to the arguments. For member functions, index 0 is `this`; parameters follow in declaration order.
 
 ```cpp
-T   value = dusk::arg   <T>(args, n);  // copy
-T&  ref   = dusk::argRef<T>(args, n);  // reference (read/write)
+T  value = dusk::mods::arg<T>(args, n);      // copy
+T& ref   = dusk::mods::arg_ref<T>(args, n);  // read/write reference
 ```
 
-**Example:** halve incoming damage
-
 ```cpp
-// void daEnemy_c::takeDamage(int amount, daActor_c* source)
-static int32_t on_takeDamage_pre(void* args) {
-    dusk::argRef<int>(args, 1) /= 2;
-    return 0;
+// void daEnemy_c::takeDamage(int amount, daActor_c* source) — halve incoming damage
+HookAction on_take_damage_pre(ModContext*, void* args, void*, void*) {
+    dusk::mods::arg_ref<int>(args, 1) /= 2;
+    return HOOK_CONTINUE;
 }
-dusk::hookAddPre<&daEnemy_c::takeDamage>(on_takeDamage_pre);
 ```
 
-For reference parameters (e.g. `const cXyz& pos`), use `argRef<cXyz>` to get a direct reference.
-
+For reference parameters (e.g. `const cXyz& pos`), `arg_ref<cXyz>` yields a direct reference.
 
 ---
 
-## Inter-Mod Communication
+## Asset Overlays
 
-Mods can expose a public API to each other through a global service registry. The convention for names is `"mod_name/service_name"`.
+Files placed under `overlay/` in the `.dusk` archive override game files at the corresponding path. For example, `overlay/res/Stage/...` shadows that file on the game disc image. This requires no code — an archive with just `mod.json` and `overlay/` is a complete mod.
 
-**Mod A — publishing:**
+Overlays follow the mod's lifecycle: disabling the mod removes its overrides (files revert to the disc contents on their next open; added files stop existing), and reloading serves the new bundle's content. Game data the engine already read stays as-is until it is loaded again — asset changes typically need a scene reload to become visible.
+
+---
+
+## Runtime Lifecycle
+
+Mods can be disabled, re-enabled, and reloaded from the Mods window without restarting the game. Write your mod assuming this happens:
+
+- **Disable** calls `mod_shutdown`, removes your hooks, services, UI, and overlays, and unloads your library.
+- **Enable** and **Reload** load a *fresh copy* of your library — all statics are back at their initial values, imports are re-resolved, and `mod_initialize` runs again. You never see a second `mod_initialize` on the same image, so idempotence hacks are unnecessary; just make `mod_shutdown` release anything the loader doesn't manage for you (threads, files, game-side state you mutated).
+- **Reload** additionally re-reads the `.dusk` from disk, picking up a rebuilt library and changed assets. This is the fast iteration loop during development: rebuild, click Reload.
+
+A reload may freely change the mod's service imports and exports — the loader rebuilds the dependency graph and restart ordering to match. The one thing that must not change is the mod `id` (that's a different mod; restart the game).
+
+**Dependents restart too.** Disabling or reloading a mod that exports services shuts down the mods importing them first (in reverse dependency order) and brings them back afterwards. A mod whose *required* provider is disabled stays down — shown as "Suspended" in the Mods window — and resumes automatically when the provider returns. Mods with an *optional* import of a disabled provider restart with that import null, exactly like a startup where the provider is absent.
+
+**One caution for hooks:** lifecycle changes are applied between frames, which is safe for hooks on functions that return every frame (effectively everything you'd normally hook). Avoid hooking a function that stays on the stack for the whole session (e.g. the outermost main loop); a mod that does cannot be safely unloaded.
+
+---
+
+## Error Handling
+
+Service calls report failure through `ModResult` return values (`MOD_OK`, `MOD_UNAVAILABLE`, `MOD_INVALID_ARGUMENT`, ...). Lifecycle exports additionally receive a `ModError*`: fill it (e.g. with `dusk::mods::set_error(error, code, "message")`) and return the code, and the loader disables the mod and shows the message to the user.
 
 ```cpp
-struct MyModAPI {
-    void (*do_thing)(int value);
+MOD_EXPORT ModResult mod_initialize(ModError* error) {
+    ModResult result = dusk::mods::hook_add_pre<&daAlink_c::posMove>(svc_hook, on_pre);
+    if (result != MOD_OK) {
+        return dusk::mods::set_error(error, result, "failed to hook posMove");
+    }
+    return MOD_OK;
+}
+```
+
+Throwing exceptions out of lifecycle functions also disables the mod (they are caught by the loader), but prefer explicit results.
+
+---
+
+## Advanced: Exporting Services
+
+Mods can provide services to other mods. Define the interface in a header both mods share:
+
+```cpp
+// my_mod_api.h
+#include "mods/api.h"
+
+#define MY_MOD_SERVICE_ID "com.example.my_mod.api"
+#define MY_MOD_SERVICE_MAJOR 1u
+#define MY_MOD_SERVICE_MINOR 0u
+
+typedef struct MyModService {
+    ServiceHeader header;
+    ModResult (*do_thing)(ModContext* ctx, int value);
+} MyModService;
+
+#ifdef __cplusplus
+#include "mods/service.hpp"
+template <>
+struct dusk::mods::ServiceTraits<MyModService> {
+    static constexpr const char* id = MY_MOD_SERVICE_ID;
+    static constexpr uint16_t major_version = MY_MOD_SERVICE_MAJOR;
 };
-
-static void my_do_thing(int value) { ... }
-static MyModAPI g_api = { my_do_thing };
-
-extern "C" void mod_init(DuskModAPI* api) {
-    api->service_publish("my_mod/api", &g_api);
-}
+#endif
 ```
 
-**Mod B — consuming:**
+**Provider:**
 
 ```cpp
-#include "my_mod_api.h"
+ModResult do_thing(ModContext* ctx, int value) { ... }
 
-static MyModAPI* g_my_mod = nullptr;
-
-extern "C" void mod_init(DuskModAPI* api) {
-    g_my_mod = static_cast<MyModAPI*>(api->service_get("my_mod/api"));
-}
+constexpr MyModService g_service{
+    .header = SERVICE_HEADER(MyModService, MY_MOD_SERVICE_MAJOR, MY_MOD_SERVICE_MINOR),
+    .do_thing = do_thing,
+};
+EXPORT_SERVICE(g_service);
 ```
 
----
-
-## Full Example
+**Consumer:**
 
 ```cpp
-#include "d/actor/d_a_alink.h"
-#include "dusk/hook.hpp"
-#include "dusk/mod_api.h"
-#include "imgui.h"
-#include "m_Do/m_Do_controller_pad.h"
+IMPORT_SERVICE(MyModService, svc_my_mod);
+// or IMPORT_OPTIONAL_SERVICE if the dependency is optional
 
-static int g_ticks = 0;
-
-static int32_t on_posMove_pre(void* args) {
-    daAlink_c* link = dusk::arg<daAlink_c*>(args, 0);
-    if (mDoCPd_c::getHoldR(PAD_1)) {
-        link->shape_angle.y -= 2048;
-    }
-    return 0;
-}
-
-static void DrawPanel(void*) {
-    daAlink_c* link = daAlink_getAlinkActorClass();
-    ImGui::Text("Ticks: %d", g_ticks);
-    if (link) {
-        ImGui::Text("Y angle: %d", (int)link->shape_angle.y);
-        if (ImGui::Button("Reset rotation")) {
-            link->shape_angle.y = 0;
-        }
-    }
-}
-
-static void DrawMenuEntry(void*) {
-    daAlink_c* link = daAlink_getAlinkActorClass();
-    if (ImGui::MenuItem("Reset rotation", nullptr, false, link != nullptr)) {
-        link->shape_angle.y = 0;
-    }
-}
-
-extern "C" {
-
-void mod_init(DuskModAPI* api) {
-    dusk::init(api);
-    dusk::hookAddPre<&daAlink_c::posMove>(on_posMove_pre);
-    api->register_tab_content(DrawPanel, nullptr);
-    api->register_menu_item(DrawMenuEntry, nullptr);
-}
-
-void mod_tick(DuskModAPI* api) {
-    ++g_ticks;
-}
-
-void mod_cleanup(DuskModAPI* api) {
-    api->log_info("Unloaded after %d ticks.", g_ticks);
-}
-}
+svc_my_mod->do_thing(mod_ctx, 42);
 ```
+
+The loader registers all exports before resolving any imports, so declaration order between mods doesn't matter. Note that the `ctx` a provider receives identifies the *calling* mod.
+
+### Dependencies between mods
+
+Service imports are also dependency declarations: the loader initializes mods in dependency order, so by the time your `mod_initialize` runs, every mod you import services from — required *or* optional — has already finished its own `mod_initialize`. This includes deferred services: a service the provider publishes during its initialization resolves into your import slot just like a static export.
+
+Consequences of that contract:
+
+- If a provider fails to load, every mod that *requires* one of its services is disabled too, with an error naming the provider. Optional imports of a failed provider simply resolve to `NULL`.
+- Mods whose **required** imports form a cycle all fail to load. If the cycle runs through an **optional** import, the loader breaks it there: the optional import still resolves, but its provider may not be initialized yet when you run — treat it accordingly.
+- `svc_host->get_service(...)` is outside this system. It sees whatever is published at call time and gives no initialization-order guarantee, which also makes it the escape hatch for intentionally cyclic designs.
+
+Mods shut down in reverse initialization order, so services you import remain safe to call from `mod_shutdown`.
+
+Rules for providers:
+
+- Service ids are global — use reverse-DNS names you control.
+- Every function pointer covered by your declared minor version must be populated.
+- Within a major version, only append fields; never reorder, remove, or repurpose them. Breaking changes require a major bump (which is, in effect, a new service).
+- Only one provider per `(id, major)` pair may be registered; duplicates are load errors.
+
+For services whose construction can't happen at static-init time, declare the export with `EXPORT_DEFERRED_SERVICE(...)` and publish the pointer later via `svc_host->publish_service(...)`. Consumers can fetch services dynamically with `svc_host->get_service(...)`; prefer manifest imports whenever possible, since they give the loader dependency information and fail fast with good errors.

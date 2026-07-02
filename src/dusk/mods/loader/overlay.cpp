@@ -4,6 +4,8 @@
 #include "loader.hpp"
 
 #include <cstring>
+#include <mutex>
+#include <unordered_map>
 
 using namespace std::string_literals;
 
@@ -13,10 +15,16 @@ aurora::Module Log("dusk::modLoader::overlay");
 
 struct OverlayFileData {
     std::string bundlePath;
-    dusk::LoadedMod* mod; // TODO: is using a raw pointer a bad idea here?
+    std::shared_ptr<dusk::mods::loader::ModBundle> bundle;
 };
 
-std::vector<OverlayFileData> s_overlayFiles;
+// Keyed by the id passed to Aurora as per-file userdata. Guarded by s_overlayMutex: Aurora may
+// call cbOpen from a DVD thread while the game thread replaces the set in syncOverlayFiles.
+// The shared bundle pointer keeps a disabled/reloaded mod's old bundle readable until the last
+// open completes.
+std::unordered_map<uintptr_t, OverlayFileData> s_overlayFiles;
+uintptr_t s_nextOverlayId = 1;
+std::mutex s_overlayMutex;
 
 void findOverlayFiles(std::vector<AuroraOverlayFile>& files, dusk::LoadedMod& mod) {
     for (const auto& file : mod.bundle->getFileNames()) {
@@ -30,11 +38,11 @@ void findOverlayFiles(std::vector<AuroraOverlayFile>& files, dusk::LoadedMod& mo
 
         const auto size = mod.bundle->getFileSize(file);
 
-        const auto index = s_overlayFiles.size();
-        s_overlayFiles.emplace_back(file, &mod);
+        const auto id = s_nextOverlayId++;
+        s_overlayFiles.emplace(id, OverlayFileData{file, mod.bundle});
         files.emplace_back(
             strdup(overlayPath.c_str()),
-            reinterpret_cast<void*>(index),
+            reinterpret_cast<void*>(id),
             size);
     }
 }
@@ -45,11 +53,25 @@ struct OpenOverlayFile {
 };
 
 void* cbOpen(void* userdata) {
-    const auto index = reinterpret_cast<size_t>(userdata);
-    const auto& fileData = s_overlayFiles[index];
-    auto fileContents = fileData.mod->bundle->readFile(fileData.bundlePath);
+    const auto id = reinterpret_cast<uintptr_t>(userdata);
+    OverlayFileData fileData;
+    {
+        std::lock_guard lock{s_overlayMutex};
+        const auto it = s_overlayFiles.find(id);
+        if (it == s_overlayFiles.end()) {
+            // The overlay set was re-pushed between the FST lookup and this call.
+            return nullptr;
+        }
+        fileData = it->second;
+    }
 
-    return new OpenOverlayFile(std::move(fileContents), 0);
+    try {
+        auto fileContents = fileData.bundle->readFile(fileData.bundlePath);
+        return new OpenOverlayFile(std::move(fileContents), 0);
+    } catch (const std::runtime_error& e) {
+        Log.error("Failed to read overlay file {}: {}", fileData.bundlePath, e.what());
+        return nullptr;
+    }
 }
 
 void cbClose(void* handle) {
@@ -89,18 +111,23 @@ constexpr AuroraOverlayCallbacks s_overlayCallbacks = {
 
 namespace dusk {
 
-void ModLoader::initOverlayFiles() {
-    Log.debug("Initializing overlay files...");
-
-    aurora_dvd_overlay_callbacks(&s_overlayCallbacks);
-
-    std::vector<AuroraOverlayFile> files;
-
-    for (auto& mod : active_mods()) {
-        findOverlayFiles(files, mod);
+void ModLoader::sync_overlay_files() {
+    static bool callbacksRegistered = false;
+    if (!callbacksRegistered) {
+        aurora_dvd_overlay_callbacks(&s_overlayCallbacks);
+        callbacksRegistered = true;
     }
 
-    Log.debug("Found {} overlay files.", files.size());
+    std::vector<AuroraOverlayFile> files;
+    {
+        std::lock_guard lock{s_overlayMutex};
+        s_overlayFiles.clear();
+        for (auto& mod : active_mods()) {
+            findOverlayFiles(files, mod);
+        }
+    }
+
+    Log.debug("Registering {} overlay file(s).", files.size());
     aurora_dvd_overlay_files(files.data(), files.size(), nullptr);
 
     for (const auto& file : files) {
