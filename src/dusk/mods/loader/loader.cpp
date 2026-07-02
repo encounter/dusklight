@@ -22,7 +22,6 @@
 
 static aurora::Module Log("dusk::modLoader");
 
-using namespace dusk::mods::loader;
 using namespace std::string_literals;
 using namespace std::string_view_literals;
 
@@ -38,19 +37,11 @@ static constexpr std::string_view k_archSuffix = ""sv;
 
 static constexpr std::array k_allArchSuffixes = {"_arm64"sv, "_x64"sv, "_x86"sv};
 
-static dusk::ModLoader g_modLoader;
+namespace dusk::mods {
+namespace {
+ModLoader g_modLoader;
 
-// We cannot delete config vars registered by mods until the game shuts down fully.
-// Therefore, orphan them during shutdown.
-static std::vector<std::unique_ptr<dusk::ConfigVarBase>> OrphanedConfigVars;
-
-namespace dusk {
-
-ModLoader& ModLoader::instance() {
-    return g_modLoader;
-}
-
-static std::unique_ptr<ModBundle> load_bundle(const std::filesystem::path& modPath, bool fromDir) {
+std::unique_ptr<ModBundle> load_bundle(const std::filesystem::path& modPath, bool fromDir) {
     if (fromDir) {
         return std::make_unique<ModBundleDisk>(modPath);
     } else {
@@ -64,11 +55,11 @@ struct DllLocateResult {
     bool anyLibs = false;
 };
 
-static std::string_view file_stem(const std::string_view fileName) {
+std::string_view file_stem(const std::string_view fileName) {
     return fileName.substr(0, fileName.find_last_of('.'));
 }
 
-static DllLocateResult locate_dll_in_bundle(ModBundle& bundle) {
+DllLocateResult locate_dll_in_bundle(ModBundle& bundle) {
     DllLocateResult result;
     std::string archNeutral;
     for (const auto& name : bundle.getFileNames()) {
@@ -78,7 +69,7 @@ static DllLocateResult locate_dll_in_bundle(ModBundle& bundle) {
         }
         result.anyLibs = true;
 
-        if (!name.ends_with(NativeModule::LibraryExtension)) {
+        if (!name.ends_with(loader::NativeModule::LibraryExtension)) {
             continue;
         }
 
@@ -97,6 +88,11 @@ static DllLocateResult locate_dll_in_bundle(ModBundle& bundle) {
         result.entry = std::move(archNeutral);
     }
     return result;
+}
+}  // namespace
+
+ModLoader& ModLoader::instance() {
+    return g_modLoader;
 }
 
 class InvalidModDataException : public std::runtime_error {
@@ -229,7 +225,7 @@ static std::string native_status_message(const NativeModStatus status) {
         return "native code mods are disabled in this build";
     case NativeModStatus::ModMissingPlatform:
         return fmt::format("no native library for this platform (expected *{}{})", k_archSuffix,
-            NativeModule::LibraryExtension);
+            loader::NativeModule::LibraryExtension);
     case NativeModStatus::ApiVersionMismatch:
         return "mod ABI version mismatch";
     case NativeModStatus::MissingExport:
@@ -254,7 +250,7 @@ void ModLoader::load_native(LoadedMod& mod, const std::string& dllEntry) {
 
     if (dllEntry.empty()) {
         Log.error("no native library matching *{}{} found in {} — skipping", k_archSuffix,
-            NativeModule::LibraryExtension, mod.metadata.id);
+            loader::NativeModule::LibraryExtension, mod.metadata.id);
         mod.nativeStatus = NativeModStatus::ModMissingPlatform;
         return;
     }
@@ -292,7 +288,7 @@ void ModLoader::load_native(LoadedMod& mod, const std::string& dllEntry) {
 
     auto nativeMod = std::make_unique<NativeMod>();
     try {
-        nativeMod->handle = std::make_unique<NativeModule>(dllCachePath);
+        nativeMod->handle = std::make_unique<loader::NativeModule>(dllCachePath);
     } catch (const std::runtime_error& e) {
         Log.error("failed to open {}: {}", io::fs_path_to_string(dllCachePath), e.what());
         return;
@@ -376,7 +372,7 @@ static ModManifestInfo build_manifest_info(const ModManifest& manifest) {
     return info;
 }
 
-static std::string escape_mod_id_for_config(std::string_view const id) {
+std::string escape_mod_id_for_config(std::string_view const id) {
     std::string buf;
 
     // Simple escaping. All characters in mod IDs literal, except for '.' and '_'.
@@ -558,6 +554,7 @@ void ModLoader::deactivate_mod(LoadedMod& mod) {
     }
     overlay_remove_mod(mod);
     textures_remove_mod(mod);
+    config_remove_mod(mod);
     mod.uiTabs.clear();
     unload_native(mod);
 
@@ -608,7 +605,8 @@ void ModLoader::init() {
 
     Log.info("initializing {} mod(s)...", m_mods.size());
     for (auto& mod : mods()) {
-        Register(*mod.cvarIsEnabled);
+        mod.enabledSubscription = Register(*mod.cvarIsEnabled,
+            [this, &mod](const bool&, const bool&) { on_enabled_changed(mod); });
     }
 
     init_services();
@@ -629,7 +627,7 @@ void ModLoader::init() {
 
     // Providers must initialize (and publish deferred services) before their importers, so
     // imports are resolved per mod, interleaved with initialization, in dependency order.
-    sort_mods_by_dependencies(m_mods);
+    loader::sort_mods_by_dependencies(m_mods);
 
     // Config-disabled mods keep their dependency edges but must not resolve until enabled.
     for (auto& mod : mods()) {
@@ -793,7 +791,7 @@ bool ModLoader::reload_bundle(LoadedMod& mod) {
         Log.info("'{}' changed its service imports/exports; rebuilding mod dependency graph",
             mod.metadata.id);
         mod.manifestInfo = std::move(newInfo);
-        sort_mods_by_dependencies(m_mods);
+        loader::sort_mods_by_dependencies(m_mods);
     }
 
     return true;
@@ -874,28 +872,25 @@ void ModLoader::apply_lifecycle_change(LoadedMod& target, const bool reload) {
     }
 }
 
+void ModLoader::on_enabled_changed(LoadedMod& mod) {
+    config_mark_dirty();
+    if (mod.loadFailed) {
+        return;
+    }
+    if (mod.suspendedByProvider) {
+        if (!mod.cvarIsEnabled->getValue()) {
+            // The user disabled a suspended mod; stop waiting for its providers.
+            mod.suspendedByProvider = false;
+        }
+        return;
+    }
+    m_pendingRequests.push_back({mod.metadata.id,
+        mod.cvarIsEnabled->getValue() ? RequestKind::Enable : RequestKind::Disable});
+}
+
 void ModLoader::apply_pending_requests() {
     // Images retired by the previous tick have had a full frame to unwind off the stack.
     drain_retired_natives();
-
-    // The enabled cvar drives runtime state, so UI toggles, console commands and config
-    // reloads all funnel through the same diff.
-    for (auto& mod : mods()) {
-        if (mod.loadFailed) {
-            continue;
-        }
-        if (mod.suspendedByProvider) {
-            if (!mod.cvarIsEnabled->getValue()) {
-                // The user disabled a suspended mod; stop waiting for its providers.
-                mod.suspendedByProvider = false;
-            }
-            continue;
-        }
-        if (mod.cvarIsEnabled->getValue() != mod.enabledApplied) {
-            m_pendingRequests.push_back({mod.metadata.id,
-                mod.cvarIsEnabled->getValue() ? RequestKind::Enable : RequestKind::Disable});
-        }
-    }
 
     if (m_pendingRequests.empty()) {
         return;
@@ -918,6 +913,12 @@ void ModLoader::apply_pending_requests() {
         auto* mod = find_mod(request.modId);
         if (mod == nullptr) {
             Log.warn("lifecycle request for unknown mod '{}'", request.modId);
+            continue;
+        }
+        if (request.kind == RequestKind::Enable && mod->enabledApplied) {
+            continue;
+        }
+        if (request.kind == RequestKind::Disable && !mod->enabledApplied && !mod->active) {
             continue;
         }
         apply_lifecycle_change(*mod, request.kind == RequestKind::Reload);
@@ -952,19 +953,26 @@ void ModLoader::tick() {
             fail_mod(mod, MOD_ERROR, "unknown exception in mod_update");
         }
     }
+
+    config_flush_if_dirty(false);
 }
 
 void ModLoader::shutdown() {
     // Reverse initialization order, so importers shut down before their service providers.
     for (auto& mod : mods() | std::views::reverse) {
         deactivate_mod(mod);
-        OrphanedConfigVars.emplace_back(std::move(mod.cvarIsEnabled));
+        if (mod.enabledSubscription != 0) {
+            config::unsubscribe(mod.enabledSubscription);
+            mod.enabledSubscription = 0;
+        }
+        unregister(*mod.cvarIsEnabled);
     }
 
     m_mods.clear();
     drain_retired_natives();
     clear_services();
+    config_flush_if_dirty(true);
     Log.info("all mods unloaded");
 }
 
-}  // namespace dusk
+}  // namespace dusk::mods

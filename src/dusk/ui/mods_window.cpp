@@ -8,7 +8,7 @@
 namespace dusk::ui {
 namespace {
 
-Rml::String build_mod_detail_rml(const dusk::LoadedMod& mod) {
+Rml::String build_mod_detail_rml(const mods::LoadedMod& mod) {
     const char* statusClass;
     const char* statusText;
     if (mod.loadFailed) {
@@ -80,7 +80,7 @@ Rml::String build_mod_detail_rml(const dusk::LoadedMod& mod) {
 }  // namespace
 
 ModsWindow::ModsWindow() {
-    const auto& mods = dusk::ModLoader::instance().mods();
+    const auto& mods = mods::ModLoader::instance().mods();
 
     if (mods.empty()) {
         add_tab("Mods", [this](Rml::Element* content) {
@@ -115,13 +115,13 @@ ModsWindow::ModsWindow() {
             const std::string modId = mod.metadata.id;
             if (mod.cvarIsEnabled->getValue()) {
                 pane.add_button("Disable").on_pressed(
-                    [modId] { dusk::ModLoader::instance().request_disable(modId); });
+                    [modId] { mods::ModLoader::instance().request_disable(modId); });
             } else {
                 pane.add_button("Enable").on_pressed(
-                    [modId] { dusk::ModLoader::instance().request_enable(modId); });
+                    [modId] { mods::ModLoader::instance().request_enable(modId); });
             }
             pane.add_button("Reload").on_pressed(
-                [modId] { dusk::ModLoader::instance().request_reload(modId); });
+                [modId] { mods::ModLoader::instance().request_reload(modId); });
 
             std::string activeDependents;
             for (const auto& edge : mod.dependents) {
@@ -133,8 +133,8 @@ ModsWindow::ModsWindow() {
                 }
             }
             if (mod.active && !activeDependents.empty()) {
-                pane.add_text(fmt::format(
-                    "Disabling or reloading also restarts: {}", activeDependents));
+                pane.add_text(
+                    fmt::format("Disabling or reloading also restarts: {}", activeDependents));
             }
 
             for (const auto& cb : mod.uiTabs) {
@@ -142,12 +142,10 @@ ModsWindow::ModsWindow() {
                     continue;
                 }
                 ModError error = MOD_ERROR_INIT;
-                const auto result =
-                    cb.tab.build(cb.context, static_cast<void*>(pane.root()), cb.tab.userdata,
-                        &error);
+                const auto result = cb.tab.build(
+                    cb.context, static_cast<void*>(pane.root()), cb.tab.userdata, &error);
                 if (result != MOD_OK) {
-                    dusk::mods::loader::fail_mod(
-                        mod, result,
+                    mods::fail_mod(mod, result,
                         error.message[0] != '\0' ? error.message : "mod UI build failed");
                     break;
                 }
@@ -186,9 +184,8 @@ void ModsWindow::update() {
             ModError error = MOD_ERROR_INIT;
             const auto result = cb.tab.update(cb.context, cb.tab.userdata, &error);
             if (result != MOD_OK) {
-                dusk::mods::loader::fail_mod(
-                    mod, result,
-                    error.message[0] != '\0' ? error.message : "mod UI update failed");
+                mods::fail_mod(
+                    mod, result, error.message[0] != '\0' ? error.message : "mod UI update failed");
                 break;
             }
         }

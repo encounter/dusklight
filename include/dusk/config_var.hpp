@@ -2,10 +2,12 @@
 #define DUSK_CONFIG_VAR_HPP
 
 #include "dolphin/types.h"
-#include <type_traits>
+#include <concepts>
 #include <cstdlib>
 #include <limits>
+#include <optional>
 #include <string>
+#include <type_traits>
 
 /**
  * The configuration system.
@@ -100,6 +102,20 @@ protected:
             abort();
     }
 
+    /**
+     * Whether any change subscriber (see config::subscribe) is attached to this CVar's name.
+     * Mutators use this to skip copying the previous value when nobody is listening.
+     */
+    [[nodiscard]] bool has_subscribers() const;
+
+    /**
+     * Notify change subscribers (see config::subscribe) that the effective value of this CVar
+     * changed. Called by mutators after the change has been applied; previousValue points at
+     * the old value (a `const T*` for a `ConfigVar<T>`), valid only for the duration of the
+     * call.
+     */
+    void notify_changed(const void* previousValue);
+
 public:
     virtual ~ConfigVarBase();
 
@@ -160,6 +176,7 @@ template <typename T>
 concept ConfigValue =
     !std::is_const_v<T>
     && !std::is_volatile_v<T>
+    && std::equality_comparable<T>
     && (std::is_same_v<T, bool>
         || ConfigValueInteger<T>
         || std::is_same_v<T, f32>
@@ -170,6 +187,9 @@ concept ConfigValue =
 
 template <ConfigValue T>
 const ConfigImplBase* GetConfigImpl();
+
+template <ConfigValue T>
+class ConfigImpl;
 
 template <typename T>
 struct ConfigEnumRange {
@@ -241,6 +261,7 @@ public:
      */
     void setValue(T newValue, bool replaceOverride = true) {
         checkRegistered();
+        const auto previous = previous_for_notify();
         value = std::move(newValue);
 
         if (replaceOverride) {
@@ -249,6 +270,7 @@ public:
         } else if (layer != ConfigVarLayer::Override) {
             layer = ConfigVarLayer::Value;
         }
+        notify_if_changed(previous);
     }
 
     operator const T&() {
@@ -265,8 +287,10 @@ public:
      */
     void setOverrideValue(T newValue) {
         checkRegistered();
+        const auto previous = previous_for_notify();
         overrideValue = std::move(newValue);
         layer = ConfigVarLayer::Override;
+        notify_if_changed(previous);
     }
 
     /**
@@ -280,25 +304,31 @@ public:
     void setSpeedrunValue(T newValue) {
         checkRegistered();
         if (layer != ConfigVarLayer::Override) {
+            const auto previous = previous_for_notify();
             priorLayer = layer;
             overrideValue = std::move(newValue);
             layer = ConfigVarLayer::Speedrun;
+            notify_if_changed(previous);
         }
     }
 
     void clearOverride() {
         checkRegistered();
         if (layer == ConfigVarLayer::Override) {
+            const auto previous = previous_for_notify();
             overrideValue = {};
             layer = ConfigVarLayer::Value;
+            notify_if_changed(previous);
         }
     }
 
     void clearSpeedrunOverride() override {
         checkRegistered();
         if (layer == ConfigVarLayer::Speedrun) {
+            const auto previous = previous_for_notify();
             overrideValue = {};
             layer = priorLayer;
+            notify_if_changed(previous);
         }
     }
 
@@ -311,6 +341,48 @@ public:
         checkRegistered();
         const ConfigVarLayer effectiveLayer = (layer == ConfigVarLayer::Speedrun) ? priorLayer : layer;
         return effectiveLayer == ConfigVarLayer::Default ? defaultValue : value;
+    }
+
+private:
+    // The config loader applies values through the silent load_* methods below.
+    friend class ConfigImpl<T>;
+
+    /**
+     * Copy of the effective value before a mutation, taken only when someone is subscribed.
+     */
+    [[nodiscard]] std::optional<T> previous_for_notify() const {
+        return has_subscribers() ? std::optional<T>{getValue()} : std::nullopt;
+    }
+
+    /**
+     * Notify subscribers if the effective value actually changed across a mutation.
+     */
+    void notify_if_changed(const std::optional<T>& previous) {
+        if (previous.has_value() && !(getValue() == *previous)) {
+            notify_changed(&*previous);
+        }
+    }
+
+    /**
+     * setValue(newValue, false) without notifying change subscribers. Used when loading config:
+     * loads happen during startup before the subsystems change callbacks push values into are
+     * initialized, and each subsystem applies the loaded value itself at its own init.
+     */
+    void load_value(T newValue) {
+        checkRegistered();
+        value = std::move(newValue);
+        if (layer != ConfigVarLayer::Override) {
+            layer = ConfigVarLayer::Value;
+        }
+    }
+
+    /**
+     * setOverrideValue without notifying change subscribers (see load_value).
+     */
+    void load_override_value(T newValue) {
+        checkRegistered();
+        overrideValue = std::move(newValue);
+        layer = ConfigVarLayer::Override;
     }
 };
 

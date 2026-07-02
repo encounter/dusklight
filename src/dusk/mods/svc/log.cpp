@@ -3,6 +3,7 @@
 #include "dusk/logging.h"
 #include "dusk/mods/loader/loader.hpp"
 
+namespace dusk::mods::svc {
 namespace {
 
 void log_write(ModContext* context, const LogLevel level, const char* message) {
@@ -10,16 +11,16 @@ void log_write(ModContext* context, const LogLevel level, const char* message) {
     switch (level) {
     case LOG_LEVEL_TRACE:
     case LOG_LEVEL_DEBUG:
-        DuskLog.debug("[{}] {}", dusk::mods::loader::mod_id_from_context(context), text);
+        DuskLog.debug("[{}] {}", mod_id_from_context(context), text);
         break;
     case LOG_LEVEL_INFO:
-        DuskLog.info("[{}] {}", dusk::mods::loader::mod_id_from_context(context), text);
+        DuskLog.info("[{}] {}", mod_id_from_context(context), text);
         break;
     case LOG_LEVEL_WARN:
-        DuskLog.warn("[{}] {}", dusk::mods::loader::mod_id_from_context(context), text);
+        DuskLog.warn("[{}] {}", mod_id_from_context(context), text);
         break;
     case LOG_LEVEL_ERROR:
-        DuskLog.error("[{}] {}", dusk::mods::loader::mod_id_from_context(context), text);
+        DuskLog.error("[{}] {}", mod_id_from_context(context), text);
         break;
     }
 }
@@ -55,8 +56,6 @@ constexpr LogService s_logService{
 };
 
 }  // namespace
-
-namespace dusk::mods::svc {
 
 const LogService& log_service() {
     return s_logService;

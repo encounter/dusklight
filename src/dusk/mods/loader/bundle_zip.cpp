@@ -3,7 +3,7 @@
 
 #include <span>
 
-namespace dusk::mods::loader {
+namespace dusk::mods {
 
 ModBundleZip::ModBundleZip(std::vector<u8>&& data) : zip_data(std::move(data)) {
     if (!mz_zip_reader_init_mem(&res_zip, zip_data.data(), zip_data.size(), 0)) {

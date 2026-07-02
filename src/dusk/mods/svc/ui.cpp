@@ -6,6 +6,7 @@
 
 #include <string>
 
+namespace dusk::mods::svc {
 namespace {
 
 std::string escape_rml(const char* text) {
@@ -15,10 +16,18 @@ std::string escape_rml(const char* text) {
     }
     for (const char* p = text; *p; ++p) {
         switch (*p) {
-        case '&': out += "&amp;"; break;
-        case '<': out += "&lt;";  break;
-        case '>': out += "&gt;";  break;
-        default:  out += *p;      break;
+        case '&':
+            out += "&amp;";
+            break;
+        case '<':
+            out += "&lt;";
+            break;
+        case '>':
+            out += "&gt;";
+            break;
+        default:
+            out += *p;
+            break;
         }
     }
     return out;
@@ -30,7 +39,7 @@ public:
         : m_context{context}, m_callback{callback}, m_userdata{userdata} {}
 
     void ProcessEvent(Rml::Event&) override {
-        const auto* mod = dusk::mods::loader::mod_from_context(m_context);
+        const auto* mod = mod_from_context(m_context);
         if (mod != nullptr && mod->active && m_callback != nullptr) {
             m_callback(m_context, m_userdata);
         }
@@ -45,11 +54,11 @@ private:
 };
 
 ModResult ui_register_tab(ModContext* context, const UiTab* tab) {
-    auto* mod = dusk::mods::loader::mod_from_context(context);
+    auto* mod = mod_from_context(context);
     if (mod == nullptr || tab == nullptr || tab->build == nullptr) {
         return MOD_INVALID_ARGUMENT;
     }
-    mod->uiTabs.push_back(dusk::ModUiTabCallback{context, *tab});
+    mod->uiTabs.push_back(ModUiTabCallback{context, *tab});
     return MOD_OK;
 }
 
@@ -65,9 +74,8 @@ ModResult ui_panel_add_section(ModContext*, PanelHandle panel, const char* text)
     return MOD_OK;
 }
 
-ModResult ui_panel_add_button(
-    ModContext* context, PanelHandle panel, const char* label, UiButtonFn callback, void* userdata)
-{
+ModResult ui_panel_add_button(ModContext* context, PanelHandle panel, const char* label,
+    UiButtonFn callback, void* userdata) {
     auto* pane = static_cast<Rml::Element*>(panel);
     if (pane == nullptr || label == nullptr || callback == nullptr) {
         return MOD_INVALID_ARGUMENT;
@@ -80,8 +88,7 @@ ModResult ui_panel_add_button(
 }
 
 ModResult ui_panel_add_badge_row(
-    ModContext*, PanelHandle panel, const char* label, const int ok, ElemHandle* outElem)
-{
+    ModContext*, PanelHandle panel, const char* label, const int ok, ElemHandle* outElem) {
     auto* pane = static_cast<Rml::Element*>(panel);
     if (outElem != nullptr) {
         *outElem = nullptr;
@@ -112,9 +119,8 @@ ModResult ui_panel_add_badge_row(
     return MOD_OK;
 }
 
-ModResult ui_panel_add_dyn_text(ModContext*, PanelHandle panel, const char* text,
-    ElemHandle* outElem)
-{
+ModResult ui_panel_add_dyn_text(
+    ModContext*, PanelHandle panel, const char* text, ElemHandle* outElem) {
     auto* pane = static_cast<Rml::Element*>(panel);
     if (outElem != nullptr) {
         *outElem = nullptr;
@@ -131,9 +137,8 @@ ModResult ui_panel_add_dyn_text(ModContext*, PanelHandle panel, const char* text
     return MOD_OK;
 }
 
-ModResult ui_panel_add_progress(ModContext*, PanelHandle panel, const float value,
-    ElemHandle* outElem)
-{
+ModResult ui_panel_add_progress(
+    ModContext*, PanelHandle panel, const float value, ElemHandle* outElem) {
     auto* pane = static_cast<Rml::Element*>(panel);
     if (outElem != nullptr) {
         *outElem = nullptr;
@@ -194,8 +199,6 @@ constexpr UiService s_uiService{
 };
 
 }  // namespace
-
-namespace dusk::mods::svc {
 
 const UiService& ui_service() {
     return s_uiService;

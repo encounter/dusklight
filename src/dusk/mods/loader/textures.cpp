@@ -10,6 +10,7 @@
 
 using namespace std::string_literals;
 
+namespace dusk::mods {
 namespace {
 
 aurora::Module Log("dusk::modLoader::textures");
@@ -18,7 +19,7 @@ aurora::Module Log("dusk::modLoader::textures");
 // lock) and by raw-entry spans. Immutable after construction; freed only after the corresponding
 // unregister_replacement returns, at which point Aurora guarantees no further reads.
 struct TextureKeepalive {
-    std::shared_ptr<dusk::mods::loader::ModBundle> bundle;
+    std::shared_ptr<ModBundle> bundle;
     std::string bundlePath;
     std::vector<u8> ownedData;
 };
@@ -59,14 +60,14 @@ struct ModTextureRecord {
 
 // Game thread only: all mutations happen in service calls made from mod code (init/update/hooks
 // run inside ModLoader::tick), in the loader's sync/deactivate paths, or at shutdown.
-std::unordered_map<const dusk::LoadedMod*, ModTextureRecord> s_modTextures;
+std::unordered_map<const LoadedMod*, ModTextureRecord> s_modTextures;
 uint64_t s_nextTextureHandle = 1;
 
 // Position in m_mods (dependency-sorted load order) + 1; later-loaded mods win. The user
 // texture_replacements directory uses kUserTextureReplacementPriority, below any mod.
-int32_t compute_mod_priority(const dusk::LoadedMod& mod) {
+int32_t compute_mod_priority(const LoadedMod& mod) {
     int32_t index = 0;
-    for (const auto& other : dusk::ModLoader::instance().mods()) {
+    for (const auto& other : ModLoader::instance().mods()) {
         ++index;
         if (&other == &mod) {
             return index;
@@ -93,9 +94,8 @@ bool has_replacement_extension(std::string_view filename) {
         return false;
     }
     std::string ext{filename.substr(dot)};
-    std::ranges::transform(ext, ext.begin(), [](char ch) {
-        return ch >= 'A' && ch <= 'Z' ? static_cast<char>(ch + 'a' - 'A') : ch;
-    });
+    std::ranges::transform(ext, ext.begin(),
+        [](char ch) { return ch >= 'A' && ch <= 'Z' ? static_cast<char>(ch + 'a' - 'A') : ch; });
     return ext == ".dds" || ext == ".png";
 }
 
@@ -104,8 +104,8 @@ std::string_view final_path_component(std::string_view path) {
     return slash == std::string_view::npos ? path : path.substr(slash + 1);
 }
 
-const dusk::LoadedMod* find_static_conflict(
-    const aurora::texture::ReplacementKey& key, const dusk::LoadedMod* exclude) {
+const LoadedMod* find_static_conflict(
+    const aurora::texture::ReplacementKey& key, const LoadedMod* exclude) {
     for (const auto& [mod, record] : s_modTextures) {
         if (mod == exclude) {
             continue;
@@ -119,7 +119,7 @@ const dusk::LoadedMod* find_static_conflict(
     return nullptr;
 }
 
-void register_static_textures(dusk::LoadedMod& mod, ModTextureRecord& record) {
+void register_static_textures(LoadedMod& mod, ModTextureRecord& record) {
     std::vector<std::string> candidates;
     for (const auto& file : mod.bundle->getFileNames()) {
         if (!file.starts_with("textures/") || !has_replacement_extension(file)) {
@@ -139,7 +139,8 @@ void register_static_textures(dusk::LoadedMod& mod, ModTextureRecord& record) {
     for (const auto& path : candidates) {
         const auto parsed = aurora::texture::parse_replacement_filename(final_path_component(path));
         if (!parsed.has_value()) {
-            Log.warn("[{}] '{}' does not follow the texture replacement naming convention; skipped.",
+            Log.warn(
+                "[{}] '{}' does not follow the texture replacement naming convention; skipped.",
                 mod.metadata.id, path);
             continue;
         }
@@ -151,8 +152,11 @@ void register_static_textures(dusk::LoadedMod& mod, ModTextureRecord& record) {
 
         if (const auto* other = find_static_conflict(key, &mod); other != nullptr) {
             const auto& winner =
-                s_modTextures.find(other)->second.appliedPriority > record.appliedPriority ? *other : mod;
-            Log.warn("Texture replacement conflict: '{}' is replaced by both '{}' and '{}'; '{}' wins.",
+                s_modTextures.find(other)->second.appliedPriority > record.appliedPriority ?
+                    *other :
+                    mod;
+            Log.warn(
+                "Texture replacement conflict: '{}' is replaced by both '{}' and '{}'; '{}' wins.",
                 path, other->metadata.id, mod.metadata.id, winner.metadata.id);
         }
 
@@ -176,7 +180,8 @@ void register_static_textures(dusk::LoadedMod& mod, ModTextureRecord& record) {
 
 void register_runtime_entry(RuntimeTextureEntry& entry, int32_t priority) {
     if (entry.isVirtual) {
-        entry.registration = aurora::texture::register_virtual_replacement(entry.keepalive->bundlePath,
+        entry.registration = aurora::texture::register_virtual_replacement(
+            entry.keepalive->bundlePath,
             {.read = texture_read_cb, .userData = entry.keepalive.get()}, {.priority = priority});
     } else {
         entry.registration = aurora::texture::register_replacement(entry.key,
@@ -204,8 +209,6 @@ void unregister_record(ModTextureRecord& record) {
 }
 
 }  // namespace
-
-namespace dusk {
 
 void ModLoader::sync_texture_replacements() {
     // deactivate_mod removes records eagerly, but a record whose mod is no
@@ -245,12 +248,8 @@ void ModLoader::sync_texture_replacements() {
     }
 }
 
-}  // namespace dusk
-
-namespace dusk::mods::loader {
-
-uint64_t texture_register_raw(LoadedMod& mod, const aurora::texture::ReplacementKey& key,
-    TextureRawData data) {
+uint64_t texture_register_raw(
+    LoadedMod& mod, const aurora::texture::ReplacementKey& key, TextureRawData data) {
     auto& record = s_modTextures[&mod];
     if (record.appliedPriority == 0) {
         record.appliedPriority = compute_mod_priority(mod);
@@ -295,8 +294,8 @@ bool texture_unregister(LoadedMod& mod, uint64_t handle) {
         return false;
     }
     auto& runtime = it->second.runtime;
-    const auto entry = std::ranges::find_if(
-        runtime, [&](const auto& e) { return e.handle == handle; });
+    const auto entry =
+        std::ranges::find_if(runtime, [&](const auto& e) { return e.handle == handle; });
     if (entry == runtime.end()) {
         return false;
     }
@@ -314,4 +313,4 @@ void textures_remove_mod(LoadedMod& mod) {
     s_modTextures.erase(it);
 }
 
-}  // namespace dusk::mods::loader
+}  // namespace dusk::mods

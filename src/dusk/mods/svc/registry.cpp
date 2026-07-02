@@ -6,9 +6,10 @@
 #include <string_view>
 #include <unordered_map>
 
+namespace dusk::mods::svc {
 namespace {
 
-std::unordered_map<std::string, dusk::mods::svc::ServiceRecord> s_services;
+std::unordered_map<std::string, ServiceRecord> s_services;
 
 std::string service_key(std::string_view id, const uint16_t majorVersion) {
     std::string key{id};
@@ -17,12 +18,12 @@ std::string service_key(std::string_view id, const uint16_t majorVersion) {
     return key;
 }
 
-const char* mod_id(const dusk::LoadedMod* mod) {
+const char* mod_id(const LoadedMod* mod) {
     return mod != nullptr ? mod->metadata.id.c_str() : "dusklight";
 }
 
 bool validate_service_header(const ServiceHeader* header, const char* serviceId,
-    const uint16_t majorVersion, const uint16_t minorVersion, dusk::LoadedMod* provider) {
+    const uint16_t majorVersion, const uint16_t minorVersion, LoadedMod* provider) {
     if (header == nullptr) {
         DuskLog.error("[{}] service '{}' has null header", mod_id(provider), serviceId);
         return false;
@@ -42,8 +43,6 @@ bool validate_service_header(const ServiceHeader* header, const char* serviceId,
 }
 
 }  // namespace
-
-namespace dusk::mods::svc {
 
 bool valid_service_id(const char* serviceId) {
     return serviceId != nullptr && serviceId[0] != '\0';
@@ -135,24 +134,26 @@ void clear_services() {
 
 }  // namespace dusk::mods::svc
 
-namespace dusk {
+namespace dusk::mods {
 
 void ModLoader::init_services() {
-    mods::svc::clear_services();
-    mods::svc::register_service(HOST_SERVICE_ID, HOST_SERVICE_MAJOR, HOST_SERVICE_MINOR,
-        &mods::svc::host_service(), nullptr, false);
-    mods::svc::register_service(LOG_SERVICE_ID, LOG_SERVICE_MAJOR, LOG_SERVICE_MINOR,
-        &mods::svc::log_service(), nullptr, false);
-    mods::svc::register_service(RESOURCE_SERVICE_ID, RESOURCE_SERVICE_MAJOR, RESOURCE_SERVICE_MINOR,
-        &mods::svc::resource_service(), nullptr, false);
-    mods::svc::register_service(UI_SERVICE_ID, UI_SERVICE_MAJOR, UI_SERVICE_MINOR,
-        &mods::svc::ui_service(), nullptr, false);
-    mods::svc::register_service(HOOK_SERVICE_ID, HOOK_SERVICE_MAJOR, HOOK_SERVICE_MINOR,
-        &mods::svc::hook_service(), nullptr, false);
-    mods::svc::register_service(OVERLAY_SERVICE_ID, OVERLAY_SERVICE_MAJOR, OVERLAY_SERVICE_MINOR,
-        &mods::svc::overlay_service(), nullptr, false);
-    mods::svc::register_service(TEXTURE_SERVICE_ID, TEXTURE_SERVICE_MAJOR, TEXTURE_SERVICE_MINOR,
-        &mods::svc::texture_service(), nullptr, false);
+    svc::clear_services();
+    svc::register_service(HOST_SERVICE_ID, HOST_SERVICE_MAJOR, HOST_SERVICE_MINOR,
+        &svc::host_service(), nullptr, false);
+    svc::register_service(
+        LOG_SERVICE_ID, LOG_SERVICE_MAJOR, LOG_SERVICE_MINOR, &svc::log_service(), nullptr, false);
+    svc::register_service(RESOURCE_SERVICE_ID, RESOURCE_SERVICE_MAJOR, RESOURCE_SERVICE_MINOR,
+        &svc::resource_service(), nullptr, false);
+    svc::register_service(
+        UI_SERVICE_ID, UI_SERVICE_MAJOR, UI_SERVICE_MINOR, &svc::ui_service(), nullptr, false);
+    svc::register_service(HOOK_SERVICE_ID, HOOK_SERVICE_MAJOR, HOOK_SERVICE_MINOR,
+        &svc::hook_service(), nullptr, false);
+    svc::register_service(OVERLAY_SERVICE_ID, OVERLAY_SERVICE_MAJOR, OVERLAY_SERVICE_MINOR,
+        &svc::overlay_service(), nullptr, false);
+    svc::register_service(TEXTURE_SERVICE_ID, TEXTURE_SERVICE_MAJOR, TEXTURE_SERVICE_MINOR,
+        &svc::texture_service(), nullptr, false);
+    svc::register_service(CONFIG_SERVICE_ID, CONFIG_SERVICE_MAJOR, CONFIG_SERVICE_MINOR,
+        &svc::config_service(), nullptr, false);
 }
 
 bool ModLoader::register_static_service_exports(LoadedMod& mod) {
@@ -164,24 +165,23 @@ bool ModLoader::register_static_service_exports(LoadedMod& mod) {
     for (size_t i = 0; i < manifest.export_count; ++i) {
         const auto& serviceExport = manifest.exports[i];
         if (serviceExport.struct_size != sizeof(ServiceExport) ||
-            !mods::svc::valid_service_id(serviceExport.service_id))
+            !svc::valid_service_id(serviceExport.service_id))
         {
-            mods::loader::fail_mod(mod, MOD_INVALID_ARGUMENT, "invalid service export descriptor");
+            fail_mod(mod, MOD_INVALID_ARGUMENT, "invalid service export descriptor");
             return false;
         }
 
         const bool deferred = (serviceExport.flags & SERVICE_EXPORT_DEFERRED) != 0;
         if (!deferred && serviceExport.service == nullptr) {
-            mods::loader::fail_mod(
-                mod, MOD_INVALID_ARGUMENT, "static service export has null service pointer");
+            fail_mod(mod, MOD_INVALID_ARGUMENT, "static service export has null service pointer");
             return false;
         }
 
         const auto result =
-            mods::svc::register_service(serviceExport.service_id, serviceExport.major_version,
+            svc::register_service(serviceExport.service_id, serviceExport.major_version,
                 serviceExport.minor_version, serviceExport.service, &mod, deferred);
         if (result != MOD_OK) {
-            mods::loader::fail_mod(mod, result, "service export registration failed");
+            fail_mod(mod, result, "service export registration failed");
             return false;
         }
     }
@@ -191,10 +191,10 @@ bool ModLoader::register_static_service_exports(LoadedMod& mod) {
 
 std::string ModLoader::describe_missing_import(
     const char* serviceId, const uint16_t majorVersion, const uint16_t minMinorVersion) const {
-    if (const auto* record = mods::svc::find_service_record(serviceId, majorVersion)) {
+    if (const auto* record = svc::find_service_record(serviceId, majorVersion)) {
         if (record->service == nullptr) {
             return fmt::format("required service {}@{} was never published by provider '{}'",
-                serviceId, majorVersion, mod_id(record->provider));
+                serviceId, majorVersion, svc::mod_id(record->provider));
         }
         return fmt::format("required service {}@{} only provides minor version {} (need >= {})",
             serviceId, majorVersion, record->minorVersion, minMinorVersion);
@@ -211,7 +211,7 @@ std::string ModLoader::describe_missing_import(
         for (size_t i = 0; i < manifest.export_count; ++i) {
             const auto& serviceExport = manifest.exports[i];
             if (serviceExport.struct_size == sizeof(ServiceExport) &&
-                mods::svc::valid_service_id(serviceExport.service_id) &&
+                svc::valid_service_id(serviceExport.service_id) &&
                 std::string_view{serviceExport.service_id} == serviceId &&
                 serviceExport.major_version == majorVersion)
             {
@@ -234,13 +234,13 @@ bool ModLoader::resolve_service_imports(LoadedMod& mod) {
     for (size_t i = 0; i < manifest.import_count; ++i) {
         const auto& serviceImport = manifest.imports[i];
         if (serviceImport.struct_size != sizeof(ServiceImport) ||
-            !mods::svc::valid_service_id(serviceImport.service_id) || serviceImport.slot == nullptr)
+            !svc::valid_service_id(serviceImport.service_id) || serviceImport.slot == nullptr)
         {
-            mods::loader::fail_mod(mod, MOD_INVALID_ARGUMENT, "invalid service import descriptor");
+            fail_mod(mod, MOD_INVALID_ARGUMENT, "invalid service import descriptor");
             return false;
         }
 
-        const auto* service = mods::svc::find_service(
+        const auto* service = svc::find_service(
             serviceImport.service_id, serviceImport.major_version, serviceImport.min_minor_version);
         if (service == nullptr) {
             *static_cast<const void**>(serviceImport.slot) = nullptr;
@@ -248,7 +248,7 @@ bool ModLoader::resolve_service_imports(LoadedMod& mod) {
                 continue;
             }
 
-            mods::loader::fail_mod(mod, MOD_UNAVAILABLE,
+            fail_mod(mod, MOD_UNAVAILABLE,
                 describe_missing_import(serviceImport.service_id, serviceImport.major_version,
                     serviceImport.min_minor_version));
             return false;
@@ -261,11 +261,11 @@ bool ModLoader::resolve_service_imports(LoadedMod& mod) {
 }
 
 void ModLoader::clear_services() {
-    mods::svc::clear_services();
+    svc::clear_services();
 }
 
 void ModLoader::fail_mod(LoadedMod& mod, const ModResult code, std::string_view message) {
-    mods::loader::fail_mod(mod, code, message);
+    mods::fail_mod(mod, code, message);
 }
 
-}  // namespace dusk
+}  // namespace dusk::mods

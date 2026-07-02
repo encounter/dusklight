@@ -7,7 +7,7 @@
 
 #include <chrono>
 
-namespace dusk::mods::loader {
+namespace dusk::mods {
 
 LoadedMod* mod_from_context(ModContext* context) {
     return context != nullptr ? context->mod : nullptr;

@@ -1,8 +1,6 @@
 #include "dusk/layout.hpp"
 
-using namespace dusk;
-
-LayoutRect LayoutRect::FitRectInRect(
+dusk::LayoutRect dusk::LayoutRect::FitRectInRect(
     const f32 widthOuter,
     const f32 heightOuter,
     const f32 widthInner,

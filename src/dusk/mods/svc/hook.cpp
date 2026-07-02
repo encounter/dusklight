@@ -2,40 +2,36 @@
 
 #include "dusk/hook_system.hpp"
 
+namespace dusk::mods::svc {
 namespace {
 
 ModResult hook_install(
-    ModContext* context, void* fnAddr, void* trampolineFn, void** outOriginalFn)
-{
-    return dusk::hookInstallByAddr(context, fnAddr, trampolineFn, outOriginalFn);
+    ModContext* context, void* fnAddr, void* trampolineFn, void** outOriginalFn) {
+    return hookInstallByAddr(context, fnAddr, trampolineFn, outOriginalFn);
 }
 
 ModResult hook_add_pre(
-    ModContext* context, void* fnAddr, HookPreFn callback, const HookOptions* options)
-{
-    return dusk::hookRegisterPre(fnAddr, context, callback, options);
+    ModContext* context, void* fnAddr, HookPreFn callback, const HookOptions* options) {
+    return hookRegisterPre(fnAddr, context, callback, options);
 }
 
 ModResult hook_add_post(
-    ModContext* context, void* fnAddr, HookPostFn callback, const HookOptions* options)
-{
-    return dusk::hookRegisterPost(fnAddr, context, callback, options);
+    ModContext* context, void* fnAddr, HookPostFn callback, const HookOptions* options) {
+    return hookRegisterPost(fnAddr, context, callback, options);
 }
 
 ModResult hook_set_replace(
-    ModContext* context, void* fnAddr, HookReplaceFn callback, const HookOptions* options)
-{
-    return dusk::hookSetReplace(fnAddr, context, callback, options);
+    ModContext* context, void* fnAddr, HookReplaceFn callback, const HookOptions* options) {
+    return hookSetReplace(fnAddr, context, callback, options);
 }
 
-ModResult hook_dispatch_pre(ModContext* context, void* fnAddr, void* args, void* retval,
-    int* outSkipOriginal)
-{
-    return dusk::hookDispatchPre(context, fnAddr, args, retval, outSkipOriginal);
+ModResult hook_dispatch_pre(
+    ModContext* context, void* fnAddr, void* args, void* retval, int* outSkipOriginal) {
+    return hookDispatchPre(context, fnAddr, args, retval, outSkipOriginal);
 }
 
 ModResult hook_dispatch_post(ModContext* context, void* fnAddr, void* args, void* retval) {
-    return dusk::hookDispatchPost(context, fnAddr, args, retval);
+    return hookDispatchPost(context, fnAddr, args, retval);
 }
 
 constexpr HookService s_hookService{
@@ -49,8 +45,6 @@ constexpr HookService s_hookService{
 };
 
 }  // namespace
-
-namespace dusk::mods::svc {
 
 const HookService& hook_service() {
     return s_hookService;

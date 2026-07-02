@@ -5,11 +5,10 @@
 
 namespace fs = std::filesystem;
 
-namespace dusk::mods::loader {
+namespace dusk::mods {
 ModBundleDisk::ModBundleDisk(fs::path root) : root_path(std::move(root)) {}
 
 std::vector<u8> ModBundleDisk::readFile(const std::string& fileName) {
-
     return io::FileStream::ReadAllBytes(toRealPath(fileName));
 }
 
@@ -58,4 +57,4 @@ std::filesystem::path ModBundleDisk::toRealPath(const std::string& fileName) con
     return root_path / filePath;
 }
 
-}  // namespace dusk::mods::loader
+}  // namespace dusk::mods

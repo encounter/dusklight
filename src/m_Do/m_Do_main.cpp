@@ -266,7 +266,7 @@ void main01(void) {
                 if (dusk::getSettings().video.rememberWindowSize && !dusk::getSettings().video.enableFullscreen) {
                     dusk::getSettings().video.lastWindowWidth.setValue(event->windowSize.width);
                     dusk::getSettings().video.lastWindowHeight.setValue(event->windowSize.height);
-                    dusk::config::Save();
+                    dusk::config::save();
                 }
                 break;
             case AURORA_DISPLAY_SCALE_CHANGED:
@@ -364,7 +364,7 @@ void main01(void) {
     } while (dusk::IsRunning);
 
     exit:;
-    dusk::ModLoader::instance().shutdown();
+    dusk::mods::ModLoader::instance().shutdown();
     dusk::ui::shutdown();
 }
 
@@ -432,7 +432,7 @@ static void ApplyCVarOverrides(const cxxopts::OptionValue& option) {
         const auto name = std::string_view(cvarArg).substr(0, sep);
         const auto value = std::string_view(cvarArg).substr(sep + 1);
 
-        dusk::config::LoadArgOverride(name, value);
+        dusk::config::load_arg_override(name, value);
     }
 }
 
@@ -544,10 +544,7 @@ int game_main(int argc, char* argv[]) {
 
     log_build_info();
 
-    dusk::config::LoadFromUserPreferences();
-    if (dusk::getSettings().game.speedrunMode) {
-        dusk::resetForSpeedrunMode();
-    }
+    dusk::config::load_from_user_preferences();
     ApplyCVarOverrides(parsed_arg_options["cvar"]);
     dusk::android::update_surface_frame_rate();
     dusk::crash_reporting::initialize();
@@ -609,6 +606,11 @@ int game_main(int argc, char* argv[]) {
         config.imGuiInitCallback = &aurora_imgui_init_callback;
         config.allowTextureDumps = false;
         auroraInfo = aurora_initialize(argc, argv, &config);
+    }
+
+    // Apply after aurora_init for change callback safety
+    if (dusk::getSettings().game.speedrunMode) {
+        dusk::resetForSpeedrunMode();
     }
 
 #ifdef DUSK_DISCORD
@@ -693,7 +695,7 @@ int game_main(int argc, char* argv[]) {
                 dusk::getSettings().backend.isoPath.setValue(dvd_path);
                 dusk::getSettings().backend.isoVerification.setValue(
                     dusk::DiscVerificationState::Unknown);
-                dusk::config::Save();
+                dusk::config::save();
                 dusk::IsGameLaunched = true;
             }
         } else {
@@ -716,7 +718,7 @@ int game_main(int argc, char* argv[]) {
             saveConfigBeforePrelaunch = true;
         }
         if (saveConfigBeforePrelaunch) {
-            dusk::config::Save();
+            dusk::config::save();
         }
 
         if (!dusk::getSettings().backend.skipPreLaunchUI) {
@@ -789,13 +791,13 @@ int game_main(int argc, char* argv[]) {
     if (parsed_arg_options.contains("mods") &&
         !parsed_arg_options["mods"].as<std::string>().empty())
     {
-        dusk::ModLoader::instance().set_mods_dir(parsed_arg_options["mods"].as<std::string>());
+        dusk::mods::ModLoader::instance().set_mods_dir(parsed_arg_options["mods"].as<std::string>());
     } else {
-        dusk::ModLoader::instance().set_mods_dir(dusk::ConfigPath / "mods");
+        dusk::mods::ModLoader::instance().set_mods_dir(dusk::ConfigPath / "mods");
     }
 
     DuskLog.info("Initializing mods...");
-    dusk::ModLoader::instance().init();
+    dusk::mods::ModLoader::instance().init();
 
     OSReport("Starting main01 (Game Loop)...\n");
     main01();
@@ -817,7 +819,7 @@ int game_main(int argc, char* argv[]) {
 #endif
     dusk::ui::shutdown();
     dusk::texture_replacements::shutdown();
-    dusk::config::Shutdown();
+    dusk::config::shutdown();
     aurora_shutdown();
 
     return 0;

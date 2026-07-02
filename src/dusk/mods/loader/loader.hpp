@@ -8,8 +8,9 @@
 #include <aurora/texture.hpp>
 
 #include "dusk/mod_loader.hpp"
+#include "mods/svc/config.h"
 
-namespace dusk::mods::loader {
+namespace dusk::mods {
 
 #if DUSK_CODE_MODS
 constexpr bool EnableCodeMods = true;
@@ -61,6 +62,7 @@ const LoadedMod* mod_from_context(const ModContext* context);
 const char* mod_id_from_context(ModContext* context);
 void fail_mod(LoadedMod& mod, ModResult code, std::string_view message);
 bool is_safe_resource_path(std::string_view path);
+std::string escape_mod_id_for_config(std::string_view id);
 
 uint64_t overlay_add_file(
     LoadedMod& mod, std::string discPath, std::string bundlePath, size_t size);
@@ -82,4 +84,22 @@ uint64_t texture_register_file(LoadedMod& mod, std::string bundlePath);
 bool texture_unregister(LoadedMod& mod, uint64_t handle);
 void textures_remove_mod(LoadedMod& mod);
 
-}  // namespace dusk::mods::loader
+struct ModConfigVarSpec {
+    std::string fragment;  // validated by the service layer
+    uint32_t type = 0;     // ConfigVarType
+    bool defaultBool = false;
+    int64_t defaultInt = 0;
+    double defaultFloat = 0.0;
+    std::string defaultString;
+};
+ModResult config_register_var(LoadedMod& mod, const ModConfigVarSpec& spec, uint64_t& outHandle);
+ModResult config_unregister_var(LoadedMod& mod, uint64_t handle);
+config::ConfigVarBase* config_find_var(LoadedMod& mod, uint64_t handle, uint32_t expectedType);
+ModResult config_subscribe(LoadedMod& mod, uint64_t varHandle, ConfigChangedFn callback,
+    void* userData, uint64_t& outHandle);
+ModResult config_unsubscribe(LoadedMod& mod, uint64_t handle);
+void config_remove_mod(LoadedMod& mod);
+void config_mark_dirty();
+void config_flush_if_dirty(bool force);
+
+}  // namespace dusk::mods

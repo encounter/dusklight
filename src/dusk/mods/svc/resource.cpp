@@ -8,17 +8,16 @@
 #include <string>
 #include <string_view>
 
+namespace dusk::mods::svc {
 namespace {
 
 ModResult resource_load(ModContext* context, const char* relativePath, ResourceBuffer* outBuffer) {
-    auto* mod = dusk::mods::loader::mod_from_context(context);
+    auto* mod = mod_from_context(context);
     if (outBuffer == nullptr) {
         return MOD_INVALID_ARGUMENT;
     }
     *outBuffer = ResourceBuffer{sizeof(ResourceBuffer), nullptr, 0u};
-    if (mod == nullptr || relativePath == nullptr ||
-        !dusk::mods::loader::is_safe_resource_path(relativePath))
-    {
+    if (mod == nullptr || relativePath == nullptr || !is_safe_resource_path(relativePath)) {
         return MOD_INVALID_ARGUMENT;
     }
 
@@ -61,10 +60,7 @@ constexpr ResourceService s_resourceService{
 
 }  // namespace
 
-namespace dusk::mods::svc {
-
 const ResourceService& resource_service() {
     return s_resourceService;
 }
-
 }  // namespace dusk::mods::svc

@@ -10,14 +10,15 @@
 
 using namespace std::string_literals;
 
+namespace dusk::mods {
 namespace {
 
 aurora::Module Log("dusk::modLoader::overlay");
 
 struct OverlayFileData {
     std::string bundlePath;
-    std::shared_ptr<dusk::mods::loader::ModBundle> bundle;
-    std::shared_ptr<const std::vector<u8>> buffer;
+    std::shared_ptr<ModBundle> bundle;
+    std::shared_ptr<const std::vector<u8> > buffer;
 };
 
 // Keyed by the id passed to Aurora as per-file userdata. Guarded by s_overlayMutex: Aurora may
@@ -35,14 +36,14 @@ struct RuntimeOverlayEntry {
     std::shared_ptr<const std::vector<u8>> buffer;  // buffer-backed otherwise
     size_t size = 0;
 };
-std::unordered_map<const dusk::LoadedMod*, std::vector<RuntimeOverlayEntry>> s_runtimeOverlays;
+std::unordered_map<const LoadedMod*, std::vector<RuntimeOverlayEntry>> s_runtimeOverlays;
 uint64_t s_nextRuntimeHandle = 1;
 bool s_overlaysDirty = false;
 
 // Aurora matches overlay paths against the disc case-insensitively and later entries win, so
 // claims are tracked by lowercased path and re-claims by a different mod warn.
-void claim_overlay_path(std::unordered_map<std::string, const dusk::LoadedMod*>& claims,
-    const std::string& discPath, const dusk::LoadedMod& mod) {
+void claim_overlay_path(std::unordered_map<std::string, const LoadedMod*>& claims,
+    const std::string& discPath, const LoadedMod& mod) {
     std::string key = discPath;
     for (auto& ch : key) {
         if (ch >= 'A' && ch <= 'Z') {
@@ -57,8 +58,8 @@ void claim_overlay_path(std::unordered_map<std::string, const dusk::LoadedMod*>&
     }
 }
 
-void find_overlay_files(std::vector<AuroraOverlayFile>& files, dusk::LoadedMod& mod,
-    std::unordered_map<std::string, const dusk::LoadedMod*>& claims) {
+void find_overlay_files(std::vector<AuroraOverlayFile>& files, LoadedMod& mod,
+    std::unordered_map<std::string, const LoadedMod*>& claims) {
     for (const auto& file : mod.bundle->getFileNames()) {
         if (!file.starts_with("overlay/")) {
             continue;
@@ -73,15 +74,12 @@ void find_overlay_files(std::vector<AuroraOverlayFile>& files, dusk::LoadedMod& 
         const auto id = s_nextOverlayId++;
         s_overlayFiles.emplace(id, OverlayFileData{file, mod.bundle, nullptr});
         claim_overlay_path(claims, overlayPath, mod);
-        files.emplace_back(
-            strdup(overlayPath.c_str()),
-            reinterpret_cast<void*>(id),
-            size);
+        files.emplace_back(strdup(overlayPath.c_str()), reinterpret_cast<void*>(id), size);
     }
 }
 
-void append_runtime_overlays(std::vector<AuroraOverlayFile>& files, dusk::LoadedMod& mod,
-    std::unordered_map<std::string, const dusk::LoadedMod*>& claims) {
+void append_runtime_overlays(std::vector<AuroraOverlayFile>& files, LoadedMod& mod,
+    std::unordered_map<std::string, const LoadedMod*>& claims) {
     const auto it = s_runtimeOverlays.find(&mod);
     if (it == s_runtimeOverlays.end()) {
         return;
@@ -95,16 +93,13 @@ void append_runtime_overlays(std::vector<AuroraOverlayFile>& files, dusk::Loaded
             s_overlayFiles.emplace(id, OverlayFileData{entry.bundlePath, mod.bundle, nullptr});
         }
         claim_overlay_path(claims, entry.discPath, mod);
-        files.emplace_back(
-            strdup(entry.discPath.c_str()),
-            reinterpret_cast<void*>(id),
-            entry.size);
+        files.emplace_back(strdup(entry.discPath.c_str()), reinterpret_cast<void*>(id), entry.size);
     }
 }
 
 struct OpenOverlayFile {
     std::vector<u8> ownedData;
-    std::shared_ptr<const std::vector<u8>> shared;
+    std::shared_ptr<const std::vector<u8> > shared;
     size_t pos = 0;
 
     [[nodiscard]] const std::vector<u8>& data() const {
@@ -143,7 +138,7 @@ void cbClose(void* handle) {
     delete openFile;
 }
 
-int64_t cbRead(void* handle, uint8_t *buf, const size_t len) {
+int64_t cbRead(void* handle, uint8_t* buf, const size_t len) {
     auto& openFile = *static_cast<OpenOverlayFile*>(handle);
 
     const auto remainingSpace = openFile.data().size() - openFile.pos;
@@ -159,7 +154,8 @@ int64_t cbSeek(void* handle, int64_t offset, int32_t whence) {
     }
 
     auto& openFile = *static_cast<OpenOverlayFile*>(handle);
-    const auto posSigned = std::clamp(offset, static_cast<int64_t>(0), static_cast<int64_t>(openFile.data().size()));
+    const auto posSigned =
+        std::clamp(offset, static_cast<int64_t>(0), static_cast<int64_t>(openFile.data().size()));
     openFile.pos = static_cast<size_t>(posSigned);
     return posSigned;
 }
@@ -171,9 +167,7 @@ constexpr AuroraOverlayCallbacks s_overlayCallbacks = {
     .seek = cbSeek,
 };
 
-}
-
-namespace dusk {
+}  // namespace
 
 void ModLoader::sync_overlay_files() {
     static bool callbacksRegistered = false;
@@ -203,11 +197,8 @@ void ModLoader::sync_overlay_files() {
     }
 }
 
-}  // namespace dusk
-
-namespace dusk::mods::loader {
-
-uint64_t overlay_add_file(LoadedMod& mod, std::string discPath, std::string bundlePath, size_t size) {
+uint64_t overlay_add_file(
+    LoadedMod& mod, std::string discPath, std::string bundlePath, size_t size) {
     const auto handle = s_nextRuntimeHandle++;
     s_runtimeOverlays[&mod].push_back({
         .handle = handle,
@@ -257,4 +248,4 @@ bool consume_overlays_dirty() {
     return std::exchange(s_overlaysDirty, false);
 }
 
-}  // namespace dusk::mods::loader
+}  // namespace dusk::mods

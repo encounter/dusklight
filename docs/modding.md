@@ -220,6 +220,36 @@ svc_texture->unregister(mod_ctx, handle);
 
 Filenames use the same convention as the user's `texture_replacements` directory: `tex1_{w}x{h}_{texhash}[_{tluthash}]_{fmt}.dds|.png`, where hashes may be `$` (wildcard; `TEXTURE_HASH_WILDCARD`/`TEXTURE_TLUT_WILDCARD` in `register_data` keys). `_mipN` sidecar files next to a registered file are picked up automatically. Files are decoded lazily on first use by the renderer; raw data is copied at registration. Registrations follow your mod's lifecycle. Priority when several sources replace the same texture: later-loaded mods beat earlier ones, and any mod beats the user's `texture_replacements` config directory.
 
+### ConfigService (`mods/svc/config.h`)
+
+Persistent, mod-scoped configuration variables. Each var is stored in the user's `config.json` under `mod.<escaped mod id>.<name>` (escaping: `.` → `_`, `_` → `__`, so `com.example.my_mod` becomes `com_example_my__mod`), next to the host's own settings:
+
+```cpp
+IMPORT_SERVICE(ConfigService, svc_config);
+
+ConfigVarDesc desc = CONFIG_VAR_DESC_INIT;
+desc.name = "speedMultiplier";  // 1-64 chars from [A-Za-z0-9_-]; "enabled" is reserved
+desc.type = CONFIG_VAR_FLOAT;
+desc.default_float = 1.0;
+ConfigVarHandle var = 0;
+svc_config->register_var(mod_ctx, &desc, &var);
+
+double speed = 1.0;
+svc_config->get_float(mod_ctx, var, &speed);
+svc_config->set_float(mod_ctx, var, 2.0);
+
+// Optional: get notified when the value changes.
+void on_speed_changed(ModContext* ctx, ConfigVarHandle var, const ConfigVarValue* previous,
+    void* user_data) { /* previous->float_value holds the old value */ }
+svc_config->subscribe(mod_ctx, var, on_speed_changed, nullptr, nullptr);
+```
+
+Types: `CONFIG_VAR_BOOL` (`uint32_t` 0/1), `CONFIG_VAR_INT` (`int64_t`), `CONFIG_VAR_FLOAT` (`double`), `CONFIG_VAR_STRING` (UTF-8; `get_string` copies into a caller buffer — pass a `NULL` buffer with size 0 to query the length). Accessors are typed and must match the registration.
+
+If a value was saved in an earlier session (or supplied via `--cvar mod.<escaped id>.<name>=<value>`), it takes effect at registration; otherwise the var starts at its default. Writes are debounced — they reach `config.json` within a couple of seconds, not per call, and always on clean shutdown. Registrations and subscriptions follow your mod's lifecycle (removed on disable/reload/failure), but persisted values survive and are restored by the next registration of the same name.
+
+Change callbacks fire on the game thread whenever the value actually changes at runtime — your own `set_*` calls included; writes that store the same value are silent. Values applied from `config.json` or `--cvar` at registration do **not** fire callbacks — read the value after `register_var` for your starting state. The callback receives the previous value as a `ConfigVarValue` snapshot (valid only during the call; copy `string_value` if you need to keep it) and reads the current value back through the typed getters. Setting the same var from inside its own callback applies the write but is not re-notified.
+
 ### UI service
 
 Dusklight also ships a UI service for adding panels to the Mods window. It is being rewritten and intentionally undocumented — if you need it in the meantime, see `include/mods/svc/ui.h` and its usage in [mod_test](../tools/mod_test/src/mod.cpp), but expect breaking changes.

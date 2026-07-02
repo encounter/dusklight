@@ -6,6 +6,7 @@
 #include "m_Do/m_Do_controller_pad.h"
 #include "mods/hook.hpp"
 #include "mods/service.hpp"
+#include "mods/svc/config.h"
 #include "mods/svc/hook.h"
 #include "mods/svc/host.h"
 #include "mods/svc/log.h"
@@ -23,6 +24,7 @@ IMPORT_SERVICE(UiService, svc_ui);
 IMPORT_SERVICE(HookService, svc_hook);
 IMPORT_SERVICE(OverlayService, svc_overlay);
 IMPORT_SERVICE(TextureService, svc_texture);
+IMPORT_SERVICE(ConfigService, svc_config);
 // Both provided by mod_test_dep, which sorts *after* mod_test.dusk in the mods directory;
 // dependency ordering must initialize it first regardless. The deferred service only
 // resolves if mod_test_dep published it during its initialization.
@@ -50,6 +52,18 @@ bool g_overlay_add_ok = false;
 bool g_overlay_read_ok = false;
 bool g_texture_reg_ok = false;
 bool g_asset_neg_ok = false;
+bool g_config_ok = false;
+bool g_config_change_ok = false;
+bool g_config_neg_ok = false;
+int g_config_change_count = 0;
+int64_t g_config_prev_value = -1;
+
+void on_config_changed(ModContext*, ConfigVarHandle, const ConfigVarValue* previous, void* userData) {
+    ++*static_cast<int*>(userData);
+    if (previous != nullptr && previous->type == CONFIG_VAR_INT) {
+        g_config_prev_value = previous->int_value;
+    }
+}
 
 constexpr char kRuntimeOverlayData[] = "runtime overlay data OK";
 alignas(32) const uint8_t s_rawTexture[8 * 8 * 4] = {0xff};
@@ -190,6 +204,14 @@ ModResult build_panel(ModContext*, PanelHandle panel, void*, ModError*) {
         mod_ctx, panel, "TextureService register data+file", g_texture_reg_ok, &unused);
     svc_ui->panel_add_badge_row(
         mod_ctx, panel, "asset services negative tests", g_asset_neg_ok, &unused);
+
+    svc_ui->panel_add_section(mod_ctx, panel, "Config");
+    svc_ui->panel_add_badge_row(
+        mod_ctx, panel, "ConfigService register/get/set", g_config_ok, &unused);
+    svc_ui->panel_add_badge_row(
+        mod_ctx, panel, "ConfigService change callbacks", g_config_change_ok, &unused);
+    svc_ui->panel_add_badge_row(
+        mod_ctx, panel, "ConfigService negative tests", g_config_neg_ok, &unused);
 
     svc_ui->panel_add_section(mod_ctx, panel, "API Fields");
     svc_ui->panel_add_badge_row(
@@ -346,6 +368,139 @@ MOD_EXPORT ModResult mod_initialize(ModError* error) {
         svc_log->info(mod_ctx, "asset services negative tests OK");
     } else {
         svc_log->error(mod_ctx, "asset services negative tests FAILED");
+    }
+
+    // ConfigService: registration + typed get/set round trips, an unregister/re-register cycle,
+    // change callbacks, a persistence probe (asserted across runs), and negative tests.
+    ConfigVarHandle cfgFlag = 0, cfgInt = 0, cfgFloat = 0, cfgString = 0;
+    ConfigVarDesc cfgDesc = CONFIG_VAR_DESC_INIT;
+    cfgDesc.name = "testFlag";
+    cfgDesc.type = CONFIG_VAR_BOOL;
+    cfgDesc.default_bool = 1;
+    g_config_ok = svc_config->register_var(mod_ctx, &cfgDesc, &cfgFlag) == MOD_OK && cfgFlag != 0;
+
+    cfgDesc = CONFIG_VAR_DESC_INIT;
+    cfgDesc.name = "testInt";
+    cfgDesc.type = CONFIG_VAR_INT;
+    cfgDesc.default_int = 42;
+    g_config_ok = g_config_ok && svc_config->register_var(mod_ctx, &cfgDesc, &cfgInt) == MOD_OK;
+
+    cfgDesc = CONFIG_VAR_DESC_INIT;
+    cfgDesc.name = "testFloat";
+    cfgDesc.type = CONFIG_VAR_FLOAT;
+    cfgDesc.default_float = 1.5;
+    g_config_ok = g_config_ok && svc_config->register_var(mod_ctx, &cfgDesc, &cfgFloat) == MOD_OK;
+
+    cfgDesc = CONFIG_VAR_DESC_INIT;
+    cfgDesc.name = "testString";
+    cfgDesc.type = CONFIG_VAR_STRING;
+    cfgDesc.default_string = "hello";
+    g_config_ok = g_config_ok && svc_config->register_var(mod_ctx, &cfgDesc, &cfgString) == MOD_OK;
+
+    // Values persist across sessions, so assert the set/get round trip, not the defaults.
+    uint32_t cfgBoolValue = 1;
+    int64_t cfgIntValue = 0;
+    double cfgFloatValue = 0.0;
+    char cfgStringBuf[8] = {};
+    size_t cfgStringLength = 0;
+    g_config_ok = g_config_ok &&
+        svc_config->set_bool(mod_ctx, cfgFlag, 0) == MOD_OK &&
+        svc_config->get_bool(mod_ctx, cfgFlag, &cfgBoolValue) == MOD_OK && cfgBoolValue == 0 &&
+        svc_config->set_int(mod_ctx, cfgInt, 1234) == MOD_OK &&
+        svc_config->get_int(mod_ctx, cfgInt, &cfgIntValue) == MOD_OK && cfgIntValue == 1234 &&
+        svc_config->set_float(mod_ctx, cfgFloat, 2.25) == MOD_OK &&
+        svc_config->get_float(mod_ctx, cfgFloat, &cfgFloatValue) == MOD_OK &&
+        cfgFloatValue == 2.25 &&
+        svc_config->set_string(mod_ctx, cfgString, "abc") == MOD_OK &&
+        // Length query with a null buffer, then an exact-size read.
+        svc_config->get_string(mod_ctx, cfgString, nullptr, 0, &cfgStringLength) == MOD_OK &&
+        cfgStringLength == 3 &&
+        svc_config->get_string(mod_ctx, cfgString, cfgStringBuf, 4, nullptr) == MOD_OK &&
+        std::strcmp(cfgStringBuf, "abc") == 0;
+
+    // Unregister releases the name for a later registration (the reload path in miniature).
+    cfgDesc = CONFIG_VAR_DESC_INIT;
+    cfgDesc.name = "testTemp";
+    cfgDesc.type = CONFIG_VAR_BOOL;
+    ConfigVarHandle cfgTemp = 0;
+    g_config_ok = g_config_ok &&
+        svc_config->register_var(mod_ctx, &cfgDesc, &cfgTemp) == MOD_OK &&
+        svc_config->unregister_var(mod_ctx, cfgTemp) == MOD_OK &&
+        svc_config->register_var(mod_ctx, &cfgDesc, &cfgTemp) == MOD_OK;
+    if (g_config_ok) {
+        svc_log->info(mod_ctx, "ConfigService register/get/set OK");
+    } else {
+        svc_log->error(mod_ctx, "ConfigService register/get/set FAILED");
+    }
+
+    // Own writes fire the callback synchronously; unsubscribing stops delivery.
+    ConfigSubscriptionHandle cfgSub = 0;
+    g_config_change_ok =
+        svc_config->subscribe(
+            mod_ctx, cfgInt, on_config_changed, &g_config_change_count, &cfgSub) == MOD_OK &&
+        cfgSub != 0 &&
+        svc_config->set_int(mod_ctx, cfgInt, 5678) == MOD_OK && g_config_change_count == 1 &&
+        g_config_prev_value == 1234 &&
+        // Writes that don't change the value don't notify.
+        svc_config->set_int(mod_ctx, cfgInt, 5678) == MOD_OK && g_config_change_count == 1 &&
+        svc_config->unsubscribe(mod_ctx, cfgSub) == MOD_OK &&
+        svc_config->set_int(mod_ctx, cfgInt, 42) == MOD_OK && g_config_change_count == 1;
+    if (g_config_change_ok) {
+        svc_log->info(mod_ctx, "ConfigService change callbacks OK");
+    } else {
+        char dbgBuf[128];
+        std::snprintf(dbgBuf, sizeof(dbgBuf),
+            "ConfigService change callbacks FAILED (count=%d prev=%lld sub=%llu)",
+            g_config_change_count, static_cast<long long>(g_config_prev_value),
+            static_cast<unsigned long long>(cfgSub));
+        svc_log->error(mod_ctx, dbgBuf);
+    }
+
+    // Increments once per session; a second run must log the value the first run stored.
+    cfgDesc = CONFIG_VAR_DESC_INIT;
+    cfgDesc.name = "persistCounter";
+    cfgDesc.type = CONFIG_VAR_INT;
+    ConfigVarHandle cfgPersist = 0;
+    int64_t persistCount = 0;
+    if (svc_config->register_var(mod_ctx, &cfgDesc, &cfgPersist) == MOD_OK &&
+        svc_config->get_int(mod_ctx, cfgPersist, &persistCount) == MOD_OK)
+    {
+        char logBuf[64];
+        std::snprintf(logBuf, sizeof(logBuf), "ConfigService persisted counter = %lld",
+            static_cast<long long>(persistCount));
+        svc_log->info(mod_ctx, logBuf);
+        svc_config->set_int(mod_ctx, cfgPersist, persistCount + 1);
+    } else {
+        svc_log->error(mod_ctx, "ConfigService persistence probe FAILED");
+    }
+
+    // Negative tests: bad fragments, reserved/duplicate names, type mismatches, small buffers
+    // and bogus handles must all be rejected.
+    ConfigVarDesc cfgBadDesc = CONFIG_VAR_DESC_INIT;
+    cfgBadDesc.name = "bad.name";
+    ConfigVarDesc cfgEmptyDesc = CONFIG_VAR_DESC_INIT;
+    cfgEmptyDesc.name = "";
+    ConfigVarDesc cfgReservedDesc = CONFIG_VAR_DESC_INIT;
+    cfgReservedDesc.name = "enabled";  // collides with the loader's mod.<id>.enabled
+    ConfigVarDesc cfgDupDesc = CONFIG_VAR_DESC_INIT;
+    cfgDupDesc.name = "testFlag";
+    char cfgTinyBuf[2];
+    g_config_neg_ok =
+        svc_config->register_var(mod_ctx, nullptr, nullptr) == MOD_INVALID_ARGUMENT &&
+        svc_config->register_var(mod_ctx, &cfgBadDesc, nullptr) == MOD_INVALID_ARGUMENT &&
+        svc_config->register_var(mod_ctx, &cfgEmptyDesc, nullptr) == MOD_INVALID_ARGUMENT &&
+        svc_config->register_var(mod_ctx, &cfgReservedDesc, nullptr) == MOD_CONFLICT &&
+        svc_config->register_var(mod_ctx, &cfgDupDesc, nullptr) == MOD_CONFLICT &&
+        svc_config->get_int(mod_ctx, cfgFlag, &cfgIntValue) == MOD_INVALID_ARGUMENT &&
+        svc_config->get_string(mod_ctx, cfgString, cfgTinyBuf, sizeof(cfgTinyBuf), nullptr) ==
+            MOD_INVALID_ARGUMENT &&
+        svc_config->set_bool(mod_ctx, UINT64_C(0xdead), 1) == MOD_INVALID_ARGUMENT &&
+        svc_config->unregister_var(mod_ctx, UINT64_C(0xdead)) == MOD_INVALID_ARGUMENT &&
+        svc_config->unsubscribe(mod_ctx, UINT64_C(0xdead)) == MOD_INVALID_ARGUMENT;
+    if (g_config_neg_ok) {
+        svc_log->info(mod_ctx, "ConfigService negative tests OK");
+    } else {
+        svc_log->error(mod_ctx, "ConfigService negative tests FAILED");
     }
 
     ModResult result = dusk::mods::hook_add_pre<&daAlink_c::posMove>(svc_hook, on_pos_move_pre);

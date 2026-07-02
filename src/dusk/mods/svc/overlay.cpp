@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <string_view>
 
+namespace dusk::mods::svc {
 namespace {
 
 constexpr size_t kMaxOverlayFileSize = UINT32_MAX;
@@ -15,7 +16,7 @@ bool is_valid_disc_path(const char* discPath) {
         return false;
     }
     const std::string_view path{discPath};
-    return path.starts_with('/') && dusk::mods::loader::is_safe_resource_path(path.substr(1));
+    return path.starts_with('/') && is_safe_resource_path(path.substr(1));
 }
 
 ModResult overlay_add_file(
@@ -23,9 +24,9 @@ ModResult overlay_add_file(
     if (outHandle != nullptr) {
         *outHandle = 0;
     }
-    auto* mod = dusk::mods::loader::mod_from_context(context);
+    auto* mod = mod_from_context(context);
     if (mod == nullptr || !is_valid_disc_path(discPath) || bundlePath == nullptr ||
-        !dusk::mods::loader::is_safe_resource_path(bundlePath))
+        !is_safe_resource_path(bundlePath))
     {
         return MOD_INVALID_ARGUMENT;
     }
@@ -44,7 +45,7 @@ ModResult overlay_add_file(
         return MOD_INVALID_ARGUMENT;
     }
 
-    const auto handle = dusk::mods::loader::overlay_add_file(*mod, discPath, bundlePath, size);
+    const auto handle = overlay_add_file(*mod, discPath, bundlePath, size);
     if (outHandle != nullptr) {
         *outHandle = handle;
     }
@@ -56,7 +57,7 @@ ModResult overlay_add_buffer(ModContext* context, const char* discPath, const vo
     if (outHandle != nullptr) {
         *outHandle = 0;
     }
-    auto* mod = dusk::mods::loader::mod_from_context(context);
+    auto* mod = mod_from_context(context);
     if (mod == nullptr || !is_valid_disc_path(discPath) || (data == nullptr && size != 0) ||
         size > kMaxOverlayFileSize)
     {
@@ -64,8 +65,7 @@ ModResult overlay_add_buffer(ModContext* context, const char* discPath, const vo
     }
 
     const auto* bytes = static_cast<const u8*>(data);
-    const auto handle = dusk::mods::loader::overlay_add_buffer(
-        *mod, discPath, std::vector<u8>{bytes, bytes + size});
+    const auto handle = overlay_add_buffer(*mod, discPath, std::vector<u8>{bytes, bytes + size});
     if (outHandle != nullptr) {
         *outHandle = handle;
     }
@@ -73,11 +73,11 @@ ModResult overlay_add_buffer(ModContext* context, const char* discPath, const vo
 }
 
 ModResult overlay_remove(ModContext* context, OverlayHandle handle) {
-    auto* mod = dusk::mods::loader::mod_from_context(context);
+    auto* mod = mod_from_context(context);
     if (mod == nullptr || handle == 0) {
         return MOD_INVALID_ARGUMENT;
     }
-    if (!dusk::mods::loader::overlay_remove(*mod, handle)) {
+    if (!overlay_remove(*mod, handle)) {
         DuskLog.error("[{}] overlay remove failed: unknown handle {}", mod->metadata.id, handle);
         return MOD_INVALID_ARGUMENT;
     }
@@ -93,10 +93,7 @@ constexpr OverlayService s_overlayService{
 
 }  // namespace
 
-namespace dusk::mods::svc {
-
 const OverlayService& overlay_service() {
     return s_overlayService;
 }
-
 }  // namespace dusk::mods::svc

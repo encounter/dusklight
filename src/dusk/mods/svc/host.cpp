@@ -2,6 +2,7 @@
 
 #include "dusk/mods/loader/loader.hpp"
 
+namespace dusk::mods::svc {
 namespace {
 
 ModResult host_get_service(ModContext*, const char* serviceId, const uint16_t majorVersion,
@@ -10,7 +11,7 @@ ModResult host_get_service(ModContext*, const char* serviceId, const uint16_t ma
         return MOD_INVALID_ARGUMENT;
     }
     *outService = nullptr;
-    const auto* service = dusk::mods::svc::find_service(serviceId, majorVersion, minMinorVersion);
+    const auto* service = find_service(serviceId, majorVersion, minMinorVersion);
     if (service == nullptr) {
         return MOD_UNAVAILABLE;
     }
@@ -20,39 +21,38 @@ ModResult host_get_service(ModContext*, const char* serviceId, const uint16_t ma
 
 ModResult host_publish_service(
     ModContext* context, const char* serviceId, const uint16_t majorVersion, const void* service) {
-    auto* mod = dusk::mods::loader::mod_from_context(context);
-    if (mod == nullptr || !dusk::mods::svc::valid_service_id(serviceId) || service == nullptr) {
+    auto* mod = mod_from_context(context);
+    if (mod == nullptr || !valid_service_id(serviceId) || service == nullptr) {
         return MOD_INVALID_ARGUMENT;
     }
 
-    return dusk::mods::svc::publish_deferred_service(*mod, serviceId, majorVersion, service);
+    return publish_deferred_service(*mod, serviceId, majorVersion, service);
 }
 
 void host_fail(ModContext* context, const ModResult code, const char* message) {
-    auto* mod = dusk::mods::loader::mod_from_context(context);
+    auto* mod = mod_from_context(context);
     if (mod != nullptr) {
-        dusk::mods::loader::fail_mod(
-            *mod, code, message != nullptr ? message : "mod reported failure");
+        fail_mod(*mod, code, message != nullptr ? message : "mod reported failure");
     }
 }
 
 const char* host_mod_id(ModContext* context) {
-    const auto* mod = dusk::mods::loader::mod_from_context(context);
+    const auto* mod = mod_from_context(context);
     return mod != nullptr ? mod->metadata.id.c_str() : "";
 }
 
 const char* host_mod_name(ModContext* context) {
-    const auto* mod = dusk::mods::loader::mod_from_context(context);
+    const auto* mod = mod_from_context(context);
     return mod != nullptr ? mod->metadata.name.c_str() : "";
 }
 
 const char* host_mod_version(ModContext* context) {
-    const auto* mod = dusk::mods::loader::mod_from_context(context);
+    const auto* mod = mod_from_context(context);
     return mod != nullptr ? mod->metadata.version.c_str() : "";
 }
 
 const char* host_mod_dir(ModContext* context) {
-    const auto* mod = dusk::mods::loader::mod_from_context(context);
+    const auto* mod = mod_from_context(context);
     return mod != nullptr ? mod->dir.c_str() : "";
 }
 
@@ -68,8 +68,6 @@ constexpr HostService s_hostService{
 };
 
 }  // namespace
-
-namespace dusk::mods::svc {
 
 const HostService& host_service() {
     return s_hostService;

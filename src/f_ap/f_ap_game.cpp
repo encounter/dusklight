@@ -833,7 +833,7 @@ void fapGm_Execute() {
 
 #if TARGET_PC
     duskExecute();
-    dusk::ModLoader::instance().tick();
+    dusk::mods::ModLoader::instance().tick();
 #endif
 
 #ifdef TARGET_PC

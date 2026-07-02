@@ -1,6 +1,7 @@
 #pragma once
 
 #include "dusk/mod_loader.hpp"
+#include "mods/svc/config.h"
 #include "mods/svc/hook.h"
 #include "mods/svc/host.h"
 #include "mods/svc/log.h"
@@ -42,5 +43,6 @@ const UiService& ui_service();
 const HookService& hook_service();
 const OverlayService& overlay_service();
 const TextureService& texture_service();
+const ConfigService& config_service();
 
 }  // namespace dusk::mods::svc

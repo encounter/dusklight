@@ -7,24 +7,25 @@
 #include <string_view>
 #include <vector>
 
+#include "dusk/config.hpp"
 #include "dusk/config_var.hpp"
 #include "mods/api.h"
 #include "mods/svc/ui.h"
 
-namespace dusk {
+namespace dusk::mods {
 struct LoadedMod;
-}
+class ModBundle;
+}  // namespace dusk::mods
 
 struct ModContext {
-    dusk::LoadedMod* mod = nullptr;
+    dusk::mods::LoadedMod* mod = nullptr;
 };
 
 namespace dusk::mods::loader {
-class ModBundle;
 class NativeModule;
 }  // namespace dusk::mods::loader
 
-namespace dusk {
+namespace dusk::mods {
 
 struct ModUiTabCallback {
     ModContext* context = nullptr;
@@ -66,7 +67,7 @@ struct ModMetadata {
 };
 
 struct NativeMod {
-    std::unique_ptr<mods::loader::NativeModule> handle;
+    std::unique_ptr<loader::NativeModule> handle;
     const ModManifest* manifest = nullptr;
     ModContext** contextSymbol = nullptr;
 
@@ -121,6 +122,7 @@ struct LoadedMod {
     std::string dir;
 
     std::unique_ptr<ConfigVar<bool> > cvarIsEnabled;
+    config::Subscription enabledSubscription = 0;
 
     bool active = false;
     bool loadFailed = false;
@@ -146,7 +148,7 @@ struct LoadedMod {
     std::unique_ptr<ModContext> context;
 
     // Shared with overlay file registrations so in-flight DVD reads survive disable/reload.
-    std::shared_ptr<mods::loader::ModBundle> bundle;
+    std::shared_ptr<ModBundle> bundle;
 
     ModManifestInfo manifestInfo;
 
@@ -231,6 +233,7 @@ private:
     LoadedMod* find_mod(std::string_view id);
     void drain_retired_natives();
     void apply_pending_requests();
+    void on_enabled_changed(LoadedMod& mod);
     // Deactivates `target` (if needed) and its transitive dependents, optionally re-reads the
     // bundle from disk, then reactivates whatever the current cvar/provider state allows.
     void apply_lifecycle_change(LoadedMod& target, bool reload);
@@ -242,4 +245,4 @@ private:
 
 using ModIndex = std::ranges::range_difference_t<decltype(std::declval<ModLoader>().mods())>;
 
-}  // namespace dusk
+}  // namespace dusk::mods

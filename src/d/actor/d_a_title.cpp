@@ -51,8 +51,7 @@ static u8 const lit_3772[12] = {
 };
 
 #if TARGET_PC
-using namespace dusk::version;
-#define l_arcName versionSelect<const char*>({{GameVersion::GcnPal, "TitlePal"}}, "Title")
+#define l_arcName dusk::version::versionSelect<const char*>({{dusk::version::GameVersion::GcnPal, "TitlePal"}}, "Title")
 #elif VERSION == VERSION_GCN_PAL
 static char const l_arcName[] = "TitlePal";
 #else

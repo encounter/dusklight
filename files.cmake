@@ -1546,6 +1546,7 @@ set(DUSK_FILES
         src/dusk/hook_system.cpp
         src/dusk/mods/loader/bundle_disk.cpp
         src/dusk/mods/loader/bundle_zip.cpp
+        src/dusk/mods/loader/config.cpp
         src/dusk/mods/loader/context.cpp
         src/dusk/mods/loader/depgraph.cpp
         src/dusk/mods/loader/depgraph.hpp
@@ -1555,6 +1556,7 @@ set(DUSK_FILES
         src/dusk/mods/loader/native_module.hpp
         src/dusk/mods/loader/overlay.cpp
         src/dusk/mods/loader/textures.cpp
+        src/dusk/mods/svc/config.cpp
         src/dusk/mods/svc/hook.cpp
         src/dusk/mods/svc/host.cpp
         src/dusk/mods/svc/log.cpp
