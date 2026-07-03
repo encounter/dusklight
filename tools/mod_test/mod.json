@@ -1,7 +1,7 @@
 {
     "id":          "dev.twilitrealm.test_mod",
-    "name":        "API Test Mod",
+    "name":        "API Test",
     "version":     "1.0.0",
-    "author":      "dusk",
-    "description": "Exercises every feature of the Dusk mod API."
+    "author":      "Twilit Realm",
+    "description": "Exercises every feature of the Dusklight modding API."
 }

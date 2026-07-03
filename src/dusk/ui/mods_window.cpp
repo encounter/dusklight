@@ -262,12 +262,6 @@ void ModsWindow::build_detail(Pane& pane, mods::LoadedMod& mod) {
         pane.add_text(mod.metadata.description)->SetClass("mod-description", true);
     }
 
-    pane.add_rml(fmt::format(R"(<div class="mod-info-row">)"
-                             R"(<span class="mod-info-label">Path</span>)"
-                             R"(<span class="mod-info-value mod-path">{}</span>)"
-                             R"(</div>)",
-        escape(mod.modPath)));
-
     if (mod.active) {
         mods::ui_build_mods_panels(mod, pane);
     }

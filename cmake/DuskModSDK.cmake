@@ -26,10 +26,32 @@ function(_dusk_mod_arch_suffix out_var)
     endif()
 endfunction()
 
+function(_dusk_mod_resolve_source_path out_var path)
+    if(IS_ABSOLUTE "${path}")
+        set(_path "${path}")
+    else()
+        set(_path "${CMAKE_CURRENT_SOURCE_DIR}/${path}")
+    endif()
+    set(${out_var} "${_path}" PARENT_SCOPE)
+endfunction()
+
+function(_dusk_mod_collect_assets out_var dir)
+    if(NOT IS_DIRECTORY "${dir}")
+        message(FATAL_ERROR "add_dusk_mod: asset directory does not exist: ${dir}")
+    endif()
+
+    file(GLOB_RECURSE _files CONFIGURE_DEPENDS LIST_DIRECTORIES false "${dir}/*")
+    set(${out_var} ${_files} PARENT_SCOPE)
+endfunction()
+
 function(add_dusk_mod target_name)
     cmake_parse_arguments(ARG "" "MOD_JSON;RES_DIR;OVERLAY_DIR;TEXTURES_DIR;OUTPUT_DIR" "SOURCES" ${ARGN})
     if(NOT ARG_MOD_JSON)
         message(FATAL_ERROR "add_dusk_mod: MOD_JSON is required")
+    endif()
+    _dusk_mod_resolve_source_path(_mod_json "${ARG_MOD_JSON}")
+    if(NOT EXISTS "${_mod_json}")
+        message(FATAL_ERROR "add_dusk_mod: MOD_JSON does not exist: ${_mod_json}")
     endif()
 
     add_library(${target_name} SHARED ${ARG_SOURCES})
@@ -38,7 +60,18 @@ function(add_dusk_mod target_name)
         PREFIX "" OUTPUT_NAME "${target_name}${_arch_suffix}" WINDOWS_EXPORT_ALL_SYMBOLS ON)
     target_compile_features(${target_name} PRIVATE cxx_std_20)
     target_link_libraries(${target_name} PRIVATE dusklight_game_headers)
-    add_dependencies(dusklight ${target_name}) # Rebuild mod on main target
+
+    # webgpu.h for the gfx service. Header-only on macOS/Linux: wgpu* symbols resolve against
+    # the host executable's exports at load time (never link static Dawn into a mod — that would
+    # create a second Dawn instance). Windows links the import lib for the DLL the host loads.
+    if(TARGET dawn::webgpu_dawn)
+        if(WIN32)
+            target_link_libraries(${target_name} PRIVATE dawn::webgpu_dawn)
+        else()
+            target_include_directories(${target_name} PRIVATE
+                $<TARGET_PROPERTY:dawn::webgpu_dawn,INTERFACE_INCLUDE_DIRECTORIES>)
+        endif()
+    endif()
 
     if(APPLE)
         target_link_options(${target_name} PRIVATE -undefined dynamic_lookup)
@@ -59,33 +92,59 @@ function(add_dusk_mod target_name)
     endif()
     set(_stage "${CMAKE_CURRENT_BINARY_DIR}/${target_name}_stage")
     set(_out   "${_output_dir}/${target_name}.dusk")
-    file(MAKE_DIRECTORY "${_stage}")  # must exist before POST_BUILD on Windows
 
     set(_zip_args "$<TARGET_FILE_NAME:${target_name}>" mod.json)
+    set(_package_deps "${_mod_json}")
+    set(_package_inputs "${_mod_json}")
     set(_extra_cmds "")
     if(ARG_RES_DIR)
+        _dusk_mod_resolve_source_path(_res_dir "${ARG_RES_DIR}")
+        _dusk_mod_collect_assets(_res_deps "${_res_dir}")
+        list(APPEND _package_deps ${_res_deps})
+        list(APPEND _package_inputs "${_res_dir}" ${_res_deps})
         list(APPEND _zip_args res)
         list(APPEND _extra_cmds COMMAND ${CMAKE_COMMAND} -E copy_directory
-                "${CMAKE_CURRENT_SOURCE_DIR}/${ARG_RES_DIR}" "${_stage}/res")
+                "${_res_dir}" "${_stage}/res")
     endif()
     if(ARG_OVERLAY_DIR)
+        _dusk_mod_resolve_source_path(_overlay_dir "${ARG_OVERLAY_DIR}")
+        _dusk_mod_collect_assets(_overlay_deps "${_overlay_dir}")
+        list(APPEND _package_deps ${_overlay_deps})
+        list(APPEND _package_inputs "${_overlay_dir}" ${_overlay_deps})
         list(APPEND _zip_args overlay)
         list(APPEND _extra_cmds COMMAND ${CMAKE_COMMAND} -E copy_directory
-                "${CMAKE_CURRENT_SOURCE_DIR}/${ARG_OVERLAY_DIR}" "${_stage}/overlay")
+                "${_overlay_dir}" "${_stage}/overlay")
     endif()
     if(ARG_TEXTURES_DIR)
+        _dusk_mod_resolve_source_path(_textures_dir "${ARG_TEXTURES_DIR}")
+        _dusk_mod_collect_assets(_textures_deps "${_textures_dir}")
+        list(APPEND _package_deps ${_textures_deps})
+        list(APPEND _package_inputs "${_textures_dir}" ${_textures_deps})
         list(APPEND _zip_args textures)
         list(APPEND _extra_cmds COMMAND ${CMAKE_COMMAND} -E copy_directory
-                "${CMAKE_CURRENT_SOURCE_DIR}/${ARG_TEXTURES_DIR}" "${_stage}/textures")
+                "${_textures_dir}" "${_stage}/textures")
     endif()
 
-    add_custom_command(TARGET ${target_name} POST_BUILD
+    set(_package_target "${target_name}_package")
+    set(_package_inputs_file "${CMAKE_CURRENT_BINARY_DIR}/${target_name}_package_inputs.txt")
+    list(SORT _package_inputs)
+    set(_package_inputs_text "")
+    foreach(_package_input IN LISTS _package_inputs)
+        string(APPEND _package_inputs_text "${_package_input}\n")
+    endforeach()
+    file(GENERATE OUTPUT "${_package_inputs_file}" CONTENT "${_package_inputs_text}")
+    add_custom_command(OUTPUT "${_out}"
+        COMMAND ${CMAKE_COMMAND} -E rm -rf "${_stage}"
         COMMAND ${CMAKE_COMMAND} -E make_directory "${_stage}" "${_output_dir}"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:${target_name}>" "${_stage}/$<TARGET_FILE_NAME:${target_name}>"
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/${ARG_MOD_JSON}" "${_stage}/mod.json"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_mod_json}" "${_stage}/mod.json"
         ${_extra_cmds}
-        COMMAND ${CMAKE_COMMAND} -E tar cvf "${_out}" --format=zip ${_zip_args}
-        WORKING_DIRECTORY "${_stage}"
+        COMMAND ${CMAKE_COMMAND} -E chdir "${_stage}" ${CMAKE_COMMAND} -E tar cvf "${_out}" --format=zip ${_zip_args}
+        DEPENDS ${target_name} ${_package_deps} "${_package_inputs_file}"
         COMMENT "Packaging ${target_name} -> ${_out}"
+        COMMAND_EXPAND_LISTS
+        VERBATIM
     )
+    add_custom_target(${_package_target} ALL DEPENDS "${_out}")
+    add_dependencies(dusklight ${_package_target}) # Rebuild mod package on main target
 endfunction()

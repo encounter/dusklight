@@ -590,6 +590,7 @@ void ModLoader::deactivate_mod(LoadedMod& mod) {
     textures_remove_mod(mod);
     config_remove_mod(mod);
     ui_remove_mod(mod);
+    gfx_remove_mod(mod);
     unload_native(mod);
 
     mod.active = false;
@@ -967,6 +968,7 @@ void ModLoader::apply_pending_requests() {
 }
 
 void ModLoader::tick() {
+    gfx_drain_worker_failures();
     apply_pending_requests();
     if (consume_overlays_dirty()) {
         sync_overlay_files();

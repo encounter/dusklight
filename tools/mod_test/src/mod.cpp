@@ -7,6 +7,7 @@
 #include "mods/hook.hpp"
 #include "mods/service.hpp"
 #include "mods/svc/config.h"
+#include "mods/svc/gfx.h"
 #include "mods/svc/hook.h"
 #include "mods/svc/host.h"
 #include "mods/svc/log.h"
@@ -15,6 +16,8 @@
 #include "mods/svc/texture.h"
 #include "mods/svc/ui.h"
 #include "test_services.h"
+
+#include <atomic>
 
 DEFINE_MOD();
 IMPORT_SERVICE(HostService, svc_host);
@@ -25,6 +28,7 @@ IMPORT_SERVICE(HookService, svc_hook);
 IMPORT_SERVICE(OverlayService, svc_overlay);
 IMPORT_SERVICE(TextureService, svc_texture);
 IMPORT_SERVICE(ConfigService, svc_config);
+IMPORT_SERVICE(GfxService, svc_gfx);
 // Both provided by mod_test_dep, which sorts *after* mod_test.dusk in the mods directory;
 // dependency ordering must initialize it first regardless. The deferred service only
 // resolves if mod_test_dep published it during its initialization.
@@ -61,6 +65,21 @@ int64_t g_config_curr_value = -1;
 bool g_ui_stack_ok = false;
 bool g_ui_rcss_ok = false;
 bool g_ui_neg_ok = false;
+bool g_gfx_device_ok = false;
+bool g_gfx_neg_ok = false;
+bool g_gfx_stage_ran = false;  // set once by the stage callback (game thread)
+bool g_gfx_stage_ok = false;
+bool g_gfx_resolve_ok = false;
+bool g_gfx_create_ok = false;
+bool g_gfx_logged_stage = false;
+bool g_gfx_logged_draw = false;
+int g_gfx_draw_wait_ticks = 0;
+GfxDrawTypeHandle g_gfx_draw_type = 0;
+GfxStageHookHandle g_gfx_stage_hook = 0;
+// Written by the draw callback on the render worker thread.
+std::atomic<bool> g_gfx_draw_fired{false};
+std::atomic<bool> g_gfx_draw_ctx_ok{false};
+std::atomic<bool> g_gfx_offscreen_draw_ok{false};
 
 // Kept live for the UI test window's cvar-bound controls.
 ConfigVarHandle g_cfg_flag = 0;
@@ -388,6 +407,80 @@ void on_open_dialog(ModContext*, void*) {
     svc_ui->dialog_push(mod_ctx, &desc, nullptr);
 }
 
+struct GfxTestPayload {
+    uint32_t magic;
+    uint32_t mode;  // 0 = scene (EFB) pass, 1 = 64x64 offscreen pass
+};
+constexpr uint32_t kGfxPayloadMagic = 0x47465854;  // "GFXT"
+
+void on_gfx_draw(
+    ModContext*, const GfxDrawContext* ctx, const void* payload, size_t payloadSize, void*) {
+    // Render worker thread: validate the context and set flags, nothing else.
+    if (payload == nullptr || payloadSize != sizeof(GfxTestPayload)) {
+        return;
+    }
+    GfxTestPayload data;
+    std::memcpy(&data, payload, sizeof(data));
+    if (data.magic != kGfxPayloadMagic) {
+        return;
+    }
+    const bool ctxOk = ctx != nullptr && ctx->device != nullptr && ctx->queue != nullptr &&
+                       ctx->pass != nullptr && ctx->vertex_buffer != nullptr &&
+                       ctx->uniform_buffer != nullptr && ctx->target_width > 0 &&
+                       ctx->target_height > 0 && ctx->sample_count >= 1;
+    if (data.mode == 0) {
+        g_gfx_draw_ctx_ok.store(ctxOk, std::memory_order_release);
+        g_gfx_draw_fired.store(true, std::memory_order_release);
+    } else {
+        g_gfx_offscreen_draw_ok.store(ctxOk && ctx->target_width == 64 &&
+                                          ctx->target_height == 64 && ctx->sample_count == 1,
+            std::memory_order_release);
+    }
+}
+
+void on_gfx_stage(ModContext*, const GfxStageContext* stageCtx, void*) {
+    if (g_gfx_stage_ran) {
+        return;
+    }
+    g_gfx_stage_ran = true;
+    g_gfx_stage_ok = stageCtx != nullptr && stageCtx->stage == GFX_STAGE_BEFORE_HUD;
+
+    // Streaming pushes are valid at record time.
+    const float verts[8] = {0.f, 0.f, 1.f, 0.f, 0.f, 1.f, 1.f, 1.f};
+    GfxRange vertRange{0, 0};
+    GfxRange uniformRange{0, 0};
+    g_gfx_stage_ok = g_gfx_stage_ok &&
+        svc_gfx->push_verts(mod_ctx, verts, sizeof(verts), 4, &vertRange) == MOD_OK &&
+        vertRange.size == sizeof(verts) &&
+        svc_gfx->push_uniform(mod_ctx, verts, sizeof(verts), &uniformRange) == MOD_OK &&
+        uniformRange.size == sizeof(verts);
+
+    // Scene snapshot with color + depth, then a custom draw into the continuation pass.
+    GfxResolveDesc resolveDesc = GFX_RESOLVE_DESC_INIT;
+    resolveDesc.depth = true;
+    GfxResolvedTargets targets = GFX_RESOLVED_TARGETS_INIT;
+    g_gfx_resolve_ok = svc_gfx->resolve_pass(mod_ctx, &resolveDesc, &targets) == MOD_OK &&
+        targets.color != nullptr && targets.depth != nullptr && targets.width > 0 &&
+        targets.height > 0;
+
+    GfxTestPayload payload{kGfxPayloadMagic, 0};
+    g_gfx_resolve_ok = g_gfx_resolve_ok &&
+        svc_gfx->push_draw(mod_ctx, g_gfx_draw_type, &payload, sizeof(payload)) == MOD_OK;
+
+    // Offscreen pass round trip; nesting must be rejected while it is open.
+    g_gfx_create_ok = svc_gfx->create_pass(mod_ctx, 64, 64) == MOD_OK &&
+        svc_gfx->create_pass(mod_ctx, 32, 32) == MOD_UNAVAILABLE;
+    payload.mode = 1;
+    g_gfx_create_ok = g_gfx_create_ok &&
+        svc_gfx->push_draw(mod_ctx, g_gfx_draw_type, &payload, sizeof(payload)) == MOD_OK;
+    GfxResolveDesc colorOnly = GFX_RESOLVE_DESC_INIT;
+    GfxResolvedTargets offscreenTargets = GFX_RESOLVED_TARGETS_INIT;
+    g_gfx_create_ok = g_gfx_create_ok &&
+        svc_gfx->resolve_pass(mod_ctx, &colorOnly, &offscreenTargets) == MOD_OK &&
+        offscreenTargets.width == 64 && offscreenTargets.height == 64 &&
+        offscreenTargets.color != nullptr;
+}
+
 ModResult build_panel(ModContext*, UiElementHandle panel, void*, ModError*) {
     UiControlDesc button = UI_CONTROL_DESC_INIT;
     button.kind = UI_CONTROL_BUTTON;
@@ -452,6 +545,15 @@ ModResult build_panel(ModContext*, UiElementHandle panel, void*, ModError*) {
     svc_ui->pane_add_badge_row(mod_ctx, panel, "stack queries", g_ui_stack_ok, nullptr);
     svc_ui->pane_add_badge_row(mod_ctx, panel, "scoped RCSS registered", g_ui_rcss_ok, nullptr);
     svc_ui->pane_add_badge_row(mod_ctx, panel, "UI negative tests", g_ui_neg_ok, nullptr);
+
+    svc_ui->pane_add_section(mod_ctx, panel, "Gfx");
+    svc_ui->pane_add_badge_row(mod_ctx, panel, "device info", g_gfx_device_ok, nullptr);
+    svc_ui->pane_add_badge_row(mod_ctx, panel, "stage + resolve + offscreen",
+        g_gfx_stage_ok && g_gfx_resolve_ok && g_gfx_create_ok, nullptr);
+    svc_ui->pane_add_badge_row(mod_ctx, panel, "draw callback (render worker)",
+        g_gfx_draw_fired.load() && g_gfx_draw_ctx_ok.load() && g_gfx_offscreen_draw_ok.load(),
+        nullptr);
+    svc_ui->pane_add_badge_row(mod_ctx, panel, "gfx negative tests", g_gfx_neg_ok, nullptr);
 
     svc_ui->pane_add_section(mod_ctx, panel, "API Fields");
     svc_ui->pane_add_badge_row(
@@ -844,6 +946,75 @@ MOD_EXPORT ModResult mod_initialize(ModError* error) {
         svc_log->error(mod_ctx, "UiService negative tests FAILED");
     }
 
+    // GfxService: device info + proc lookup, draw type/stage hook registration round trips, and
+    // negatives. ModLoader::init runs before the frame loop, so no render pass is active here:
+    // the pass-scoped calls must fail with MOD_UNAVAILABLE. The pass-scoped positive tests run
+    // in the BEFORE_HUD stage callback and are reported from mod_update.
+    GfxDeviceInfo gfxInfo = GFX_DEVICE_INFO_INIT;
+    g_gfx_device_ok = svc_gfx->get_device_info(mod_ctx, &gfxInfo) == MOD_OK &&
+        gfxInfo.device != nullptr && gfxInfo.queue != nullptr &&
+        gfxInfo.color_format != WGPUTextureFormat_Undefined && gfxInfo.sample_count >= 1 &&
+        svc_gfx->get_proc_address(mod_ctx, "wgpuDeviceCreateBuffer") != nullptr;
+    if (g_gfx_device_ok) {
+        svc_log->info(mod_ctx, "GfxService device info OK");
+    } else {
+        svc_log->error(mod_ctx, "GfxService device info FAILED");
+    }
+
+    GfxDrawTypeDesc gfxDrawDesc = GFX_DRAW_TYPE_DESC_INIT;
+    gfxDrawDesc.label = "mod_test draw";
+    gfxDrawDesc.draw = on_gfx_draw;
+    ModResult gfxResult = svc_gfx->register_draw_type(mod_ctx, &gfxDrawDesc, &g_gfx_draw_type);
+    if (gfxResult != MOD_OK) {
+        return require_ok(gfxResult, error, "failed to register gfx draw type");
+    }
+    GfxStageHookDesc gfxStageDesc = GFX_STAGE_HOOK_DESC_INIT;
+    gfxStageDesc.callback = on_gfx_stage;
+    gfxResult =
+        svc_gfx->register_stage_hook(mod_ctx, GFX_STAGE_BEFORE_HUD, &gfxStageDesc, &g_gfx_stage_hook);
+    if (gfxResult != MOD_OK) {
+        return require_ok(gfxResult, error, "failed to register gfx stage hook");
+    }
+
+    // Unregister releases the slot for reuse (generational handles, the reload path in
+    // miniature) — for both draw types and stage hooks.
+    GfxDrawTypeHandle gfxTempDraw = 0;
+    GfxStageHookHandle gfxTempStage = 0;
+    bool gfxCycleOk = svc_gfx->register_draw_type(mod_ctx, &gfxDrawDesc, &gfxTempDraw) == MOD_OK &&
+        svc_gfx->unregister_draw_type(mod_ctx, gfxTempDraw) == MOD_OK &&
+        svc_gfx->register_draw_type(mod_ctx, &gfxDrawDesc, &gfxTempDraw) == MOD_OK &&
+        svc_gfx->unregister_draw_type(mod_ctx, gfxTempDraw) == MOD_OK &&
+        svc_gfx->register_stage_hook(
+            mod_ctx, GFX_STAGE_AFTER_HUD, &gfxStageDesc, &gfxTempStage) == MOD_OK &&
+        svc_gfx->unregister_stage_hook(mod_ctx, gfxTempStage) == MOD_OK;
+
+    // Negative tests. Expected host error lines: game-owned/no-pass rejections come back as
+    // MOD_UNAVAILABLE with aurora::gfx warnings; the stale handles log dusk::mods::gfx errors.
+    GfxTestPayload gfxPayload{kGfxPayloadMagic, 0};
+    uint8_t gfxBigPayload[GFX_INLINE_DRAW_PAYLOAD_SIZE + 1] = {};
+    GfxResolveDesc gfxResolveDesc = GFX_RESOLVE_DESC_INIT;
+    GfxResolvedTargets gfxTargets = GFX_RESOLVED_TARGETS_INIT;
+    GfxDrawTypeDesc gfxBadDesc = GFX_DRAW_TYPE_DESC_INIT;  // draw callback left null
+    const uint64_t gfxBogus = (UINT64_C(1) << 32) | UINT64_C(0xdead);
+    g_gfx_neg_ok = gfxCycleOk &&
+        svc_gfx->push_draw(mod_ctx, g_gfx_draw_type, &gfxPayload, sizeof(gfxPayload)) ==
+            MOD_UNAVAILABLE &&
+        svc_gfx->resolve_pass(mod_ctx, &gfxResolveDesc, &gfxTargets) == MOD_UNAVAILABLE &&
+        svc_gfx->create_pass(mod_ctx, 64, 64) == MOD_UNAVAILABLE &&
+        svc_gfx->push_draw(mod_ctx, g_gfx_draw_type, gfxBigPayload, sizeof(gfxBigPayload)) ==
+            MOD_INVALID_ARGUMENT &&
+        svc_gfx->register_draw_type(mod_ctx, &gfxBadDesc, &gfxTempDraw) == MOD_INVALID_ARGUMENT &&
+        svc_gfx->register_stage_hook(mod_ctx, static_cast<GfxStage>(99), &gfxStageDesc,
+            &gfxTempStage) == MOD_INVALID_ARGUMENT &&
+        svc_gfx->resolve_pass(mod_ctx, nullptr, &gfxTargets) == MOD_INVALID_ARGUMENT &&
+        svc_gfx->unregister_draw_type(mod_ctx, gfxBogus) == MOD_INVALID_ARGUMENT &&
+        svc_gfx->unregister_stage_hook(mod_ctx, gfxBogus) == MOD_INVALID_ARGUMENT;
+    if (g_gfx_neg_ok) {
+        svc_log->info(mod_ctx, "GfxService negative tests OK");
+    } else {
+        svc_log->error(mod_ctx, "GfxService negative tests FAILED");
+    }
+
     g_initialized = 1;
     svc_log->info(mod_ctx, "mod_test ready");
     return MOD_OK;
@@ -851,6 +1022,40 @@ MOD_EXPORT ModResult mod_initialize(ModError* error) {
 
 MOD_EXPORT ModResult mod_update(ModError*) {
     ++g_ticks;
+
+    // The gfx stage callback runs during the painter, the draw callbacks on the render worker;
+    // report their (headless-checkable) results once from here.
+    if (!g_gfx_logged_stage && g_gfx_stage_ran) {
+        g_gfx_logged_stage = true;
+        if (g_gfx_stage_ok) {
+            svc_log->info(mod_ctx, "GfxService stage hook fired OK");
+        } else {
+            svc_log->error(mod_ctx, "GfxService stage hook FAILED");
+        }
+        if (g_gfx_resolve_ok) {
+            svc_log->info(mod_ctx, "GfxService resolve_pass OK");
+        } else {
+            svc_log->error(mod_ctx, "GfxService resolve_pass FAILED");
+        }
+        if (g_gfx_create_ok) {
+            svc_log->info(mod_ctx, "GfxService create_pass round trip OK");
+        } else {
+            svc_log->error(mod_ctx, "GfxService create_pass round trip FAILED");
+        }
+    }
+    if (!g_gfx_logged_draw && g_gfx_draw_fired.load(std::memory_order_acquire)) {
+        // The offscreen draw encodes in the same frame but may trail by a poll; give it a
+        // moment before reporting.
+        const bool offscreenOk = g_gfx_offscreen_draw_ok.load(std::memory_order_acquire);
+        if (offscreenOk || ++g_gfx_draw_wait_ticks > 120) {
+            g_gfx_logged_draw = true;
+            if (g_gfx_draw_ctx_ok.load(std::memory_order_acquire) && offscreenOk) {
+                svc_log->info(mod_ctx, "GfxService draw callback fired OK");
+            } else {
+                svc_log->error(mod_ctx, "GfxService draw callback FAILED");
+            }
+        }
+    }
     return MOD_OK;
 }
 
@@ -864,6 +1069,7 @@ MOD_EXPORT ModResult mod_shutdown(ModError*) {
     g_el_link_angle = g_el_overlay_read_badge = 0;
     g_cfg_flag = g_cfg_int = g_cfg_string = g_cfg_choice = g_cfg_pride = 0;
     g_style = g_test_window = g_el_win_counter = 0;
+    g_gfx_draw_type = g_gfx_stage_hook = 0;
     return MOD_OK;
 }
 }

@@ -56,6 +56,7 @@
 #include "dusk/gx_helper.h"
 #include "dusk/imgui/ImGuiConsole.hpp"
 #include "dusk/logging.h"
+#include "dusk/mods/gfx_stages.hpp"
 #include "dusk/settings.h"
 #endif
 
@@ -2384,6 +2385,10 @@ int mDoGph_Painter() {
 
             GX_DEBUG_GROUP(dComIfGd_drawShadow, camera_p->view.viewMtx);
 
+            #if TARGET_PC
+            dusk::mods::gfx_run_stage(dusk::mods::GfxStageWorldLate, 0);
+            #endif
+
             #if DEBUG
             // "shadow drawing (Rendering)"
             fapGm_HIO_c::stopCpuTimer("影描画（レンダリング）");
@@ -2778,6 +2783,11 @@ int mDoGph_Painter() {
     captureScreenSetPort();
     #endif
 
+    #if TARGET_PC
+    // Scene (3D + wipe) fully drawn; no 2D/HUD lists yet. Covers both branches below.
+    dusk::mods::gfx_run_stage(dusk::mods::GfxStageBeforeHud);
+    #endif
+
     if (fapGmHIO_get2Ddraw()) {
         Mtx m4;
         cMtx_copy(j3dSys.getViewMtx(), m4);
@@ -2834,6 +2844,10 @@ int mDoGph_Painter() {
         dComIfGd_draw2DOpaTop();
         dComIfGd_draw2DXlu();
     }
+
+    #if TARGET_PC
+    dusk::mods::gfx_run_stage(dusk::mods::GfxStageAfterHud);
+    #endif
 
     #if DEBUG
     if (dJcame_c::get()) {

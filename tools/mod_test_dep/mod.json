@@ -1,8 +1,8 @@
 {
     "id":          "dev.twilitrealm.test_mod_dep",
-    "name":        "API Test Dependency Mod",
+    "name":        "API Test Dependency",
     "version":     "1.0.0",
-    "author":      "dusk",
-    "description": "Companion provider for the API test suite's dependency-ordering checks.",
+    "author":      "Twilit Realm",
+    "description": "Companion mod for API Test dependency ordering.",
     "icon":        "res/icon_alt.png"
 }

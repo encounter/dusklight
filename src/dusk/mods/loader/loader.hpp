@@ -9,6 +9,7 @@
 
 #include "dusk/mod_loader.hpp"
 #include "mods/svc/config.h"
+#include "mods/svc/gfx.h"
 #include "mods/svc/ui.h"
 
 namespace dusk::ui {
@@ -136,5 +137,25 @@ ModResult ui_register_styles_file(
     LoadedMod& mod, uint32_t scope, const char* path, uint64_t& outHandle);
 ModResult ui_unregister_styles(LoadedMod& mod, uint64_t handle);
 void ui_remove_mod(LoadedMod& mod);
+
+// Gfx service plumbing (loader/gfx.cpp). Unlike the other loader records, the slot table is
+// shared with Aurora's render worker thread (draw trampolines) and internally mutex-guarded;
+// the functions below are still game-thread-only.
+enum class GfxStreamBuffer : u8 { Verts, Indices, Uniform, Storage };
+ModResult gfx_register_draw_type(
+    LoadedMod& mod, const char* label, GfxDrawFn draw, void* userData, uint64_t& outHandle);
+ModResult gfx_unregister_draw_type(LoadedMod& mod, uint64_t handle);
+ModResult gfx_push_draw(LoadedMod& mod, uint64_t handle, const void* payload, size_t payloadSize);
+ModResult gfx_push_stream(
+    GfxStreamBuffer buffer, const void* data, size_t size, size_t alignment, GfxRange& outRange);
+ModResult gfx_register_stage_hook(
+    LoadedMod& mod, GfxStage stage, GfxStageFn callback, void* userData, uint64_t& outHandle);
+ModResult gfx_unregister_stage_hook(LoadedMod& mod, uint64_t handle);
+ModResult gfx_resolve_pass(LoadedMod& mod, const GfxResolveDesc& desc, GfxResolvedTargets& out);
+ModResult gfx_create_pass(LoadedMod& mod, uint32_t width, uint32_t height);
+// gfx_run_stage (the frame markers' entry point) is declared in dusk/mods/gfx_stages.hpp.
+// Applies failures queued by render-worker trampolines; top of ModLoader::tick.
+void gfx_drain_worker_failures();
+void gfx_remove_mod(LoadedMod& mod);
 
 }  // namespace dusk::mods

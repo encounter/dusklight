@@ -1,0 +1,7 @@
+{
+    "id":          "dev.twilitrealm.crt_mod",
+    "name":        "CRT Filter",
+    "version":     "1.0.0",
+    "author":      "Twilit Realm",
+    "description": "Post-process CRT effect with scanlines, phosphor masks, bloom, curvature, vignette, and chromatic aberration."
+}

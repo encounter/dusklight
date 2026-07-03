@@ -13,9 +13,10 @@ namespace {
 
 ModResult resource_load(ModContext* context, const char* relativePath, ResourceBuffer* outBuffer) {
     auto* mod = mod_from_context(context);
-    if (outBuffer == nullptr) {
+    if (outBuffer == nullptr || outBuffer->struct_size != sizeof(ResourceBuffer)) {
         return MOD_INVALID_ARGUMENT;
     }
+    // TODO: handle when outBuffer is already allocated?
     *outBuffer = ResourceBuffer{sizeof(ResourceBuffer), nullptr, 0u};
     if (mod == nullptr || relativePath == nullptr || !is_safe_resource_path(relativePath)) {
         return MOD_INVALID_ARGUMENT;
@@ -45,7 +46,9 @@ ModResult resource_load(ModContext* context, const char* relativePath, ResourceB
 }
 
 void resource_free(ModContext*, ResourceBuffer* buffer) {
-    if (buffer == nullptr) {
+    if (buffer == nullptr || buffer->struct_size != sizeof(ResourceBuffer) ||
+        buffer->data == nullptr)
+    {
         return;
     }
     std::free(buffer->data);

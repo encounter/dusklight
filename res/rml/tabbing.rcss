@@ -78,9 +78,9 @@ window > close:focus-visible {
     background-color: rgba(194, 164, 45, 24%);
 }
 
-/* Nudged so it doesn't sit over the content pane's scrollbar */
 window > close {
-    right: 14dp;
+    top: 16dp;
+    right: 16dp;
 }
 
 tab-bar[closable] close:active,

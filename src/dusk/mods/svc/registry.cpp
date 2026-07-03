@@ -154,6 +154,8 @@ void ModLoader::init_services() {
         &svc::texture_service(), nullptr, false);
     svc::register_service(CONFIG_SERVICE_ID, CONFIG_SERVICE_MAJOR, CONFIG_SERVICE_MINOR,
         &svc::config_service(), nullptr, false);
+    svc::register_service(
+        GFX_SERVICE_ID, GFX_SERVICE_MAJOR, GFX_SERVICE_MINOR, &svc::gfx_service(), nullptr, false);
 }
 
 bool ModLoader::register_static_service_exports(LoadedMod& mod) {
