@@ -15,6 +15,7 @@
 #include "mods/svc/ui.h"
 
 #include <algorithm>
+#include <cstring>
 #include <webgpu/webgpu.h>
 
 DEFINE_MOD();

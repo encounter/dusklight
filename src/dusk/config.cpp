@@ -396,7 +396,7 @@ template class ConfigImpl<Resampler>;
 template class ConfigImpl<MagicArmorMode>;
 template class ConfigImpl<ui::ControlLayout>;
 
-void config::Register(ConfigVarBase& configVar) {
+void Register(ConfigVarBase& configVar) {
     const std::string_view name = configVar.getName();
     if (RegisteredConfigVars.contains(name)) {
         DuskConfigLog.fatal("Tried to register CVar {} twice!", name);
@@ -429,7 +429,7 @@ void config::Register(ConfigVarBase& configVar) {
     }
 }
 
-void config::unregister(ConfigVarBase& configVar) {
+void unregister(ConfigVarBase& configVar) {
     const std::string_view name = configVar.getName();
     const auto it = RegisteredConfigVars.find(name);
     if (it == RegisteredConfigVars.end() || it->second != &configVar) {
@@ -462,7 +462,7 @@ void ConfigVarBase::unmarkRegistered() {
     registered = false;
 }
 
-void config::load_from_user_preferences() {
+void load_from_user_preferences() {
     const auto configJsonPath = GetConfigJsonPath();
     if (configJsonPath.empty()) {
         return;
@@ -501,7 +501,7 @@ static void LoadFromPath(const char* path) {
     }
 }
 
-void config::load_from_file_name(const char* path) {
+void load_from_file_name(const char* path) {
     DuskConfigLog.info("Loading config from '{}'", path);
 
     try {
@@ -519,7 +519,7 @@ void config::load_from_file_name(const char* path) {
     }
 }
 
-void config::load_arg_override(std::string_view name, std::string_view value) {
+void load_arg_override(std::string_view name, std::string_view value) {
     const auto cVar = GetConfigVar(name);
     if (!cVar) {
         UnregisteredConfigVarOverrides.emplace(name, value);
@@ -533,7 +533,7 @@ void config::load_arg_override(std::string_view name, std::string_view value) {
     }
 }
 
-void config::save() {
+void save() {
     const auto configJsonPath = GetConfigJsonPath();
     if (configJsonPath.empty()) {
         return;
@@ -564,14 +564,14 @@ void config::save() {
     }
 }
 
-void config::ClearAllActionBindings(int port) {
+void ClearAllActionBindings(int port) {
     for (auto& actionBinding : getActionBinds() | std::views::values) {
         actionBinding.configVars->at(port).setValue(PAD_NATIVE_BUTTON_INVALID);
     }
     save();
 }
 
-ConfigVarBase* config::GetConfigVar(std::string_view name) {
+ConfigVarBase* GetConfigVar(std::string_view name) {
     const auto configVar = RegisteredConfigVars.find(name);
     if (configVar != RegisteredConfigVars.end()) {
         return configVar->second;
@@ -580,20 +580,20 @@ ConfigVarBase* config::GetConfigVar(std::string_view name) {
     return nullptr;
 }
 
-void config::EnumerateRegistered(std::function<void(ConfigVarBase&)> callback) {
+void EnumerateRegistered(std::function<void(ConfigVarBase&)> callback) {
     for (auto& pair : RegisteredConfigVars) {
         callback(*pair.second);
     }
 }
 
-Subscription config::subscribe(std::string_view name, ChangeCallback callback) {
+Subscription subscribe(std::string_view name, ChangeCallback callback) {
     const auto token = s_nextChangeToken++;
     s_changeSubscriptions[std::string{name}].push_back({token, std::move(callback)});
     s_changeTokenNames.emplace(token, std::string{name});
     return token;
 }
 
-void config::unsubscribe(Subscription token) {
+void unsubscribe(Subscription token) {
     const auto nameIt = s_changeTokenNames.find(token);
     if (nameIt == s_changeTokenNames.end()) {
         DuskConfigLog.fatal("Tried to unsubscribe unknown change token {}!", token);
@@ -632,7 +632,7 @@ void ConfigVarBase::notify_changed(const void* previousValue) {
     s_activeChangeNotifications.pop_back();
 }
 
-void config::shutdown() {
+void shutdown() {
     for (auto& pair : RegisteredConfigVars) {
         pair.second->unmarkRegistered();
     }
