@@ -57,7 +57,11 @@ function(add_dusk_mod target_name)
     add_library(${target_name} SHARED ${ARG_SOURCES})
     _dusk_mod_arch_suffix(_arch_suffix)
     set_target_properties(${target_name} PROPERTIES
-        PREFIX "" OUTPUT_NAME "${target_name}${_arch_suffix}" WINDOWS_EXPORT_ALL_SYMBOLS ON)
+        PREFIX "" OUTPUT_NAME "${target_name}${_arch_suffix}"
+        C_VISIBILITY_PRESET hidden
+        CXX_VISIBILITY_PRESET hidden
+        VISIBILITY_INLINES_HIDDEN ON
+        WINDOWS_EXPORT_ALL_SYMBOLS OFF)
     target_compile_features(${target_name} PRIVATE cxx_std_20)
     target_link_libraries(${target_name} PRIVATE dusklight_game_headers)
 
