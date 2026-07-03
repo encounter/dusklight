@@ -168,6 +168,51 @@ ModResult gfx_create_pass_impl(ModContext* context, uint32_t width, uint32_t hei
     return gfx_create_pass(*mod, width, height);
 }
 
+ModResult gfx_register_compute_type_impl(
+    ModContext* context, const GfxComputeTypeDesc* desc, GfxComputeTypeHandle* outHandle) {
+    if (outHandle != nullptr) {
+        *outHandle = 0;
+    }
+    auto* mod = mod_from_context(context);
+    if (mod == nullptr || desc == nullptr || desc->struct_size < sizeof(GfxComputeTypeDesc) ||
+        desc->callback == nullptr || outHandle == nullptr)
+    {
+        return MOD_INVALID_ARGUMENT;
+    }
+    uint64_t handle = 0;
+    const auto result =
+        gfx_register_compute_type(*mod, desc->label, desc->callback, desc->user_data, handle);
+    if (result != MOD_OK) {
+        return result;
+    }
+    *outHandle = handle;
+    return MOD_OK;
+}
+
+ModResult gfx_unregister_compute_type_impl(ModContext* context, GfxComputeTypeHandle handle) {
+    auto* mod = mod_from_context(context);
+    if (mod == nullptr || handle == 0) {
+        return MOD_INVALID_ARGUMENT;
+    }
+    const auto result = gfx_unregister_compute_type(*mod, handle);
+    if (result != MOD_OK) {
+        DuskLog.error("[{}] gfx: stale or invalid compute type handle {:#x}", mod->metadata.id,
+            handle);
+    }
+    return result;
+}
+
+ModResult gfx_push_compute_impl(
+    ModContext* context, GfxComputeTypeHandle handle, const void* payload, size_t payloadSize) {
+    auto* mod = mod_from_context(context);
+    if (mod == nullptr || handle == 0 || payloadSize > GFX_INLINE_DRAW_PAYLOAD_SIZE ||
+        (payloadSize > 0 && payload == nullptr))
+    {
+        return MOD_INVALID_ARGUMENT;
+    }
+    return gfx_push_compute(*mod, handle, payload, payloadSize);
+}
+
 constexpr GfxService s_gfxService{
     .header = SERVICE_HEADER(GfxService, GFX_SERVICE_MAJOR, GFX_SERVICE_MINOR),
     .get_device_info = gfx_get_device_info,
@@ -183,6 +228,9 @@ constexpr GfxService s_gfxService{
     .unregister_stage_hook = gfx_unregister_stage_hook_impl,
     .resolve_pass = gfx_resolve_pass_impl,
     .create_pass = gfx_create_pass_impl,
+    .register_compute_type = gfx_register_compute_type_impl,
+    .unregister_compute_type = gfx_unregister_compute_type_impl,
+    .push_compute = gfx_push_compute_impl,
 };
 
 }  // namespace

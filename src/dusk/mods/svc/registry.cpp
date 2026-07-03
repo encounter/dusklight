@@ -156,6 +156,8 @@ void ModLoader::init_services() {
         &svc::config_service(), nullptr, false);
     svc::register_service(
         GFX_SERVICE_ID, GFX_SERVICE_MAJOR, GFX_SERVICE_MINOR, &svc::gfx_service(), nullptr, false);
+    svc::register_service(CAMERA_SERVICE_ID, CAMERA_SERVICE_MAJOR, CAMERA_SERVICE_MINOR,
+        &svc::camera_service(), nullptr, false);
 }
 
 bool ModLoader::register_static_service_exports(LoadedMod& mod) {

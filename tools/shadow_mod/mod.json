@@ -1,0 +1,7 @@
+{
+    "id":          "dev.twilitrealm.shadow_mod",
+    "name":        "Dynamic Shadows",
+    "version":     "1.0.0",
+    "author":      "Twilit Realm",
+    "description": "Sun-tracking dynamic shadow maps: re-renders the game's own draw lists from the light's point of view and composites real-time shadows over the world, with optional screen-space contact shadows."
+}

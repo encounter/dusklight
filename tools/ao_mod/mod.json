@@ -1,0 +1,7 @@
+{
+    "id":          "dev.twilitrealm.ao_mod",
+    "name":        "Ambient Occlusion (GTAO)",
+    "version":     "1.0.0",
+    "author":      "Twilit Realm",
+    "description": "Ground-truth ambient occlusion computed from the scene depth buffer and composited under the HUD. Ported from Bevy Engine's SSAO (itself based on Intel XeGTAO)."
+}

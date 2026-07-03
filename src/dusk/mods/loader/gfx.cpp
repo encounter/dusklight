@@ -27,6 +27,7 @@ aurora::Module Log("dusk::mods::gfx");
 enum class GfxSlotKind : u8 {
     DrawType,
     StageHook,
+    ComputeType,
 };
 
 struct GfxSlot {
@@ -40,10 +41,12 @@ struct GfxSlot {
     void* userData = nullptr;
 
     GfxDrawFn drawFn = nullptr;
-    aurora::gfx::DrawTypeId auroraId = aurora::gfx::InvalidDrawType;
+    uint64_t auroraId = aurora::gfx::InvalidDrawType; // DrawTypeId or EncoderTaskId
 
     GfxStageFn stageFn = nullptr;
     GfxStage stage = GFX_STAGE_WORLD_LATE;
+
+    GfxComputeFn computeFn = nullptr;
 };
 
 struct WorkerFailure {
@@ -112,6 +115,7 @@ void free_slot(uint32_t index) {
     slot.drawFn = nullptr;
     slot.auroraId = aurora::gfx::InvalidDrawType;
     slot.stageFn = nullptr;
+    slot.computeFn = nullptr;
     s_freeSlots.push_back(index);
 }
 
@@ -178,6 +182,58 @@ void draw_trampoline(const aurora::gfx::DrawContext& ctx, const wgpu::RenderPass
 
     // fail_mod is game-thread-only; queue the failure for gfx_drain_worker_failures and stop
     // invoking any of the mod's gfx callbacks right away.
+    std::lock_guard lock{s_mutex};
+    kill_mod_slots(owner);
+    s_workerFailures.push_back(WorkerFailure{
+        .modId = std::move(ownerId),
+        .message = std::move(failure),
+    });
+}
+
+// Render worker (GPU) thread. userdata is the slot handle.
+void compute_trampoline(const aurora::gfx::EncoderTaskContext& ctx, const wgpu::CommandEncoder& cmd,
+    const void* payload, size_t payloadSize, void* userdata) {
+    const auto handle = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(userdata));
+    GfxComputeFn fn = nullptr;
+    void* userData = nullptr;
+    ModContext* modContext = nullptr;
+    LoadedMod* owner = nullptr;
+    std::string ownerId;
+    {
+        std::lock_guard lock{s_mutex};
+        auto* slot = resolve_slot(handle, GfxSlotKind::ComputeType);
+        if (slot == nullptr) {
+            // Unregistered between record and encode; drop silently.
+            return;
+        }
+        fn = slot->computeFn;
+        userData = slot->userData;
+        modContext = slot->ownerContext;
+        owner = slot->owner;
+        ownerId = slot->ownerId;
+    }
+
+    GfxComputeContext computeContext{
+        .struct_size = sizeof(GfxComputeContext),
+        .device = ctx.device.Get(),
+        .queue = ctx.queue.Get(),
+        .encoder = cmd.Get(),
+        .vertex_buffer = ctx.vertexBuffer.Get(),
+        .index_buffer = ctx.indexBuffer.Get(),
+        .uniform_buffer = ctx.uniformBuffer.Get(),
+        .storage_buffer = ctx.storageBuffer.Get(),
+    };
+
+    std::string failure;
+    try {
+        fn(modContext, &computeContext, payload, payloadSize, userData);
+        return;
+    } catch (const std::exception& e) {
+        failure = fmt::format("exception in gfx compute callback: {}", e.what());
+    } catch (...) {
+        failure = "unknown exception in gfx compute callback";
+    }
+
     std::lock_guard lock{s_mutex};
     kill_mod_slots(owner);
     s_workerFailures.push_back(WorkerFailure{
@@ -358,6 +414,81 @@ ModResult gfx_create_pass(LoadedMod& mod, uint32_t width, uint32_t height) {
     return MOD_OK;
 }
 
+ModResult gfx_register_compute_type(
+    LoadedMod& mod, const char* label, GfxComputeFn callback, void* userData, uint64_t& outHandle) {
+    outHandle = 0;
+
+    uint64_t handle = 0;
+    {
+        std::lock_guard lock{s_mutex};
+        const auto index = alloc_slot();
+        auto& slot = s_slots[index];
+        slot.kind = GfxSlotKind::ComputeType;
+        slot.alive = true;
+        slot.owner = &mod;
+        slot.ownerContext = mod.context.get();
+        slot.ownerId = mod.metadata.id;
+        slot.userData = userData;
+        slot.computeFn = callback;
+        handle = make_handle(index, slot.generation);
+    }
+
+    // Register with Aurora outside the lock; the trampoline resolves the slot by handle.
+    const auto auroraId = aurora::gfx::register_encoder_task_type(aurora::gfx::EncoderTaskDescriptor{
+        .label = label,
+        .callback = compute_trampoline,
+        .userdata = reinterpret_cast<void*>(static_cast<uintptr_t>(handle)),
+    });
+    if (auroraId == aurora::gfx::InvalidEncoderTask) {
+        std::lock_guard lock{s_mutex};
+        if (resolve_owned_slot(mod, handle, GfxSlotKind::ComputeType) != nullptr) {
+            free_slot(static_cast<uint32_t>(handle & 0xFFFFFFFFu));
+        }
+        return MOD_ERROR;
+    }
+
+    {
+        std::lock_guard lock{s_mutex};
+        if (auto* slot = resolve_owned_slot(mod, handle, GfxSlotKind::ComputeType)) {
+            slot->auroraId = auroraId;
+        }
+    }
+    outHandle = handle;
+    return MOD_OK;
+}
+
+ModResult gfx_unregister_compute_type(LoadedMod& mod, uint64_t handle) {
+    aurora::gfx::EncoderTaskId auroraId = aurora::gfx::InvalidEncoderTask;
+    {
+        std::lock_guard lock{s_mutex};
+        auto* slot = resolve_owned_slot(mod, handle, GfxSlotKind::ComputeType);
+        if (slot == nullptr) {
+            return MOD_INVALID_ARGUMENT;
+        }
+        auroraId = slot->auroraId;
+        free_slot(static_cast<uint32_t>(handle & 0xFFFFFFFFu));
+    }
+    aurora::gfx::unregister_encoder_task_type(auroraId);
+    return MOD_OK;
+}
+
+ModResult gfx_push_compute(
+    LoadedMod& mod, uint64_t handle, const void* payload, size_t payloadSize) {
+    aurora::gfx::EncoderTaskId auroraId = aurora::gfx::InvalidEncoderTask;
+    {
+        std::lock_guard lock{s_mutex};
+        auto* slot = resolve_owned_slot(mod, handle, GfxSlotKind::ComputeType);
+        if (slot == nullptr) {
+            return MOD_INVALID_ARGUMENT;
+        }
+        auroraId = slot->auroraId;
+    }
+    if (!aurora::gfx::push_encoder_task(auroraId, payload, payloadSize)) {
+        return MOD_UNAVAILABLE;
+    }
+    return MOD_OK;
+}
+
 static_assert(GfxStageWorldLate == GFX_STAGE_WORLD_LATE &&
               GfxStageBeforeHud == GFX_STAGE_BEFORE_HUD && GfxStageAfterHud == GFX_STAGE_AFTER_HUD,
     "gfx_stages.hpp mirror values out of sync with GfxStage");
@@ -450,7 +581,8 @@ void gfx_drain_worker_failures() {
 }
 
 void gfx_remove_mod(LoadedMod& mod) {
-    std::vector<aurora::gfx::DrawTypeId> auroraIds;
+    std::vector<aurora::gfx::DrawTypeId> auroraDrawIds;
+    std::vector<aurora::gfx::EncoderTaskId> auroraTaskIds;
     {
         std::lock_guard lock{s_mutex};
         for (uint32_t i = 0; i < s_slots.size(); ++i) {
@@ -461,19 +593,26 @@ void gfx_remove_mod(LoadedMod& mod) {
             if (slot.kind == GfxSlotKind::DrawType &&
                 slot.auroraId != aurora::gfx::InvalidDrawType)
             {
-                auroraIds.push_back(slot.auroraId);
+                auroraDrawIds.push_back(slot.auroraId);
+            } else if (slot.kind == GfxSlotKind::ComputeType &&
+                slot.auroraId != aurora::gfx::InvalidEncoderTask)
+            {
+                auroraTaskIds.push_back(slot.auroraId);
             }
             free_slot(i);
         }
     }
-    if (auroraIds.empty()) {
+    if (auroraDrawIds.empty() && auroraTaskIds.empty()) {
         return;
     }
-    for (const auto id : auroraIds) {
+    for (const auto id : auroraDrawIds) {
         aurora::gfx::unregister_draw_type(id);
     }
-    // Draw callbacks run on the render worker; drain it so no callback from this mod is on the
-    // worker's stack (or queued) when the dylib is retired for dlclose.
+    for (const auto id : auroraTaskIds) {
+        aurora::gfx::unregister_encoder_task_type(id);
+    }
+    // Draw and compute callbacks run on the render worker; drain it so no callback from this
+    // mod is on the worker's stack (or queued) when the dylib is retired for dlclose.
     aurora::gfx::synchronize();
 }
 

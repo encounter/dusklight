@@ -1,6 +1,7 @@
 #pragma once
 
 #include "dusk/mod_loader.hpp"
+#include "mods/svc/camera.h"
 #include "mods/svc/config.h"
 #include "mods/svc/gfx.h"
 #include "mods/svc/hook.h"
@@ -46,5 +47,6 @@ const OverlayService& overlay_service();
 const TextureService& texture_service();
 const ConfigService& config_service();
 const GfxService& gfx_service();
+const CameraService& camera_service();
 
 }  // namespace dusk::mods::svc

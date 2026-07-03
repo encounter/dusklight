@@ -6,6 +6,7 @@
 #include "m_Do/m_Do_controller_pad.h"
 #include "mods/hook.hpp"
 #include "mods/service.hpp"
+#include "mods/svc/camera.h"
 #include "mods/svc/config.h"
 #include "mods/svc/gfx.h"
 #include "mods/svc/hook.h"
@@ -18,6 +19,7 @@
 #include "test_services.h"
 
 #include <atomic>
+#include <cmath>
 
 DEFINE_MOD();
 IMPORT_SERVICE(HostService, svc_host);
@@ -28,7 +30,8 @@ IMPORT_SERVICE(HookService, svc_hook);
 IMPORT_SERVICE(OverlayService, svc_overlay);
 IMPORT_SERVICE(TextureService, svc_texture);
 IMPORT_SERVICE(ConfigService, svc_config);
-IMPORT_SERVICE(GfxService, svc_gfx);
+IMPORT_SERVICE_VERSION(GfxService, svc_gfx, 1);
+IMPORT_SERVICE(CameraService, svc_camera);
 // Both provided by mod_test_dep, which sorts *after* mod_test.dusk in the mods directory;
 // dependency ordering must initialize it first regardless. The deferred service only
 // resolves if mod_test_dep published it during its initialization.
@@ -67,6 +70,11 @@ bool g_ui_rcss_ok = false;
 bool g_ui_neg_ok = false;
 bool g_gfx_device_ok = false;
 bool g_gfx_neg_ok = false;
+bool g_camera_neg_ok = false;
+bool g_camera_checked = false;  // first successful get_camera snapshot processed
+bool g_camera_ok = false;
+float g_camera_near = 0.0f;
+float g_camera_far = 0.0f;
 bool g_gfx_stage_ran = false;  // set once by the stage callback (game thread)
 bool g_gfx_stage_ok = false;
 bool g_gfx_resolve_ok = false;
@@ -80,6 +88,17 @@ GfxStageHookHandle g_gfx_stage_hook = 0;
 std::atomic<bool> g_gfx_draw_fired{false};
 std::atomic<bool> g_gfx_draw_ctx_ok{false};
 std::atomic<bool> g_gfx_offscreen_draw_ok{false};
+// Compute/encoder task coverage (gfx minor 1).
+bool g_gfx_compute_neg_ok = false;
+bool g_gfx_compute_push_ok = false;
+bool g_gfx_logged_compute = false;
+GfxComputeTypeHandle g_gfx_compute_type = 0;
+std::atomic<bool> g_gfx_compute_fired{false};
+std::atomic<bool> g_gfx_compute_ok{false};
+WGPUComputePipeline g_gfx_compute_pipeline = nullptr;
+WGPUBindGroupLayout g_gfx_compute_bgl = nullptr;
+WGPUTexture g_gfx_compute_tex = nullptr;
+WGPUTextureView g_gfx_compute_view = nullptr;
 
 // Kept live for the UI test window's cvar-bound controls.
 ConfigVarHandle g_cfg_flag = 0;
@@ -438,6 +457,87 @@ void on_gfx_draw(
     }
 }
 
+// A minimal compute shader writing a 4x4 r32float storage texture; exercises the encoder-task
+// path end-to-end under Dawn validation.
+constexpr const char* kComputeShader = R"(
+@group(0) @binding(0) var out_tex: texture_storage_2d<r32float, write>;
+@compute @workgroup_size(4, 4)
+fn cs_main(@builtin(global_invocation_id) id: vec3u) {
+    textureStore(out_tex, vec2i(id.xy), vec4f(1.0, 0.0, 0.0, 1.0));
+}
+)";
+
+bool build_compute_resources(WGPUDevice device) {
+    WGPUShaderSourceWGSL wgsl = WGPU_SHADER_SOURCE_WGSL_INIT;
+    wgsl.code = {kComputeShader, WGPU_STRLEN};
+    WGPUShaderModuleDescriptor moduleDesc = WGPU_SHADER_MODULE_DESCRIPTOR_INIT;
+    moduleDesc.nextInChain = &wgsl.chain;
+    moduleDesc.label = {"mod_test compute", WGPU_STRLEN};
+    WGPUShaderModule module = wgpuDeviceCreateShaderModule(device, &moduleDesc);
+    if (module == nullptr) {
+        return false;
+    }
+    WGPUComputePipelineDescriptor pipelineDesc = WGPU_COMPUTE_PIPELINE_DESCRIPTOR_INIT;
+    pipelineDesc.label = {"mod_test compute pipeline", WGPU_STRLEN};
+    pipelineDesc.compute.module = module;
+    pipelineDesc.compute.entryPoint = {"cs_main", WGPU_STRLEN};
+    g_gfx_compute_pipeline = wgpuDeviceCreateComputePipeline(device, &pipelineDesc);
+    wgpuShaderModuleRelease(module);
+    if (g_gfx_compute_pipeline == nullptr) {
+        return false;
+    }
+    g_gfx_compute_bgl = wgpuComputePipelineGetBindGroupLayout(g_gfx_compute_pipeline, 0);
+
+    WGPUTextureDescriptor texDesc = WGPU_TEXTURE_DESCRIPTOR_INIT;
+    texDesc.label = {"mod_test compute target", WGPU_STRLEN};
+    texDesc.usage = WGPUTextureUsage_StorageBinding;
+    texDesc.size = {4, 4, 1};
+    texDesc.format = WGPUTextureFormat_R32Float;
+    g_gfx_compute_tex = wgpuDeviceCreateTexture(device, &texDesc);
+    if (g_gfx_compute_tex == nullptr) {
+        return false;
+    }
+    g_gfx_compute_view = wgpuTextureCreateView(g_gfx_compute_tex, nullptr);
+    return g_gfx_compute_view != nullptr;
+}
+
+// Runs on the render worker thread with the frame's command encoder.
+void on_gfx_compute(
+    ModContext*, const GfxComputeContext* ctx, const void* payload, size_t payloadSize, void*) {
+    bool ok = ctx != nullptr && ctx->device != nullptr && ctx->queue != nullptr &&
+        ctx->encoder != nullptr && ctx->uniform_buffer != nullptr &&
+        payloadSize == sizeof(GfxTestPayload) && g_gfx_compute_pipeline != nullptr;
+    if (ok) {
+        GfxTestPayload data;
+        std::memcpy(&data, payload, sizeof(data));
+        ok = data.magic == kGfxPayloadMagic;
+    }
+    if (ok) {
+        WGPUBindGroupEntry entry = WGPU_BIND_GROUP_ENTRY_INIT;
+        entry.binding = 0;
+        entry.textureView = g_gfx_compute_view;
+        WGPUBindGroupDescriptor bindGroupDesc = WGPU_BIND_GROUP_DESCRIPTOR_INIT;
+        bindGroupDesc.layout = g_gfx_compute_bgl;
+        bindGroupDesc.entryCount = 1;
+        bindGroupDesc.entries = &entry;
+        WGPUBindGroup bindGroup = wgpuDeviceCreateBindGroup(ctx->device, &bindGroupDesc);
+        if (bindGroup != nullptr) {
+            WGPUComputePassEncoder pass =
+                wgpuCommandEncoderBeginComputePass(ctx->encoder, nullptr);
+            wgpuComputePassEncoderSetPipeline(pass, g_gfx_compute_pipeline);
+            wgpuComputePassEncoderSetBindGroup(pass, 0, bindGroup, 0, nullptr);
+            wgpuComputePassEncoderDispatchWorkgroups(pass, 1, 1, 1);
+            wgpuComputePassEncoderEnd(pass);
+            wgpuComputePassEncoderRelease(pass);
+            wgpuBindGroupRelease(bindGroup);
+        } else {
+            ok = false;
+        }
+    }
+    g_gfx_compute_ok.store(ok, std::memory_order_release);
+    g_gfx_compute_fired.store(true, std::memory_order_release);
+}
+
 void on_gfx_stage(ModContext*, const GfxStageContext* stageCtx, void*) {
     if (g_gfx_stage_ran) {
         return;
@@ -467,9 +567,13 @@ void on_gfx_stage(ModContext*, const GfxStageContext* stageCtx, void*) {
     g_gfx_resolve_ok = g_gfx_resolve_ok &&
         svc_gfx->push_draw(mod_ctx, g_gfx_draw_type, &payload, sizeof(payload)) == MOD_OK;
 
-    // Offscreen pass round trip; nesting must be rejected while it is open.
+    // Offscreen pass round trip; nesting must be rejected while it is open, and so must
+    // compute tasks (the encoder-task pass break only handles the EFB).
     g_gfx_create_ok = svc_gfx->create_pass(mod_ctx, 64, 64) == MOD_OK &&
         svc_gfx->create_pass(mod_ctx, 32, 32) == MOD_UNAVAILABLE;
+    GfxTestPayload computePayload{kGfxPayloadMagic, 2};
+    g_gfx_compute_push_ok = svc_gfx->push_compute(mod_ctx, g_gfx_compute_type, &computePayload,
+                                sizeof(computePayload)) == MOD_UNAVAILABLE;
     payload.mode = 1;
     g_gfx_create_ok = g_gfx_create_ok &&
         svc_gfx->push_draw(mod_ctx, g_gfx_draw_type, &payload, sizeof(payload)) == MOD_OK;
@@ -479,6 +583,64 @@ void on_gfx_stage(ModContext*, const GfxStageContext* stageCtx, void*) {
         svc_gfx->resolve_pass(mod_ctx, &colorOnly, &offscreenTargets) == MOD_OK &&
         offscreenTargets.width == 64 && offscreenTargets.height == 64 &&
         offscreenTargets.color != nullptr;
+
+    // With the EFB pass active again, a real compute task records here and executes on the
+    // frame encoder between the split scene passes.
+    g_gfx_compute_push_ok = g_gfx_compute_push_ok &&
+        svc_gfx->push_compute(mod_ctx, g_gfx_compute_type, &computePayload,
+            sizeof(computePayload)) == MOD_OK;
+}
+
+// Column-major (CameraInfo convention) helpers for the camera math self-check.
+void camera_mat_mul(const float a[16], const float b[16], float out[16]) {
+    for (int c = 0; c < 4; ++c) {
+        for (int r = 0; r < 4; ++r) {
+            float sum = 0.0f;
+            for (int k = 0; k < 4; ++k) {
+                sum += a[k * 4 + r] * b[c * 4 + k];
+            }
+            out[c * 4 + r] = sum;
+        }
+    }
+}
+
+void camera_mat_vec(const float m[16], const float v[4], float out[4]) {
+    for (int r = 0; r < 4; ++r) {
+        out[r] = m[0 * 4 + r] * v[0] + m[1 * 4 + r] * v[1] + m[2 * 4 + r] * v[2] +
+            m[3 * 4 + r] * v[3];
+    }
+}
+
+// Verifies the WebGPU-convention projection against its documented semantics:
+// proj * inv ~= identity, and reversed-Z NDC depth 1/0 unprojects to the
+// near/far planes in view space.
+bool check_camera_math(const CameraInfo& cam) {
+    if (!(cam.near_plane > 0.0f) || !(cam.far_plane > cam.near_plane)) {
+        return false;
+    }
+    float identity[16];
+    camera_mat_mul(cam.proj_from_view, cam.view_from_proj, identity);
+    for (int c = 0; c < 4; ++c) {
+        for (int r = 0; r < 4; ++r) {
+            const float expected = c == r ? 1.0f : 0.0f;
+            if (std::fabs(identity[c * 4 + r] - expected) > 1e-4f) {
+                return false;
+            }
+        }
+    }
+    const float nearNdc[4] = {0.0f, 0.0f, 1.0f, 1.0f};
+    const float farNdc[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+    float nearView[4];
+    float farView[4];
+    camera_mat_vec(cam.view_from_proj, nearNdc, nearView);
+    camera_mat_vec(cam.view_from_proj, farNdc, farView);
+    if (nearView[3] == 0.0f || farView[3] == 0.0f) {
+        return false;
+    }
+    const float nearZ = nearView[2] / nearView[3];
+    const float farZ = farView[2] / farView[3];
+    return std::fabs(nearZ + cam.near_plane) <= cam.near_plane * 1e-3f &&
+        std::fabs(farZ + cam.far_plane) <= cam.far_plane * 1e-2f;
 }
 
 ModResult build_panel(ModContext*, UiElementHandle panel, void*, ModError*) {
@@ -553,7 +715,16 @@ ModResult build_panel(ModContext*, UiElementHandle panel, void*, ModError*) {
     svc_ui->pane_add_badge_row(mod_ctx, panel, "draw callback (render worker)",
         g_gfx_draw_fired.load() && g_gfx_draw_ctx_ok.load() && g_gfx_offscreen_draw_ok.load(),
         nullptr);
-    svc_ui->pane_add_badge_row(mod_ctx, panel, "gfx negative tests", g_gfx_neg_ok, nullptr);
+    svc_ui->pane_add_badge_row(mod_ctx, panel, "compute task (render worker)",
+        g_gfx_compute_fired.load() && g_gfx_compute_ok.load() && g_gfx_compute_push_ok, nullptr);
+    svc_ui->pane_add_badge_row(mod_ctx, panel, "gfx negative tests",
+        g_gfx_neg_ok && g_gfx_compute_neg_ok, nullptr);
+
+    svc_ui->pane_add_section(mod_ctx, panel, "Camera");
+    svc_ui->pane_add_badge_row(mod_ctx, panel, "get_camera + projection math",
+        g_camera_checked && g_camera_ok, nullptr);
+    svc_ui->pane_add_badge_row(
+        mod_ctx, panel, "camera negative tests", g_camera_neg_ok, nullptr);
 
     svc_ui->pane_add_section(mod_ctx, panel, "API Fields");
     svc_ui->pane_add_badge_row(
@@ -1015,6 +1186,52 @@ MOD_EXPORT ModResult mod_initialize(ModError* error) {
         svc_log->error(mod_ctx, "GfxService negative tests FAILED");
     }
 
+    // Compute/encoder tasks (gfx minor 1): resources + registration at init, the positive
+    // push runs in the stage callback (the true no-pass window is right here).
+    if (!build_compute_resources(gfxInfo.device)) {
+        return dusk::mods::set_error(error, MOD_ERROR, "failed to create compute test resources");
+    }
+    GfxComputeTypeDesc computeDesc = GFX_COMPUTE_TYPE_DESC_INIT;
+    computeDesc.label = "mod_test compute";
+    computeDesc.callback = on_gfx_compute;
+    gfxResult = svc_gfx->register_compute_type(mod_ctx, &computeDesc, &g_gfx_compute_type);
+    if (gfxResult != MOD_OK) {
+        return require_ok(gfxResult, error, "failed to register gfx compute type");
+    }
+    GfxComputeTypeHandle gfxTempCompute = 0;
+    GfxComputeTypeDesc gfxBadComputeDesc = GFX_COMPUTE_TYPE_DESC_INIT;  // callback left null
+    GfxTestPayload gfxComputePayload{kGfxPayloadMagic, 2};
+    g_gfx_compute_neg_ok =
+        svc_gfx->register_compute_type(mod_ctx, &computeDesc, &gfxTempCompute) == MOD_OK &&
+        svc_gfx->unregister_compute_type(mod_ctx, gfxTempCompute) == MOD_OK &&
+        svc_gfx->push_compute(mod_ctx, g_gfx_compute_type, &gfxComputePayload,
+            sizeof(gfxComputePayload)) == MOD_UNAVAILABLE &&
+        svc_gfx->register_compute_type(mod_ctx, &gfxBadComputeDesc, &gfxTempCompute) ==
+            MOD_INVALID_ARGUMENT &&
+        svc_gfx->push_compute(mod_ctx, g_gfx_compute_type, gfxBigPayload,
+            sizeof(gfxBigPayload)) == MOD_INVALID_ARGUMENT &&
+        svc_gfx->unregister_compute_type(mod_ctx, gfxBogus) == MOD_INVALID_ARGUMENT;
+    if (g_gfx_compute_neg_ok) {
+        svc_log->info(mod_ctx, "GfxService compute negative tests OK");
+    } else {
+        svc_log->error(mod_ctx, "GfxService compute negative tests FAILED");
+    }
+
+    // CameraService: no camera exists before the frame loop, so get_camera must be
+    // MOD_UNAVAILABLE here. The positive check (matrix self-consistency against a live
+    // camera) polls from mod_update until the first camera frame.
+    CameraInfo camInfo = CAMERA_INFO_INIT;
+    CameraInfo camSmall = CAMERA_INFO_INIT;
+    camSmall.struct_size = 4;
+    g_camera_neg_ok = svc_camera->get_camera(mod_ctx, &camInfo) == MOD_UNAVAILABLE &&
+        svc_camera->get_camera(mod_ctx, &camSmall) == MOD_INVALID_ARGUMENT &&
+        svc_camera->get_camera(mod_ctx, nullptr) == MOD_INVALID_ARGUMENT;
+    if (g_camera_neg_ok) {
+        svc_log->info(mod_ctx, "CameraService negative tests OK");
+    } else {
+        svc_log->error(mod_ctx, "CameraService negative tests FAILED");
+    }
+
     g_initialized = 1;
     svc_log->info(mod_ctx, "mod_test ready");
     return MOD_OK;
@@ -1043,6 +1260,24 @@ MOD_EXPORT ModResult mod_update(ModError*) {
             svc_log->error(mod_ctx, "GfxService create_pass round trip FAILED");
         }
     }
+    if (!g_camera_checked) {
+        CameraInfo cam = CAMERA_INFO_INIT;
+        if (svc_camera->get_camera(mod_ctx, &cam) == MOD_OK) {
+            g_camera_checked = true;
+            g_camera_ok = check_camera_math(cam);
+            g_camera_near = cam.near_plane;
+            g_camera_far = cam.far_plane;
+            char camBuf[96];
+            if (g_camera_ok) {
+                std::snprintf(camBuf, sizeof(camBuf),
+                    "CameraService get_camera OK (near=%.1f far=%.1f)", cam.near_plane,
+                    cam.far_plane);
+                svc_log->info(mod_ctx, camBuf);
+            } else {
+                svc_log->error(mod_ctx, "CameraService get_camera math check FAILED");
+            }
+        }
+    }
     if (!g_gfx_logged_draw && g_gfx_draw_fired.load(std::memory_order_acquire)) {
         // The offscreen draw encodes in the same frame but may trail by a poll; give it a
         // moment before reporting.
@@ -1054,6 +1289,14 @@ MOD_EXPORT ModResult mod_update(ModError*) {
             } else {
                 svc_log->error(mod_ctx, "GfxService draw callback FAILED");
             }
+        }
+    }
+    if (!g_gfx_logged_compute && g_gfx_compute_fired.load(std::memory_order_acquire)) {
+        g_gfx_logged_compute = true;
+        if (g_gfx_compute_ok.load(std::memory_order_acquire) && g_gfx_compute_push_ok) {
+            svc_log->info(mod_ctx, "GfxService compute task fired OK");
+        } else {
+            svc_log->error(mod_ctx, "GfxService compute task FAILED");
         }
     }
     return MOD_OK;
@@ -1070,6 +1313,23 @@ MOD_EXPORT ModResult mod_shutdown(ModError*) {
     g_cfg_flag = g_cfg_int = g_cfg_string = g_cfg_choice = g_cfg_pride = 0;
     g_style = g_test_window = g_el_win_counter = 0;
     g_gfx_draw_type = g_gfx_stage_hook = 0;
+    g_gfx_compute_type = 0;
+    if (g_gfx_compute_view != nullptr) {
+        wgpuTextureViewRelease(g_gfx_compute_view);
+        g_gfx_compute_view = nullptr;
+    }
+    if (g_gfx_compute_tex != nullptr) {
+        wgpuTextureRelease(g_gfx_compute_tex);
+        g_gfx_compute_tex = nullptr;
+    }
+    if (g_gfx_compute_bgl != nullptr) {
+        wgpuBindGroupLayoutRelease(g_gfx_compute_bgl);
+        g_gfx_compute_bgl = nullptr;
+    }
+    if (g_gfx_compute_pipeline != nullptr) {
+        wgpuComputePipelineRelease(g_gfx_compute_pipeline);
+        g_gfx_compute_pipeline = nullptr;
+    }
     return MOD_OK;
 }
 }

@@ -1562,6 +1562,7 @@ set(DUSK_FILES
         src/dusk/mods/loader/overlay.cpp
         src/dusk/mods/loader/textures.cpp
         src/dusk/mods/loader/ui.cpp
+        src/dusk/mods/svc/camera.cpp
         src/dusk/mods/svc/config.cpp
         src/dusk/mods/svc/gfx.cpp
         src/dusk/mods/svc/hook.cpp

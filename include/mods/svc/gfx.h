@@ -10,7 +10,9 @@
  * host's Dawn update changes the webgpu.h ABI (expected to be rare).
  */
 #define GFX_SERVICE_MAJOR 1u
-#define GFX_SERVICE_MINOR 0u
+/* Minor 1: compute/encoder tasks (register_compute_type, unregister_compute_type,
+ * push_compute). */
+#define GFX_SERVICE_MINOR 1u
 
 // Maximum payload size for push_draw
 #define GFX_INLINE_DRAW_PAYLOAD_SIZE 128u
@@ -25,6 +27,8 @@
  * - GfxDrawFn callbacks run on the render worker (GPU) thread while the frame is
  *   encoded. They may use the handles in their context struct and raw wgpu*
  *   calls, and nothing else: no other service may be called from them.
+ * - GfxComputeFn callbacks follow the same rules as GfxDrawFn (render worker,
+ *   context handles + raw wgpu* only, valid only during the call).
  * - All WGPU handles provided by this service are borrowed. Handles in a
  *   GfxDrawContext are valid only for the duration of the callback; views in
  *   GfxResolvedTargets are valid for the current frame only. Add-ref before
@@ -37,6 +41,7 @@
 /* Generational handles; 0 is never valid. */
 typedef uint64_t GfxDrawTypeHandle;
 typedef uint64_t GfxStageHookHandle;
+typedef uint64_t GfxComputeTypeHandle; /* minor 1 */
 
 /* A suballocation in one of the shared per-frame streaming buffers. */
 typedef struct GfxRange {
@@ -172,6 +177,41 @@ typedef struct GfxResolvedTargets {
     {sizeof(GfxResolvedTargets), NULL, NULL, WGPUTextureFormat_Undefined, 0u, 0u}
 
 /*
+ * Passed to GfxComputeFn on the render worker thread; valid only during the
+ * call. (Minor 1.)
+ */
+typedef struct GfxComputeContext {
+    uint32_t struct_size;
+    WGPUDevice device;
+    WGPUQueue queue;
+    /* The frame's command encoder, positioned between two scene render passes.
+     * Begin/end compute passes and record copies on it freely — a single
+     * compute pass can chain dispatches (WebGPU synchronizes between them, so
+     * a storage texture written by one dispatch is readable by the next in the
+     * same pass). Leave no pass open when returning, and never Finish or
+     * Release the encoder. */
+    WGPUCommandEncoder encoder;
+    /* Shared streaming buffers (see GfxDrawContext). Data pushed with the
+     * push_* helpers before the task was recorded is GPU-visible inside it. */
+    WGPUBuffer vertex_buffer;
+    WGPUBuffer index_buffer;
+    WGPUBuffer uniform_buffer;
+    WGPUBuffer storage_buffer;
+} GfxComputeContext;
+
+typedef void (*GfxComputeFn)(ModContext* ctx, const GfxComputeContext* compute_ctx,
+    const void* payload, size_t payload_size, void* user_data);
+
+typedef struct GfxComputeTypeDesc {
+    uint32_t struct_size;
+    const char* label;      /* optional debug label */
+    GfxComputeFn callback;  /* required; called from GPU thread */
+    void* user_data;
+} GfxComputeTypeDesc;
+
+#define GFX_COMPUTE_TYPE_DESC_INIT {sizeof(GfxComputeTypeDesc), NULL, NULL, NULL}
+
+/*
  * Raw WebGPU access integrated into the frame, plus hooks at named points of
  * the render process.
  *
@@ -234,6 +274,23 @@ typedef struct GfxService {
      * is unsupported: MOD_UNAVAILABLE outside an active pass or while any
      * offscreen pass is open. */
     ModResult (*create_pass)(ModContext* ctx, uint32_t width, uint32_t height);
+
+    /* ---- minor 1 ---- */
+
+    ModResult (*register_compute_type)(
+        ModContext* ctx, const GfxComputeTypeDesc* desc, GfxComputeTypeHandle* out_handle);
+    ModResult (*unregister_compute_type)(ModContext* ctx, GfxComputeTypeHandle handle);
+
+    /* Record a compute/encoder task at the current position in the frame: the
+     * scene pass is split here and the callback runs on the frame's command
+     * encoder between the two halves — dispatches see everything drawn (and
+     * resolved) before this call, and draws recorded after it see the task's
+     * output. The typical shape: resolve_pass for input snapshots, push_compute
+     * for the compute chain, push_draw to composite the result. Payload
+     * semantics match push_draw. MOD_UNAVAILABLE outside an active pass or
+     * while any offscreen pass is open. */
+    ModResult (*push_compute)(
+        ModContext* ctx, GfxComputeTypeHandle handle, const void* payload, size_t payload_size);
 } GfxService;
 
 #ifdef __cplusplus

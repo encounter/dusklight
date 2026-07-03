@@ -153,6 +153,11 @@ ModResult gfx_register_stage_hook(
 ModResult gfx_unregister_stage_hook(LoadedMod& mod, uint64_t handle);
 ModResult gfx_resolve_pass(LoadedMod& mod, const GfxResolveDesc& desc, GfxResolvedTargets& out);
 ModResult gfx_create_pass(LoadedMod& mod, uint32_t width, uint32_t height);
+ModResult gfx_register_compute_type(
+    LoadedMod& mod, const char* label, GfxComputeFn callback, void* userData, uint64_t& outHandle);
+ModResult gfx_unregister_compute_type(LoadedMod& mod, uint64_t handle);
+ModResult gfx_push_compute(
+    LoadedMod& mod, uint64_t handle, const void* payload, size_t payloadSize);
 // gfx_run_stage (the frame markers' entry point) is declared in dusk/mods/gfx_stages.hpp.
 // Applies failures queued by render-worker trampolines; top of ModLoader::tick.
 void gfx_drain_worker_failures();
