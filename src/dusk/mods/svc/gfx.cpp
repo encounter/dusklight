@@ -118,7 +118,7 @@ ModResult gfx_register_stage_hook_impl(ModContext* context, GfxStage stage,
     if (mod == nullptr || desc == nullptr || desc->struct_size < sizeof(GfxStageHookDesc) ||
         desc->callback == nullptr || outHandle == nullptr ||
         (stage != GFX_STAGE_WORLD_LATE && stage != GFX_STAGE_BEFORE_HUD &&
-            stage != GFX_STAGE_AFTER_HUD))
+            stage != GFX_STAGE_AFTER_HUD && stage != GFX_STAGE_WORLD_BEFORE_TERRAIN))
     {
         return MOD_INVALID_ARGUMENT;
     }

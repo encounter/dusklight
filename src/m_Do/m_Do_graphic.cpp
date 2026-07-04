@@ -2349,6 +2349,11 @@ int mDoGph_Painter() {
 
             GXSetClipMode(GX_CLIP_ENABLE);
 
+            #if TARGET_PC
+            dusk::mods::gfx_run_stage(
+                dusk::mods::GfxStageWorldBeforeTerrain, 0, &camera_p->view, view_port);
+            #endif
+
             #if DEBUG
             // "drawing up to Background (Translucent) (Rendering)"
             fapGm_HIO_c::stopCpuTimer("背景（半透明）描画まで（レンダリング）");
@@ -2378,7 +2383,8 @@ int mDoGph_Painter() {
             GX_DEBUG_GROUP(dComIfGd_drawShadow, camera_p->view.viewMtx);
 
             #if TARGET_PC
-            dusk::mods::gfx_run_stage(dusk::mods::GfxStageWorldLate, 0);
+            dusk::mods::gfx_run_stage(
+                dusk::mods::GfxStageWorldLate, 0, &camera_p->view, view_port);
             #endif
 
             #if DEBUG

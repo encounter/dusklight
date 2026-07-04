@@ -5,7 +5,7 @@
 //
 // Depth conventions (both reversed-Z): the scene snapshot has 1.0 at the camera near plane;
 // the shadow map — rendered through the game's GX pipeline with a GC-convention light matrix —
-// stores -clip.z, i.e. 1.0 nearest to the light and 0.0 at the light frustum far plane.
+// stores clip.z, i.e. 1.0 nearest to the light and 0.0 at the light frustum far plane.
 // A larger stored value therefore means "closer to the light".
 //
 // The optional contact-shadow raymarch follows Panos Karabelas' screen-space shadows
@@ -17,7 +17,7 @@ struct Uniforms {
     world_from_proj: mat4x4f, // scene depth unproject (camera)
     view_from_proj: mat4x4f,  // scene depth -> view space (contact shadows)
     proj_from_view: mat4x4f,  // view -> clip (contact shadows re-projection)
-    light_vp: mat4x4f,        // world -> GC light clip (ortho, w stays 1)
+    light_vp: mat4x4f,        // world -> light receiver projection (UV/depth basis)
     light_dir_view: vec3f,    // direction *toward* the light, view space, normalized
     bias: f32,                // shadow-map depth bias (reversed-depth units)
     size: vec2f,              // shadow map size in texels
@@ -27,7 +27,7 @@ struct Uniforms {
     contact_enabled: f32,
     contact_thickness: f32,   // view-space thickness threshold
     contact_length: f32,      // view-space march distance
-    debug_mode: u32,          // 0 = composite, 1 = show map, 2 = show factor
+    debug_mode: u32,          // 0 = composite; nonzero modes are diagnostic views
     _pad0: f32,
     _pad1: f32,
 }
@@ -35,6 +35,7 @@ struct Uniforms {
 @group(0) @binding(0) var scene_depth: texture_2d<f32>;
 @group(0) @binding(1) var shadow_map: texture_2d<f32>;
 @group(0) @binding(2) var<uniform> uniforms: Uniforms;
+@group(0) @binding(3) var light_color: texture_2d<f32>;
 
 struct VertexOutput {
     @builtin(position) position: vec4f,
@@ -98,6 +99,27 @@ fn scene_depth_at(uv: vec2f) -> f32 {
     return textureLoad(scene_depth, texel, 0i).r;
 }
 
+fn light_color_at(uv: vec2f) -> vec4f {
+    let size = vec2<i32>(textureDimensions(light_color));
+    let texel = clamp(vec2<i32>(uv * vec2f(size)), vec2<i32>(0i), size - 1i);
+    return textureLoad(light_color, texel, 0i);
+}
+
+fn light_depth_debug_at(uv: vec2f) -> vec3f {
+    let texel = vec2<i32>(uv * uniforms.size);
+    let depth = load_shadow(texel);
+    if depth <= 0.0 {
+        return vec3f(0.0);
+    }
+
+    let dx = abs(depth - load_shadow(texel + vec2<i32>(1i, 0i)));
+    let dy = abs(depth - load_shadow(texel + vec2<i32>(0i, 1i)));
+    let edge = saturate((dx + dy) * 500.0);
+    let shade = saturate(depth * 1.5);
+    let bands = 0.08 * (0.5 + 0.5 * cos(depth * 96.0));
+    return vec3f(saturate(shade + bands + edge));
+}
+
 fn view_position(uv: vec2f, depth: f32) -> vec3f {
     let ndc = vec4f(uv.x * 2.0 - 1.0, 1.0 - 2.0 * uv.y, depth, 1.0);
     let position = uniforms.view_from_proj * ndc;
@@ -151,17 +173,24 @@ fn contact_shadow(origin: vec3f, pixel: vec2f) -> f32 {
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4f {
     let depth = scene_depth_at(in.uv);
-    if depth <= 0.0 {
-        // Sky / cleared pixels receive no shadow.
-        if uniforms.debug_mode == 1u {
-            return vec4f(load_shadow(vec2<i32>(in.uv * uniforms.size)), 0.0, 0.0, 1.0);
-        }
-        return vec4f(1.0);
-    }
-
     if uniforms.debug_mode == 1u {
         let value = load_shadow(vec2<i32>(in.uv * uniforms.size));
         return vec4f(value, value, value, 1.0);
+    }
+    if uniforms.debug_mode == 9u || uniforms.debug_mode == 10u {
+        let color = light_color_at(in.uv);
+        let color_luma = max(color.r, max(color.g, color.b));
+        let depth_color = light_depth_debug_at(in.uv);
+        let rgb = select(depth_color, color.rgb, color_luma > (1.0 / 255.0));
+        return vec4f(rgb, 1.0);
+    }
+
+    if depth <= 0.0 {
+        // Sky / cleared pixels receive no shadow.
+        if uniforms.debug_mode >= 3u {
+            return vec4f(0.0, 0.0, 0.0, 1.0);
+        }
+        return vec4f(1.0);
     }
 
     let ndc = vec4f(in.uv.x * 2.0 - 1.0, 1.0 - 2.0 * in.uv.y, depth, 1.0);
@@ -169,14 +198,53 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
     let world = world4.xyz / world4.w;
 
     let light_clip = uniforms.light_vp * vec4f(world, 1.0);
-    let receiver = -light_clip.z; // reversed light depth, 1 = nearest to the light
-    let light_uv = vec2f(0.5 + 0.5 * light_clip.x, 0.5 - 0.5 * light_clip.y);
+    let light_ndc = light_clip.xyz / light_clip.w;
+    let receiver = light_ndc.z; // reversed light depth, 1 = nearest to the light
+    let light_uv = vec2f(0.5 + 0.5 * light_ndc.x, 0.5 - 0.5 * light_ndc.y);
+    let in_shadow_bounds = all(light_uv >= vec2f(0.0)) && all(light_uv <= vec2f(1.0)) &&
+        receiver > 0.0 && receiver <= 1.0;
+    let shadow_depth = load_shadow(vec2<i32>(light_uv * uniforms.size));
+
+    if uniforms.debug_mode == 4u {
+        let valid = select(0.0, 1.0, in_shadow_bounds);
+        return vec4f(saturate(light_uv.x), saturate(light_uv.y), valid, 1.0);
+    }
+
+    if uniforms.debug_mode == 5u {
+        if !in_shadow_bounds {
+            return vec4f(0.0, 0.0, 0.0, 1.0);
+        }
+        let current_compare = select(0.0, 1.0, shadow_depth > receiver + uniforms.bias);
+        let opposite_compare = select(0.0, 1.0, shadow_depth < receiver - uniforms.bias);
+        return vec4f(current_compare, 0.0, opposite_compare, 1.0);
+    }
+
+    if uniforms.debug_mode == 6u {
+        let valid = select(0.0, 1.0, in_shadow_bounds);
+        return vec4f(saturate(receiver), shadow_depth, valid, 1.0);
+    }
+
+    if uniforms.debug_mode == 7u {
+        let beyond_far = select(0.0, 1.0, receiver <= 0.0);
+        let valid_depth = select(0.0, 1.0, receiver > 0.0 && receiver <= 1.0);
+        let before_near = select(0.0, 1.0, receiver > 1.0);
+        return vec4f(beyond_far, valid_depth, before_near, 1.0);
+    }
+
+    if uniforms.debug_mode == 8u {
+        let valid_x = select(0.0, 1.0, light_uv.x >= 0.0 && light_uv.x <= 1.0);
+        let valid_y = select(0.0, 1.0, light_uv.y >= 0.0 && light_uv.y <= 1.0);
+        let valid_depth = select(0.0, 1.0, receiver > 0.0 && receiver <= 1.0);
+        return vec4f(valid_x, valid_y, valid_depth, 1.0);
+    }
 
     var occlusion = 0.0;
-    if all(light_uv >= vec2f(0.0)) && all(light_uv <= vec2f(1.0)) && receiver > 0.0 &&
-        receiver <= 1.0
-    {
+    if in_shadow_bounds {
         occlusion = sample_shadow_pcf(light_uv, receiver);
+    }
+
+    if uniforms.debug_mode == 3u {
+        return vec4f(occlusion, occlusion, occlusion, 1.0);
     }
 
     if uniforms.contact_enabled != 0.0 && occlusion < 1.0 {
@@ -188,5 +256,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
     }
 
     let value = 1.0 - uniforms.strength * occlusion;
+    if uniforms.debug_mode == 2u {
+        return vec4f(value, value, value, 1.0);
+    }
     return vec4f(value, value, value, 1.0);
 }

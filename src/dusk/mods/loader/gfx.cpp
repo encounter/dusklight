@@ -490,10 +490,13 @@ ModResult gfx_push_compute(
 }
 
 static_assert(GfxStageWorldLate == GFX_STAGE_WORLD_LATE &&
-              GfxStageBeforeHud == GFX_STAGE_BEFORE_HUD && GfxStageAfterHud == GFX_STAGE_AFTER_HUD,
+                  GfxStageBeforeHud == GFX_STAGE_BEFORE_HUD &&
+                  GfxStageAfterHud == GFX_STAGE_AFTER_HUD &&
+                  GfxStageWorldBeforeTerrain == GFX_STAGE_WORLD_BEFORE_TERRAIN,
     "gfx_stages.hpp mirror values out of sync with GfxStage");
 
-void gfx_run_stage(uint32_t stageValue, uint32_t windowIndex) {
+void gfx_run_stage(
+    uint32_t stageValue, uint32_t windowIndex, const void* gameView, const void* gameViewport) {
     const auto stage = static_cast<GfxStage>(stageValue);
     struct StageEntry {
         uint64_t handle;
@@ -527,6 +530,8 @@ void gfx_run_stage(uint32_t stageValue, uint32_t windowIndex) {
         .stage = stage,
         .window_index = windowIndex,
         .interpolated_frame = frame_interp::is_enabled() && !frame_interp::is_sim_frame(),
+        .game_view = gameView,
+        .game_viewport = gameViewport,
     };
 
     for (const auto& entry : entries) {

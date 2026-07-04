@@ -123,6 +123,10 @@ typedef enum GfxStage {
     /* After all 2D/HUD draw lists, before the frame ends. Fires once per
      * rendered frame. */
     GFX_STAGE_AFTER_HUD = 2,
+    /* After the camera/projection/light setup for a world camera window, before
+     * terrain/background opaque scene lists are consumed. May fire more than
+     * once per frame (once per camera window). */
+    GFX_STAGE_WORLD_BEFORE_TERRAIN = 3,
 } GfxStage;
 
 typedef struct GfxStageContext {
@@ -133,6 +137,10 @@ typedef struct GfxStageContext {
      * frame. Stage callbacks fire on every rendered frame either way; read
      * interpolated state (camera etc.) fresh in each callback. */
     bool interpolated_frame;
+    /* World-camera stages only: view_class* and view_port_class* for the
+     * camera being painted. NULL for non-world stages. */
+    const void* game_view;
+    const void* game_viewport;
 } GfxStageContext;
 
 /*
@@ -204,8 +212,8 @@ typedef void (*GfxComputeFn)(ModContext* ctx, const GfxComputeContext* compute_c
 
 typedef struct GfxComputeTypeDesc {
     uint32_t struct_size;
-    const char* label;      /* optional debug label */
-    GfxComputeFn callback;  /* required; called from GPU thread */
+    const char* label;     /* optional debug label */
+    GfxComputeFn callback; /* required; called from GPU thread */
     void* user_data;
 } GfxComputeTypeDesc;
 

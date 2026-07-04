@@ -875,6 +875,10 @@ public:
     void setCurrentWindow(dDlst_window_c* i_window) { mCurrentWindow = i_window; }
     void setCurrentView(view_class* i_view) { mCurrentView = i_view; }
     void setCurrentViewport(view_port_class* i_viewport) { mCurrentViewport = i_viewport; }
+#if TARGET_PC
+    view_class* getCurrentView() { return mCurrentView; }
+    view_port_class* getCurrentViewport() { return mCurrentViewport; }
+#endif
     J2DGrafContext* getCurrentGrafPort() { return (J2DGrafContext*)mCurrentGrafPort; }
     void setCurrentGrafPort(J2DOrthoGraph* i_graf) { mCurrentGrafPort = i_graf; }
     void* getItemTable() { return mItemTable; }
@@ -4309,6 +4313,16 @@ inline void dComIfGp_setCurrentView(view_class* i_view) {
 inline void dComIfGp_setCurrentViewport(view_port_class* i_viewport) {
     g_dComIfG_gameInfo.play.setCurrentViewport(i_viewport);
 }
+
+#if TARGET_PC
+inline view_class* dComIfGp_getCurrentView() {
+    return g_dComIfG_gameInfo.play.getCurrentView();
+}
+
+inline view_port_class* dComIfGp_getCurrentViewport() {
+    return g_dComIfG_gameInfo.play.getCurrentViewport();
+}
+#endif
 
 inline J2DGrafContext* dComIfGp_getCurrentGrafPort() {
     return g_dComIfG_gameInfo.play.getCurrentGrafPort();
