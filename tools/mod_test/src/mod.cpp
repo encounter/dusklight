@@ -2,6 +2,7 @@
 
 #include "d/actor/d_a_alink.h"
 #include "dolphin/dvd.h"
+#include "dolphin/mtx.h"
 #include "f_ap/f_ap_game.h"
 #include "m_Do/m_Do_controller_pad.h"
 #include "mods/hook.hpp"
@@ -154,6 +155,13 @@ ModResult require_ok(const ModResult result, ModError* error, const char* messag
         return dusk::mods::set_error(error, result, message);
     }
     return MOD_OK;
+}
+
+bool sdk_mtx_exports_ok() {
+    Mtx44 projection{};
+    C_MTXPerspective(projection, 60.0f, 16.0f / 9.0f, 10.0f, 10000.0f);
+    return std::isfinite(projection[0][0]) && std::isfinite(projection[1][1]) &&
+           projection[3][2] == -1.0f;
 }
 
 // Pre-hook on posMove. Hold L to test arg_ref writes and cancellation.
@@ -775,6 +783,11 @@ MOD_EXPORT ModResult mod_initialize(ModError* error) {
     svc_log->info(mod_ctx, "mod_test initializing");
     svc_log->warn(mod_ctx, "LogService::warn smoke test");
     svc_log->error(mod_ctx, "LogService::error smoke test");
+    if (sdk_mtx_exports_ok()) {
+        svc_log->info(mod_ctx, "SDK mtx exports OK");
+    } else {
+        svc_log->error(mod_ctx, "SDK mtx exports FAILED");
+    }
 
     g_dep_order_ok = svc_test_dep->initialized(mod_ctx) == 1;
     if (g_dep_order_ok) {
