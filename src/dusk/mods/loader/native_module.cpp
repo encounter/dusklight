@@ -30,11 +30,11 @@ std::string pl_dlerror() {
 #else
 #include <dlfcn.h>
 static void* pl_dlopen(const std::filesystem::path& p) {
-#if defined(__linux__)
-    return dlopen(p.c_str(), RTLD_LAZY | RTLD_LOCAL | RTLD_DEEPBIND);
-#else
-    return dlopen(p.c_str(), RTLD_LAZY | RTLD_LOCAL);
+    int flags = RTLD_LAZY | RTLD_LOCAL;
+#if defined(RTLD_DEEPBIND)
+    flags |= RTLD_DEEPBIND;
 #endif
+    return dlopen(p.c_str(), flags);
 }
 static void* pl_dlsym(void* h, const char* name) {
     return dlsym(h, name);

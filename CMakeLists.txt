@@ -327,6 +327,17 @@ FetchContent_Declare(funchook
 set(FUNCHOOK_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(FUNCHOOK_BUILD_SHARED OFF CACHE BOOL "" FORCE)
 set(FUNCHOOK_INSTALL OFF CACHE BOOL "" FORCE)
+if (APPLE AND CMAKE_OSX_ARCHITECTURES)
+    list(LENGTH CMAKE_OSX_ARCHITECTURES _osx_arch_count)
+    if (_osx_arch_count EQUAL 1)
+        list(GET CMAKE_OSX_ARCHITECTURES 0 _osx_arch)
+        if (_osx_arch MATCHES "^(arm64|aarch64|ARM64)$")
+            set(FUNCHOOK_CPU arm64 CACHE STRING "" FORCE)
+        elseif (_osx_arch MATCHES "^(x86_64|AMD64|amd64|i[3-6]86|x86)$")
+            set(FUNCHOOK_CPU x86 CACHE STRING "" FORCE)
+        endif ()
+    endif ()
+endif ()
 FetchContent_MakeAvailable(cxxopts json miniz funchook)
 
 if (DUSK_ENABLE_SENTRY_NATIVE)
@@ -701,8 +712,7 @@ if (APPLE)
         get_filename_component(NEW_FILE_PATH ${NEW_FILE} DIRECTORY)
         set_property(SOURCE ${FILE} PROPERTY MACOSX_PACKAGE_LOCATION "Resources/${NEW_FILE_PATH}")
     endforeach ()
-    set_target_properties(
-        dusklight PROPERTIES
+    set(_apple_bundle_properties
         MACOSX_BUNDLE TRUE
         MACOSX_BUNDLE_BUNDLE_NAME ${DUSK_BUNDLE_NAME}
         MACOSX_BUNDLE_GUI_IDENTIFIER ${DUSK_BUNDLE_IDENTIFIER}
@@ -712,9 +722,16 @@ if (APPLE)
         OUTPUT_NAME Dusklight
         XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "YES"
         XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED "YES"
-        XCODE_ATTRIBUTE_CODE_SIGN_ENTITLEMENTS ${DUSK_ENTITLEMENTS}
-        XCODE_ATTRIBUTE_ENABLE_HARDENED_RUNTIME "YES"
     )
+    if (DUSK_ENTITLEMENTS)
+        list(APPEND _apple_bundle_properties
+            XCODE_ATTRIBUTE_CODE_SIGN_ENTITLEMENTS ${DUSK_ENTITLEMENTS})
+    endif ()
+    if (NOT IOS AND NOT TVOS)
+        list(APPEND _apple_bundle_properties
+            XCODE_ATTRIBUTE_ENABLE_HARDENED_RUNTIME "YES")
+    endif ()
+    set_target_properties(dusklight PROPERTIES ${_apple_bundle_properties})
 
     if (NOT IOS AND NOT TVOS AND NOT "${CMAKE_GENERATOR}" STREQUAL "Xcode")
         add_custom_command(TARGET dusklight POST_BUILD

@@ -53,7 +53,7 @@ typedef struct ModError {
  * Pass it as the first argument to every service call; it identifies the calling
  * mod for attribution (logging, resource lookup, hook ownership, etc.).
  */
-extern ModContext* mod_ctx;
+MOD_EXPORT extern ModContext* mod_ctx;
 
 /*
  * Service versioning contract:
