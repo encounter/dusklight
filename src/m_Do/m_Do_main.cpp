@@ -125,6 +125,9 @@ bool dusk::IsRunning = true;
 bool dusk::IsShuttingDown = false;
 bool dusk::IsGameLaunched = false;
 bool dusk::RestartRequested = false;
+uint8_t dusk::requestedSaveSlot = 0;
+std::string dusk::requestedStage;
+float dusk::requestedTimeOfDay = -1.0f;
 std::filesystem::path dusk::ConfigPath;
 std::filesystem::path dusk::CachePath;
 #endif
@@ -491,6 +494,30 @@ static void log_build_info() {
     DuskLog.info("Platform: {}", DUSK_PLATFORM_NAME);
 }
 
+static float parse_time_of_day_arg(std::string const& value) {
+    try {
+        size_t parsedChars = 0;
+        const int hour = std::stoi(value, &parsedChars);
+        int minute = 0;
+        if (parsedChars < value.size()) {
+            if (value[parsedChars] != ':') {
+                return -1.0f;
+            }
+            size_t minuteChars = 0;
+            minute = std::stoi(value.substr(parsedChars + 1), &minuteChars);
+            if (minuteChars != value.size() - parsedChars - 1) {
+                return -1.0f;
+            }
+        }
+        if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+            return -1.0f;
+        }
+        return static_cast<float>(hour) * 15.0f + static_cast<float>(minute) * (15.0f / 60.0f);
+    } catch (...) {
+        return -1.0f;
+    }
+}
+
 // =========================================================================
 // PC ENTRY POINT
 // =========================================================================
@@ -516,7 +543,11 @@ int game_main(int argc, char* argv[]) {
             ("dvd", "Path to DVD image file", cxxopts::value<std::string>())
             ("mods", "Path to mods directory", cxxopts::value<std::string>())
             ("backend", "Graphics API backend to use (auto, d3d12, d3d11, metal, vulkan, null)", cxxopts::value<std::string>())
-            ("cvar", "Override configuration variables without modifying config", cxxopts::value<std::vector<std::string>>());
+            ("cvar", "Override configuration variables without modifying config", cxxopts::value<std::vector<std::string>>())
+            ("develop", "Enable the game's development mode and force OSReport output", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
+            ("load-save", "Skip the opening and load a save from slot 1-3", cxxopts::value<uint8_t>()->default_value("0"))
+            ("stage", "Skip the opening and load a stage as STAGE[,ROOM[,POINT[,LAYER]]]", cxxopts::value<std::string>()->default_value(""))
+            ("time-of-day", "Set the initial clock when using --load-save or --stage, as HH[:MM]", cxxopts::value<std::string>()->default_value(""));
 
         arg_options.parse_positional({"dvd"});
         arg_options.positional_help("<dvd-image>");
@@ -541,6 +572,12 @@ int game_main(int argc, char* argv[]) {
     dusk::ConfigPath = dataPaths.userPath;
     dusk::CachePath = dataPaths.cachePath;
     dusk::InitializeFileLogging(dusk::CachePath, startupLogLevel);
+
+    const bool developmentMode = parsed_arg_options["develop"].as<bool>();
+    if (developmentMode) {
+        mDoMain::developmentMode = 1;
+        dusk::OSReportReallyForceEnable = true;
+    }
 
     log_build_info();
 
@@ -783,8 +820,19 @@ int game_main(int argc, char* argv[]) {
     // Global Context Init
     dComIfG_ct();
 
-    // Development Mode
-    // mDoMain::developmentMode = 1;  // Force Dev Mode for Debugging
+    const uint8_t saveSlot = parsed_arg_options["load-save"].as<uint8_t>();
+    if (saveSlot >= 1 && saveSlot <= 3) {
+        dusk::requestedSaveSlot = saveSlot;
+    }
+    dusk::requestedStage = parsed_arg_options["stage"].as<std::string>();
+    const auto requestedTime = parsed_arg_options["time-of-day"].as<std::string>();
+    if (!requestedTime.empty()) {
+        dusk::requestedTimeOfDay = parse_time_of_day_arg(requestedTime);
+        if (dusk::requestedTimeOfDay < 0.0f) {
+            DuskLog.warn("Ignoring invalid --time-of-day value '{}'", requestedTime);
+        }
+    }
+
     mDoDvdThd::SyncWidthSound = false;
 
     // Setup mods

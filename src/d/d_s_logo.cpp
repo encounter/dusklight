@@ -23,8 +23,13 @@
 #include "m_Do/m_Do_main.h"
 #include "JSystem/JUtility/JUTConsole.h"
 
+#if TARGET_PC
+#include <sstream>
 #include "dusk/logging.h"
+#include "dusk/main.h"
 #include "dusk/version.hpp"
+#include "m_Do/m_Do_MemCard.h"
+#endif
 
 #if !PLATFORM_GCN
 #include <revolution/os.h>
@@ -748,11 +753,118 @@ void dScnLogo_c::dvdWaitDraw() {
     }
 }
 
+#if TARGET_PC
+static void apply_requested_time_of_day() {
+    if (dusk::requestedTimeOfDay >= 0.0f) {
+        dComIfGs_setTime(dusk::requestedTimeOfDay);
+        dusk::requestedTimeOfDay = -1.0f;
+    }
+}
+
+static bool parse_requested_stage(std::string const& request, std::string& stageName, s8& room,
+                                  s16& point, s8& layer) {
+    std::stringstream stream{request};
+    std::string token;
+
+    if (!std::getline(stream, token, ',') || token.empty() || token.size() > 7) {
+        return false;
+    }
+    stageName = token;
+    room = 0;
+    point = 0;
+    layer = -1;
+
+    try {
+        if (std::getline(stream, token, ',')) {
+            room = static_cast<s8>(std::stoi(token));
+            if (std::getline(stream, token, ',')) {
+                point = static_cast<s16>(std::stoi(token));
+                if (std::getline(stream, token, ',')) {
+                    layer = static_cast<s8>(std::stoi(token));
+                }
+            }
+        }
+    } catch (...) {
+        return false;
+    }
+
+    return true;
+}
+
+static void load_requested_save_slot(dScnLogo_c* logoScene) {
+    u8 saveData[SAVEDATA_SIZE * 3];
+    mDoMemCd_Load();
+
+    u32 status = 0;
+    do {
+        status = mDoMemCd_LoadSync(saveData, sizeof(saveData), 0);
+    } while (status == 0);
+
+    if (status == 1) {
+        dComIfGs_setCardToMemory(saveData, dusk::requestedSaveSlot - 1);
+    } else {
+        dComIfGs_init();
+    }
+
+    dComIfGs_setNoFile(dusk::requestedSaveSlot);
+    dComIfGs_setDataNum(dusk::requestedSaveSlot - 1);
+    apply_requested_time_of_day();
+    dComIfGs_gameStart();
+
+    fopScnM_ChangeReq(logoScene, fpcNm_PLAY_SCENE_e, 0, 30);
+
+    dKy_clear_game_init();
+    dComIfGs_resetDan();
+    dComIfGs_setRestartRoomParam(0);
+
+    dusk::requestedSaveSlot = 0xff;
+}
+
+static bool apply_requested_stage(dScnLogo_c* logoScene) {
+    std::string stageName;
+    s8 room;
+    s16 point;
+    s8 layer;
+    if (!parse_requested_stage(dusk::requestedStage, stageName, room, point, layer)) {
+        dusk::requestedStage.clear();
+        return false;
+    }
+
+    if (dusk::requestedSaveSlot == 0) {
+        dComIfGs_init();
+        apply_requested_time_of_day();
+        fopScnM_ChangeReq(logoScene, fpcNm_PLAY_SCENE_e, 0, 30);
+        dusk::requestedSaveSlot = 0xff;
+    }
+
+    dComIfGp_setNextStage(stageName.c_str(), point, room, layer);
+    g_dComIfG_gameInfo.play.mNextStage.getStartStage()->set(
+        stageName.c_str(), room, point, layer);
+    dusk::requestedStage.clear();
+    return true;
+}
+#endif
+
 void dScnLogo_c::nextSceneChange() {
     if (!mDoRst::isReset()) {
         if (!isOpeningCut())
         {
+#if TARGET_PC
+            if (dusk::requestedSaveSlot >= 1 && dusk::requestedSaveSlot <= 3) {
+                load_requested_save_slot(this);
+            } else if (dusk::requestedSaveSlot == 0xff) {
+                // Scene change has already been requested; wait for the manager.
+            } else if (!dusk::requestedStage.empty()) {
+                // Stage handling runs below after the save/opening decision.
+            } else {
+                dComIfG_changeOpeningScene(this, fpcNm_OPENING_SCENE_e);
+            }
+            if (!dusk::requestedStage.empty()) {
+                apply_requested_stage(this);
+            }
+#else
             dComIfG_changeOpeningScene(this, fpcNm_OPENING_SCENE_e);
+#endif
         } else {
             #if DEBUG
             fopScnM_ChangeReq(this, fpcNm_MENU_SCENE_e, 0, 30);

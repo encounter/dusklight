@@ -1,7 +1,9 @@
 #ifndef DUSK_MAIN_H
 #define DUSK_MAIN_H
 
+#include <cstdint>
 #include <filesystem>
+#include <string>
 
 namespace dusk {
 
@@ -9,6 +11,9 @@ extern bool IsRunning;
 extern bool IsShuttingDown;
 extern bool IsGameLaunched;
 extern bool RestartRequested;
+extern uint8_t requestedSaveSlot;
+extern std::string requestedStage;
+extern float requestedTimeOfDay;
 extern std::filesystem::path ConfigPath;
 extern std::filesystem::path CachePath;
 
