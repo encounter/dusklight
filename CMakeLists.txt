@@ -309,36 +309,50 @@ FetchContent_Declare(miniz
     EXCLUDE_FROM_ALL
 )
 
-message(STATUS "dusk: Fetching funchook")
-# cmake/patch_funchook.cmake patches funchook's cmake/capstone.cmake.in to inject a
-# PATCH_COMMAND into capstone's inner ExternalProject. That PATCH_COMMAND runs
-# cmake/fix_capstone_policy.cmake after capstone is cloned, which removes the
-# cmake_policy(SET CMP0048 OLD) line that CMake >= 3.27 rejects.
-# This is incredibly scuffed and we should probably think of a better way to do this
-set(CAPSTONE_FIX_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/cmake/fix_capstone_policy.cmake")
-FetchContent_Declare(funchook
-    GIT_REPOSITORY https://github.com/kubo/funchook.git
-    GIT_TAG v1.1.3
-    GIT_SHALLOW TRUE
-    GIT_PROGRESS TRUE
-    PATCH_COMMAND ${CMAKE_COMMAND} -DSOURCE_DIR=<SOURCE_DIR> -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/patch_funchook.cmake
-    EXCLUDE_FROM_ALL
-)
-set(FUNCHOOK_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(FUNCHOOK_BUILD_SHARED OFF CACHE BOOL "" FORCE)
-set(FUNCHOOK_INSTALL OFF CACHE BOOL "" FORCE)
-if (APPLE AND CMAKE_OSX_ARCHITECTURES)
-    list(LENGTH CMAKE_OSX_ARCHITECTURES _osx_arch_count)
-    if (_osx_arch_count EQUAL 1)
-        list(GET CMAKE_OSX_ARCHITECTURES 0 _osx_arch)
-        if (_osx_arch MATCHES "^(arm64|aarch64|ARM64)$")
-            set(FUNCHOOK_CPU arm64 CACHE STRING "" FORCE)
-        elseif (_osx_arch MATCHES "^(x86_64|AMD64|amd64|i[3-6]86|x86)$")
-            set(FUNCHOOK_CPU x86 CACHE STRING "" FORCE)
+set(DUSK_ENABLE_CODE_MODS_DEFAULT OFF)
+option(DUSK_ENABLE_CODE_MODS "Enable code mods" ${DUSK_ENABLE_CODE_MODS_DEFAULT})
+set(_code_mods_supported TRUE)
+if (ANDROID OR IOS OR TVOS)
+    set(_code_mods_supported FALSE)
+endif ()
+if (DUSK_ENABLE_CODE_MODS AND NOT _code_mods_supported)
+    message(FATAL_ERROR "Code mods not supported on the target platform!")
+endif ()
+
+set(_fetch_content_deps cxxopts json miniz)
+if (DUSK_ENABLE_CODE_MODS)
+    message(STATUS "dusk: Fetching funchook")
+    # cmake/patch_funchook.cmake patches funchook's cmake/capstone.cmake.in to inject a
+    # PATCH_COMMAND into capstone's inner ExternalProject. That PATCH_COMMAND runs
+    # cmake/fix_capstone_policy.cmake after capstone is cloned, which removes the
+    # cmake_policy(SET CMP0048 OLD) line that CMake >= 3.27 rejects.
+    # This is incredibly scuffed and we should probably think of a better way to do this
+    set(CAPSTONE_FIX_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/cmake/fix_capstone_policy.cmake")
+    FetchContent_Declare(funchook
+        GIT_REPOSITORY https://github.com/kubo/funchook.git
+        GIT_TAG v1.1.3
+        GIT_SHALLOW TRUE
+        GIT_PROGRESS TRUE
+        PATCH_COMMAND ${CMAKE_COMMAND} -DSOURCE_DIR=<SOURCE_DIR> -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/patch_funchook.cmake
+        EXCLUDE_FROM_ALL
+    )
+    set(FUNCHOOK_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(FUNCHOOK_BUILD_SHARED OFF CACHE BOOL "" FORCE)
+    set(FUNCHOOK_INSTALL OFF CACHE BOOL "" FORCE)
+    if (APPLE AND CMAKE_OSX_ARCHITECTURES)
+        list(LENGTH CMAKE_OSX_ARCHITECTURES _osx_arch_count)
+        if (_osx_arch_count EQUAL 1)
+            list(GET CMAKE_OSX_ARCHITECTURES 0 _osx_arch)
+            if (_osx_arch MATCHES "^(arm64|aarch64|ARM64)$")
+                set(FUNCHOOK_CPU arm64 CACHE STRING "" FORCE)
+            elseif (_osx_arch MATCHES "^(x86_64|AMD64|amd64|i[3-6]86|x86)$")
+                set(FUNCHOOK_CPU x86 CACHE STRING "" FORCE)
+            endif ()
         endif ()
     endif ()
+    list(APPEND _fetch_content_deps funchook)
 endif ()
-FetchContent_MakeAvailable(cxxopts json miniz funchook)
+FetchContent_MakeAvailable(${_fetch_content_deps})
 
 if (DUSK_ENABLE_SENTRY_NATIVE)
     message(STATUS "dusklight: Fetching sentry-native")
@@ -424,8 +438,11 @@ target_link_libraries(dusklight_game_headers INTERFACE TracyClient)
 
 find_package(Threads REQUIRED)
 set(GAME_LIBS aurora::core aurora::gx aurora::gd aurora::si aurora::vi aurora::pad aurora::mtx aurora::os aurora::dvd
-    aurora::card freeverb cxxopts::cxxopts absl::flat_hash_map nlohmann_json::nlohmann_json TracyClient fmt::fmt funchook-static
+    aurora::card freeverb cxxopts::cxxopts absl::flat_hash_map nlohmann_json::nlohmann_json TracyClient fmt::fmt
     Threads::Threads zstd::libzstd)
+if (DUSK_ENABLE_CODE_MODS)
+    list(APPEND GAME_LIBS funchook-static)
+endif ()
 
 if (DUSK_ENABLE_SENTRY_NATIVE)
     list(APPEND GAME_LIBS sentry)
@@ -497,14 +514,8 @@ if(ANDROID)
     list(APPEND GAME_COMPILE_DEFS TARGET_ANDROID=1)
 endif ()
 
-set(DUSK_ENABLE_CODE_MODS_DEFAULT OFF)
-option(DUSK_ENABLE_CODE_MODS "Enable code mods" ${DUSK_ENABLE_CODE_MODS_DEFAULT})
 if (DUSK_ENABLE_CODE_MODS)
-    if (NOT ANDROID AND NOT IOS AND NOT TVOS)
-        list(APPEND GAME_COMPILE_DEFS DUSK_CODE_MODS=1)
-    else ()
-        message(FATAL_ERROR "Code mods not supported on the target platform!")
-    endif ()
+    list(APPEND GAME_COMPILE_DEFS DUSK_CODE_MODS=1)
 endif ()
 
 if (DUSK_PACKAGE_INSTALL)
@@ -737,7 +748,14 @@ if (APPLE)
     set_target_properties(dusklight PROPERTIES ${_apple_bundle_properties})
 
     if (NOT IOS AND NOT TVOS AND NOT "${CMAKE_GENERATOR}" STREQUAL "Xcode")
+        set(_sign_nested_commands)
+        if (TARGET crashpad_handler)
+            list(APPEND _sign_nested_commands
+                COMMAND /usr/bin/codesign --force --sign -
+                    "$<TARGET_FILE_DIR:dusklight>/crashpad_handler")
+        endif ()
         add_custom_command(TARGET dusklight POST_BUILD
+            ${_sign_nested_commands}
             COMMAND /usr/bin/codesign --force --sign - --entitlements
                 "${DUSK_ENTITLEMENTS}" "$<TARGET_BUNDLE_DIR:dusklight>"
             COMMENT "Signing Dusklight.app with entitlements"

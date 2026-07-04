@@ -1,5 +1,7 @@
 #include "dusk/hook_system.hpp"
 
+#if DUSK_CODE_MODS
+
 #include "dusk/logging.h"
 #include "dusk/mod_loader.hpp"
 
@@ -360,3 +362,41 @@ void hookRemoveMod(ModContext* context) {
 }
 
 }  // namespace dusk
+
+#else
+
+namespace dusk {
+
+ModResult hookInstallByAddr(ModContext*, void*, void*, void**) {
+    return MOD_UNSUPPORTED;
+}
+
+ModResult hookRegisterPre(void*, ModContext*, HookPreFn, const HookOptions*) {
+    return MOD_UNSUPPORTED;
+}
+
+ModResult hookRegisterPost(void*, ModContext*, HookPostFn, const HookOptions*) {
+    return MOD_UNSUPPORTED;
+}
+
+ModResult hookSetReplace(void*, ModContext*, HookReplaceFn, const HookOptions*) {
+    return MOD_UNSUPPORTED;
+}
+
+ModResult hookDispatchPre(ModContext*, void*, void*, void*, int* out_skip_original) {
+    if (out_skip_original != nullptr) {
+        *out_skip_original = 0;
+    }
+    return MOD_UNSUPPORTED;
+}
+
+ModResult hookDispatchPost(ModContext*, void*, void*, void*) {
+    return MOD_UNSUPPORTED;
+}
+
+void hookRemoveMod(ModContext*) {
+}
+
+}  // namespace dusk
+
+#endif
