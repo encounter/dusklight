@@ -210,4 +210,11 @@ struct J3DSys {
 extern u32 j3dDefaultViewNo;
 extern J3DSys j3dSys;
 
+#if defined(TARGET_PC) && defined(_WIN32) && !defined(DUSK_BUILDING_GAME)
+namespace dusk {
+J3DSys& j3d_sys();
+}
+#define j3dSys (::dusk::j3d_sys())
+#endif
+
 #endif /* J3DSYS_H */

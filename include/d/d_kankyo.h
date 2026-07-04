@@ -473,6 +473,13 @@ public:
 
 extern dScnKy_env_light_c g_env_light;
 
+#if defined(TARGET_PC) && defined(_WIN32) && !defined(DUSK_BUILDING_GAME)
+namespace dusk {
+dScnKy_env_light_c& env_light();
+}
+#define g_env_light (::dusk::env_light())
+#endif
+
 STATIC_ASSERT(sizeof(dScnKy_env_light_c) == 4880);
 
 inline dScnKy_env_light_c* dKy_getEnvlight() {

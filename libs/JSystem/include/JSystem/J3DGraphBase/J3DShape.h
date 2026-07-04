@@ -201,7 +201,11 @@ public:
     Vec* getMin() { return &mMin; }
     Vec* getMax() { return &mMax; }
 
+#if defined(TARGET_PC) && defined(_WIN32)
+    static void resetVcdVatCache();
+#else
     static void resetVcdVatCache() { sOldVcdVatCmd = NULL; }
+#endif
 
     static void* sOldVcdVatCmd;
     static bool sEnvelopeFlag;

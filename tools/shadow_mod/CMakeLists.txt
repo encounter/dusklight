@@ -8,11 +8,6 @@ endif ()
 
 set(DUSK_MODS_OUTPUT_DIR "${CMAKE_SOURCE_DIR}/mods" CACHE PATH "Directory to write .dusk packages into")
 
-if (WIN32)
-    message(STATUS "shadow_mod: disabled on Windows; uses non-exported internal game symbols")
-    return()
-endif ()
-
 add_dusk_mod(shadow_mod
     SOURCES  src/mod.cpp
     MOD_JSON mod.json

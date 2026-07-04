@@ -580,7 +580,29 @@ foreach(jsystem_lib IN LISTS JSYSTEM_LIBRARIES)
 endforeach()
 
 set(JSYSTEM_LINK_LIBRARIES ${JSYSTEM_LIBRARIES})
-if (CMAKE_CXX_LINK_GROUP_USING_RESCAN_SUPPORTED OR CMAKE_LINK_GROUP_USING_RESCAN_SUPPORTED)
+set(_jsystem_object_libraries)
+if (WIN32 AND DUSK_ENABLE_CODE_MODS)
+    foreach (_jsystem_lib IN LISTS JSYSTEM_LIBRARIES)
+        get_target_property(_jsystem_sources ${_jsystem_lib} SOURCES)
+        if (NOT _jsystem_sources)
+            continue()
+        endif ()
+
+        set(_jsystem_object_lib "${_jsystem_lib}_objects")
+        add_library(${_jsystem_object_lib} OBJECT ${_jsystem_sources})
+        target_compile_definitions(${_jsystem_object_lib} PRIVATE
+                ${GAME_COMPILE_DEFS}
+                DUSK_BUILDING_GAME=1
+                $<$<CONFIG:Debug>:DEBUG=1>
+                $<$<CONFIG:Debug>:PARTIAL_DEBUG=1>
+        )
+        target_include_directories(${_jsystem_object_lib} PRIVATE ${GAME_INCLUDE_DIRS})
+        target_link_libraries(${_jsystem_object_lib} PRIVATE ${GAME_LIBS})
+        set_target_properties(${_jsystem_object_lib} PROPERTIES FOLDER "JSystem")
+        list(APPEND _jsystem_object_libraries ${_jsystem_object_lib})
+    endforeach()
+    set(JSYSTEM_LINK_LIBRARIES)
+elseif (CMAKE_CXX_LINK_GROUP_USING_RESCAN_SUPPORTED OR CMAKE_LINK_GROUP_USING_RESCAN_SUPPORTED)
     # GNU ld resolves static archives in a single left-to-right pass. The split
     # JSystem libraries reference each other, so they need a RESCAN group there.
     set(JSYSTEM_LINK_LIBRARIES "$<LINK_GROUP:RESCAN,${JSYSTEM_LIBRARIES}>")
@@ -623,6 +645,9 @@ endif ()
 
 target_compile_definitions(${DUSK_MAIN_TARGET} PRIVATE ${GAME_COMPILE_DEFS} DUSK_BUILDING_GAME=1)
 target_include_directories(${DUSK_MAIN_TARGET} PRIVATE ${GAME_INCLUDE_DIRS})
+foreach (_jsystem_object_lib IN LISTS _jsystem_object_libraries)
+    target_sources(${DUSK_MAIN_TARGET} PRIVATE $<TARGET_OBJECTS:${_jsystem_object_lib}>)
+endforeach ()
 target_link_libraries(${DUSK_MAIN_TARGET} PRIVATE aurora::main ${GAME_LIBS} ${JSYSTEM_LINK_LIBRARIES})
 if (DUSK_ENABLE_CODE_MODS)
     aurora_target_export_sdk_symbols(${DUSK_MAIN_TARGET})

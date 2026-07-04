@@ -108,6 +108,14 @@ static u16 lightMaskData[8] = {
 
 dScnKy_env_light_c g_env_light;
 
+#if TARGET_PC
+namespace dusk {
+dScnKy_env_light_c& env_light() {
+    return ::g_env_light;
+}
+}
+#endif
+
 Z2EnvSeMgr g_mEnvSeMgr;
 
 #if DEBUG

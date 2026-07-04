@@ -15,6 +15,12 @@ void J3DGDSetVtxAttrFmtv(GXVtxFmt, GXVtxAttrFmtList const*, bool);
 void J3DFifoLoadPosMtxImm(Mtx, u32);
 void J3DFifoLoadNrmMtxImm(Mtx, u32);
 
+#if defined(TARGET_PC) && defined(_WIN32)
+void J3DShape::resetVcdVatCache() {
+    sOldVcdVatCmd = NULL;
+}
+#endif
+
 void J3DShape::initialize() {
     mMaterial = NULL;
     mIndex = -1;
