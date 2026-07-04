@@ -506,6 +506,15 @@ if (DUSK_GFX_DEBUG_GROUPS)
     target_compile_definitions(aurora_gx PRIVATE AURORA_GFX_DEBUG_GROUPS)
 endif ()
 
+# TODO: make compile defines more stable across configs
+target_compile_definitions(dusklight_game_headers INTERFACE
+        ${GAME_COMPILE_DEFS}
+        NDEBUG=1
+        NDEBUG_DEFINED=1
+        DEBUG_DEFINED=0
+        $<$<CONFIG:Debug>:PARTIAL_DEBUG=1>
+)
+
 # game_debug is for game code files that we know work when compiled with DEBUG=1
 # Of course, if building a release build, this distinction is irrelevant
 set(GAME_DEBUG_FILES
