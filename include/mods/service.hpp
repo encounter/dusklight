@@ -69,9 +69,11 @@ inline ModResult set_error(ModError* outError, ModResult code, const char* messa
 }  // namespace dusk::mods
 
 #define DEFINE_MOD()                                                                               \
-    extern "C" MOD_EXPORT ModContext* mod_ctx = nullptr;                                           \
-    extern "C" MOD_EXPORT const ModManifest* mod_get_manifest(void) {                              \
+    extern "C" {                                                                                   \
+    MOD_EXPORT ModContext* mod_ctx = nullptr;                                                       \
+    MOD_EXPORT const ModManifest* mod_get_manifest(void) {                                          \
         return ::dusk::mods::detail::manifest();                                                   \
+    }                                                                                              \
     }
 
 // Declares `static const service_type* variable`, filled in by the host before mod_initialize.
