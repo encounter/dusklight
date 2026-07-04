@@ -10,14 +10,6 @@
 
 J3DSys j3dSys;
 
-#if defined(TARGET_PC) && defined(_WIN32)
-namespace dusk {
-J3DSys& j3d_sys() {
-    return ::j3dSys;
-}
-}
-#endif
-
 Mtx J3DSys::mCurrentMtx;
 
 Vec J3DSys::mCurrentS;

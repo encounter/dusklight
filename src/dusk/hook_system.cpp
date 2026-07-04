@@ -179,6 +179,7 @@ ModResult hookRegisterPre(
     if (fn_addr == nullptr || context == nullptr || callback == nullptr) {
         return MOD_INVALID_ARGUMENT;
     }
+    fn_addr = resolve_import_thunk(fn_addr);
     auto& hooks = s_registry[reinterpret_cast<uintptr_t>(fn_addr)].pre;
     hooks.push_back(PreHookFn{context, callback, normalize_options(options), s_nextOrder++});
     sort_hooks(hooks);
@@ -190,6 +191,7 @@ ModResult hookRegisterPost(
     if (fn_addr == nullptr || context == nullptr || callback == nullptr) {
         return MOD_INVALID_ARGUMENT;
     }
+    fn_addr = resolve_import_thunk(fn_addr);
     auto& hooks = s_registry[reinterpret_cast<uintptr_t>(fn_addr)].post;
     HookOptions normalized = normalize_options(options);
     hooks.push_back(VoidHookFn{context, nullptr, callback, normalized, s_nextOrder++});
@@ -204,6 +206,7 @@ ModResult hookSetReplace(
     }
 
     HookOptions normalized = normalize_options(options);
+    fn_addr = resolve_import_thunk(fn_addr);
     auto& slot = s_registry[reinterpret_cast<uintptr_t>(fn_addr)];
     if (slot.replace.replaceCallback == nullptr) {
         slot.replace = VoidHookFn{context, callback, nullptr, normalized, s_nextOrder++};
@@ -238,6 +241,7 @@ ModResult hookDispatchPre(
         return MOD_INVALID_ARGUMENT;
     }
 
+    fn_addr = resolve_import_thunk(fn_addr);
     auto it = s_registry.find(reinterpret_cast<uintptr_t>(fn_addr));
     if (it == s_registry.end()) {
         return MOD_OK;
@@ -268,6 +272,7 @@ ModResult hookDispatchPost(ModContext*, void* fn_addr, void* args, void* retval)
         return MOD_INVALID_ARGUMENT;
     }
 
+    fn_addr = resolve_import_thunk(fn_addr);
     auto it = s_registry.find(reinterpret_cast<uintptr_t>(fn_addr));
     if (it == s_registry.end()) {
         return MOD_OK;

@@ -58,6 +58,22 @@ Building produces `my_mod.dusk` in `mods/` next to the project root (configurabl
 
 You can also pass `--mods <dir>` on the command line, which is handy during development.
 
+**Windows toolchains.** Mods must use the MSVC ABI; two toolchains are supported, differing
+in how *game data* (globals like `g_dComIfG_gameInfo`) is reached:
+
+- **clang-cl** (a `windows-clang-*` preset, or any clang-cl + lld toolchain): everything just
+  works — un-annotated references to game data are auto-imported by lld's mingw mode and
+  fixed up at load by the SDK. Zero annotations needed.
+- **Plain MSVC** (`windows-msvc-*` presets, or Visual Studio out of the box): only game data
+  whose declaration carries `DUSK_GAME_DATA`/`DUSK_GAME_EXTERN` is reachable (MSVC has no
+  code-generation mode that can span the EXE↔DLL address-space distance without
+  `__declspec(dllimport)`). All data the in-tree mods touch is annotated; if your mod hits an
+  unannotated global you'll get a clear `LNK2001: unresolved external symbol` at link time —
+  annotate the declaration in the game header (and PR it), or switch to a clang preset.
+
+Function calls and hooks work identically on both. `add_dusk_mod` picks the right link setup
+from the compiler automatically.
+
 A `.dusk` may contain one library per platform/architecture. The loader only considers libraries with the host platform's extension (`.dll` on Windows, `.dylib` on macOS, `.so` on Linux), preferring one whose name ends in the host's architecture suffix (`_arm64`, `_x64`, `_x86`); a library with no architecture suffix is treated as arch-neutral (e.g. a macOS universal binary). If the bundle contains libraries but none matches the host platform and architecture, the mod is disabled with an error rather than loading a mismatched library. A bundle with no libraries at all is loaded as an asset-only mod. Mods can be enabled, disabled, and reloaded at runtime from the Mods window; the enabled setting persists (see [Runtime Lifecycle](#runtime-lifecycle)).
 
 ---
@@ -465,6 +481,44 @@ HookAction on_take_damage_pre(ModContext*, void* args, void*, void*) {
 ```
 
 For reference parameters (e.g. `const cXyz& pos`), `arg_ref<cXyz>` yields a direct reference.
+
+### Resolving symbols by name
+
+`resolve` (HookService ≥ 1.1) looks a symbol up in the **symbol manifest** — a name→address
+map generated alongside every game build and keyed to that exact binary. It covers the whole
+image, including functions that aren't exported (file-local statics), which makes them
+hookable:
+
+```cpp
+IMPORT_SERVICE_VERSION(HookService, svc_hook, 1);
+
+void* addr = nullptr;
+uint32_t flags = 0;
+if (svc_hook->resolve(mod_ctx, "GXSetProjection", &addr, &flags) == MOD_OK) {
+    // addr is the function's real address in the running game; hook or call it.
+}
+```
+
+Names use the dlsym convention (no Mach-O leading underscore). On Windows both linker-decorated
+names and undecorated display names (`daAlink_c::posMove`) are present; display names carry no
+parameter list, so overloads return `MOD_CONFLICT` — use the decorated name to disambiguate.
+`MOD_UNSUPPORTED` means the manifest is missing or was built for a different game binary;
+address-based hooking still works, so treat by-name resolution as gracefully degradable.
+
+### The game-code ABI contract
+
+If your mod calls or hooks game code directly (anything beyond the service APIs), import
+`GameCodeService` (`mods/svc/game_code.h`):
+
+```cpp
+IMPORT_SERVICE(GameCodeService, svc_game_code);
+```
+
+Its **major version is the game-code ABI epoch**: it's bumped when game struct layouts change
+incompatibly, and the ordinary service version check then rejects your mod with a clear error
+instead of letting it corrupt memory in a game it was never built for. The payload exposes the
+running build's id and toolchain tag (e.g. `msvc-x64-windows`) for diagnostics. Service-only
+and asset-only mods should *not* import it — they stay compatible across epochs.
 
 ---
 

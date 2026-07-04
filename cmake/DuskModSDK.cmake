@@ -1,6 +1,7 @@
 # add_dusk_mod(<target> SOURCES <file>... MOD_JSON <mod.json> [RES_DIR <res>] [OVERLAY_DIR <overlay>]
 #              [TEXTURES_DIR <textures>] [OUTPUT_DIR <dir>])
 set(DUSK_MODS_OUTPUT_DIR "${CMAKE_SOURCE_DIR}/mods" CACHE PATH "Directory to write .dusk packages into")
+set(_DUSK_MOD_SDK_DIR "${CMAKE_CURRENT_LIST_DIR}")
 
 # The loader matches libraries by platform extension + architecture suffix
 # (_arm64/_x64/_x86); an unsuffixed name is treated as arch-neutral.
@@ -82,11 +83,48 @@ function(add_dusk_mod target_name)
     elseif(UNIX)
         target_link_options(${target_name} PRIVATE -Wl,--allow-shlib-undefined)
     elseif(WIN32)
-        target_link_libraries(${target_name} PRIVATE dusklight_game)
-        if(MSVC)
-            target_link_options(${target_name} PRIVATE /INCREMENTAL:NO)
-            set_target_properties(${target_name} PROPERTIES MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
+        # Link against the tool-generated import library (curated game-ABI surface; the OS
+        # loader binds these imports against the running dusklight.exe). Function calls
+        # resolve through import thunks on either toolchain. Data is toolchain-dependent
+        # (MODS_LINKING.md §4):
+        #   - clang-cl: lld's mingw mode auto-imports un-annotated data references, fixed up
+        #     at load by the SDK's pseudo-relocation runtime. -mcmodel=large is REQUIRED —
+        #     default 32-bit RIP-relative references cannot reach across the measured
+        #     28-33 GiB EXE<->DLL ASLR distance.
+        #   - plain MSVC: only DUSK_GAME_DATA-annotated data is reachable (cl has no large
+        #     code model and link.exe no auto-import). Un-annotated references fail the mod
+        #     link with LNK2001; fix by annotating the declaration or using a clang preset.
+        if(NOT DUSK_GAME_IMPLIB)
+            message(FATAL_ERROR "add_dusk_mod: DUSK_GAME_IMPLIB is not set (is DUSK_ENABLE_CODE_MODS on?)")
         endif()
+        # No target-level dependency on dusklight here — the SDK already makes dusklight
+        # depend on the mod packages, so that would cycle. The implib is a declared
+        # BYPRODUCT of dusklight's POST_BUILD, which gives Ninja the file-level edge.
+        target_link_libraries(${target_name} PRIVATE "${DUSK_GAME_IMPLIB}")
+        set_target_properties(${target_name} PROPERTIES MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+        if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+            target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:C,CXX>:/clang:-mcmodel=large>")
+            target_sources(${target_name} PRIVATE "${_DUSK_MOD_SDK_DIR}/mod_sdk/pseudo_reloc.cpp")
+            # lld mingw mode rewrites /DEFAULTLIB directives to -l style and skips %LIB%, so
+            # the CRT libraries and search paths are spelled out explicitly (static CRT per mod).
+            target_link_options(${target_name} PRIVATE -lldmingw /nodefaultlib /INCREMENTAL:NO)
+            target_link_libraries(${target_name} PRIVATE
+                "$<IF:$<CONFIG:Debug>,libcmtd.lib,libcmt.lib>"
+                "$<IF:$<CONFIG:Debug>,libcpmtd.lib,libcpmt.lib>"
+                "$<IF:$<CONFIG:Debug>,libvcruntimed.lib,libvcruntime.lib>"
+                "$<IF:$<CONFIG:Debug>,libucrtd.lib,libucrt.lib>"
+                oldnames.lib uuid.lib kernel32.lib user32.lib)
+            set(_lib_dirs "$ENV{LIB}")
+            if("${_lib_dirs}" STREQUAL "")
+                message(FATAL_ERROR "add_dusk_mod: %LIB% is empty — configure from a VS developer environment")
+            endif()
+            foreach(_libdir IN LISTS _lib_dirs)
+                target_link_options(${target_name} PRIVATE "/libpath:${_libdir}")
+            endforeach()
+        endif()
+        # Plain MSVC needs nothing extra: link.exe consumes the implib directly and the
+        # default CRT handling applies. pseudo_reloc.cpp must NOT be compiled in — its
+        # __RUNTIME_PSEUDO_RELOC_LIST__ externs are lld-synthesized and would be unresolved.
     endif()
 
 
@@ -150,5 +188,11 @@ function(add_dusk_mod target_name)
         VERBATIM
     )
     add_custom_target(${_package_target} ALL DEPENDS "${_out}")
-    add_dependencies(dusklight ${_package_target}) # Rebuild mod package on main target
+    if(NOT WIN32 AND TARGET dusklight)
+        # Rebuild mod packages when building only the main target (IDE convenience). Not on
+        # Windows: mods link dusklight_imports.lib, a byproduct of the dusklight build, so
+        # the dependency direction is inverted there and this edge would cycle. The package
+        # targets are in ALL either way.
+        add_dependencies(dusklight ${_package_target})
+    endif()
 endfunction()

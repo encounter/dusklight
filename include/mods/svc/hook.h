@@ -4,7 +4,17 @@
 
 #define HOOK_SERVICE_ID "dev.twilitrealm.dusklight.hook"
 #define HOOK_SERVICE_MAJOR 1u
-#define HOOK_SERVICE_MINOR 0u
+#define HOOK_SERVICE_MINOR 1u
+
+/* Symbol flags reported by resolve() (mirrors the symbol manifest). */
+typedef enum HookSymbolFlags {
+    HOOK_SYMBOL_CODE = 1u << 0u,
+    HOOK_SYMBOL_DATA = 1u << 1u,
+    /* Not exported/dynamically visible: hookable, but never linkable. */
+    HOOK_SYMBOL_LOCAL = 1u << 2u,
+    /* Other names share this address (ICF fold/alias): a hook intercepts them all. */
+    HOOK_SYMBOL_MULTI_NAME = 1u << 3u,
+} HookSymbolFlags;
 
 typedef enum HookAction {
     HOOK_CONTINUE = 0,
@@ -53,6 +63,19 @@ typedef struct HookService {
     ModResult (*dispatch_pre)(
         ModContext* ctx, void* fn_addr, void* args, void* retval, int* out_skip_original);
     ModResult (*dispatch_post)(ModContext* ctx, void* fn_addr, void* args, void* retval);
+
+    /* --- minor 1 --- */
+
+    /* Resolve a game symbol by name via the build-keyed symbol manifest, including
+     * non-exported (static) functions. Names use the dlsym convention (no Mach-O
+     * underscore); on Windows both decorated names and undecorated display names work,
+     * though display names without a signature may be ambiguous across overloads.
+     * out_flags (optional) receives HookSymbolFlags.
+     * Results: MOD_OK; MOD_UNSUPPORTED (no manifest for this build — missing or stale);
+     * MOD_UNAVAILABLE (symbol not found); MOD_CONFLICT (name maps to more than one
+     * address: C++ overloads or per-TU statics — use the decorated name). */
+    ModResult (*resolve)(
+        ModContext* ctx, const char* symbol, void** out_addr, uint32_t* out_flags);
 } HookService;
 
 #ifdef __cplusplus

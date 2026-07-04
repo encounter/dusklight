@@ -22,6 +22,7 @@
 #include "mods/service.hpp"
 #include "mods/svc/camera.h"
 #include "mods/svc/config.h"
+#include "mods/svc/game_code.h"
 #include "mods/svc/gfx.h"
 #include "mods/svc/hook.h"
 #include "mods/svc/log.h"
@@ -41,6 +42,9 @@ IMPORT_SERVICE(ResourceService, svc_resource);
 IMPORT_SERVICE_VERSION(UiService, svc_ui, 2);
 IMPORT_SERVICE(GfxService, svc_gfx);
 IMPORT_SERVICE(HookService, svc_hook);
+// shadow_mod links game/JSystem code directly (j3dSys, g_env_light, dKy_setLight...):
+// importing the epoch service makes an ABI-incompatible game reject it cleanly.
+IMPORT_SERVICE(GameCodeService, svc_game_code);
 IMPORT_SERVICE(LogService, svc_log);
 
 namespace {

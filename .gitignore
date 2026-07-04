@@ -55,3 +55,4 @@ pipeline_cache.bin
 extract
 
 *.dusk
+tools/symgen/target/

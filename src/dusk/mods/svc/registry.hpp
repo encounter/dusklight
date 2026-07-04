@@ -3,6 +3,7 @@
 #include "dusk/mod_loader.hpp"
 #include "mods/svc/camera.h"
 #include "mods/svc/config.h"
+#include "mods/svc/game_code.h"
 #include "mods/svc/gfx.h"
 #include "mods/svc/hook.h"
 #include "mods/svc/host.h"
@@ -46,6 +47,7 @@ const HookService& hook_service();
 const OverlayService& overlay_service();
 const TextureService& texture_service();
 const ConfigService& config_service();
+const GameCodeService& game_code_service();
 const GfxService& gfx_service();
 const CameraService& camera_service();
 

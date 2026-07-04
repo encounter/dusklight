@@ -15,6 +15,7 @@
 #include "depgraph.hpp"
 #include "dusk/config.hpp"
 #include "dusk/io.hpp"
+#include "dusk/mods/manifest.hpp"
 #include "dusk/mods/svc/registry.hpp"
 #include "miniz.h"
 #include "native_module.hpp"
@@ -602,6 +603,8 @@ void ModLoader::init() {
         return;
     }
     m_initialized = true;
+
+    manifest::initialize();
 
     namespace fs = std::filesystem;
     if (!fs::is_directory(m_modsDir)) {

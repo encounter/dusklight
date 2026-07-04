@@ -180,8 +180,8 @@ option(DUSK_GFX_DEBUG_GROUPS "Report debug groups to the native graphics API" ${
 set(DUSK_SENTRY_DSN "" CACHE STRING "Sentry DSN")
 set(DUSK_SENTRY_ENVIRONMENT "development" CACHE STRING "Sentry environment")
 
-# Edit & Continue
-if (MSVC)
+# Edit & Continue (real MSVC only; clang-cl has no /ZI)
+if (MSVC AND CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
     if ("${CMAKE_MSVC_DEBUG_INFORMATION_FORMAT}" STREQUAL "" AND CMAKE_BUILD_TYPE STREQUAL "Debug")
         set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "EditAndContinue")
     endif ()
@@ -580,29 +580,7 @@ foreach(jsystem_lib IN LISTS JSYSTEM_LIBRARIES)
 endforeach()
 
 set(JSYSTEM_LINK_LIBRARIES ${JSYSTEM_LIBRARIES})
-set(_jsystem_object_libraries)
-if (WIN32 AND DUSK_ENABLE_CODE_MODS)
-    foreach (_jsystem_lib IN LISTS JSYSTEM_LIBRARIES)
-        get_target_property(_jsystem_sources ${_jsystem_lib} SOURCES)
-        if (NOT _jsystem_sources)
-            continue()
-        endif ()
-
-        set(_jsystem_object_lib "${_jsystem_lib}_objects")
-        add_library(${_jsystem_object_lib} OBJECT ${_jsystem_sources})
-        target_compile_definitions(${_jsystem_object_lib} PRIVATE
-                ${GAME_COMPILE_DEFS}
-                DUSK_BUILDING_GAME=1
-                $<$<CONFIG:Debug>:DEBUG=1>
-                $<$<CONFIG:Debug>:PARTIAL_DEBUG=1>
-        )
-        target_include_directories(${_jsystem_object_lib} PRIVATE ${GAME_INCLUDE_DIRS})
-        target_link_libraries(${_jsystem_object_lib} PRIVATE ${GAME_LIBS})
-        set_target_properties(${_jsystem_object_lib} PROPERTIES FOLDER "JSystem")
-        list(APPEND _jsystem_object_libraries ${_jsystem_object_lib})
-    endforeach()
-    set(JSYSTEM_LINK_LIBRARIES)
-elseif (CMAKE_CXX_LINK_GROUP_USING_RESCAN_SUPPORTED OR CMAKE_LINK_GROUP_USING_RESCAN_SUPPORTED)
+if (CMAKE_CXX_LINK_GROUP_USING_RESCAN_SUPPORTED OR CMAKE_LINK_GROUP_USING_RESCAN_SUPPORTED)
     # GNU ld resolves static archives in a single left-to-right pass. The split
     # JSystem libraries reference each other, so they need a RESCAN group there.
     set(JSYSTEM_LINK_LIBRARIES "$<LINK_GROUP:RESCAN,${JSYSTEM_LIBRARIES}>")
@@ -613,44 +591,29 @@ if(ANDROID)
     add_library(dusklight SHARED ${DUSK_FILES})
     set_target_properties(dusklight PROPERTIES OUTPUT_NAME main)
     set(DUSK_MAIN_TARGET dusklight)
-elseif(WIN32)
-    add_library(dusklight_game SHARED ${DUSK_FILES})
-    set_target_properties(dusklight_game PROPERTIES
-            WINDOWS_EXPORT_ALL_SYMBOLS ${DUSK_ENABLE_CODE_MODS}
-            OUTPUT_NAME dusklight
-            PDB_NAME dusklight_game)
-
-    # rmlui_core uses its own PCH which creates a duplicate PCH marker symbol when linked
-    # Disabling rmlui's PCH removes the conflicting marker and lets the link succeed
-    if (MSVC AND TARGET rmlui_core AND DUSK_ENABLE_CODE_MODS)
-        set_target_properties(rmlui_core PROPERTIES DISABLE_PRECOMPILE_HEADERS ON)
-    endif ()
-
-    add_executable(dusklight WIN32 src/dusk/launcher_win32.cpp)
-    target_link_libraries(dusklight PRIVATE dusklight_game)
-    target_include_directories(dusklight PRIVATE include)
-    set(DUSK_MAIN_TARGET dusklight_game)
 else ()
     add_executable(dusklight ${DUSK_FILES})
     set(DUSK_MAIN_TARGET dusklight)
+    if (WIN32)
+        set_target_properties(dusklight PROPERTIES WIN32_EXECUTABLE TRUE)
+    endif ()
 endif ()
 if (ENABLE_ASAN)
     target_sources(${DUSK_MAIN_TARGET} PRIVATE src/dusk/asan_options.c)
 endif ()
 
-if (WIN32 AND TARGET imgui)
-    target_compile_definitions(imgui PRIVATE "IMGUI_API=__declspec(dllexport)")
-    target_sources(${DUSK_MAIN_TARGET} PRIVATE $<TARGET_OBJECTS:imgui>)
-endif ()
-
 target_compile_definitions(${DUSK_MAIN_TARGET} PRIVATE ${GAME_COMPILE_DEFS} DUSK_BUILDING_GAME=1)
 target_include_directories(${DUSK_MAIN_TARGET} PRIVATE ${GAME_INCLUDE_DIRS})
-foreach (_jsystem_object_lib IN LISTS _jsystem_object_libraries)
-    target_sources(${DUSK_MAIN_TARGET} PRIVATE $<TARGET_OBJECTS:${_jsystem_object_lib}>)
-endforeach ()
 target_link_libraries(${DUSK_MAIN_TARGET} PRIVATE aurora::main ${GAME_LIBS} ${JSYSTEM_LINK_LIBRARIES})
 if (DUSK_ENABLE_CODE_MODS)
-    aurora_target_export_sdk_symbols(${DUSK_MAIN_TARGET})
+    include(cmake/DuskSymbolManifest.cmake)
+    if (WIN32)
+        # Curated export surface + import library for mod linking (MODS_LINKING.md §3.A′).
+        include(cmake/DuskWindowsExports.cmake)
+        dusk_setup_windows_exports(${DUSK_MAIN_TARGET})
+    endif ()
+    # Post-link symbol manifest: hookable-surface name→RVA map keyed to the build.
+    dusk_setup_symbol_manifest(${DUSK_MAIN_TARGET})
 endif ()
 target_precompile_headers(${DUSK_MAIN_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CMAKE_CURRENT_LIST_DIR}/include/dusk_pch.hpp>")
 
@@ -805,11 +768,7 @@ if (IOS)
 endif ()
 
 include(extern/aurora/cmake/AuroraCopyRuntimeDLLs.cmake)
-if(WIN32)
-    aurora_copy_runtime_dlls(dusklight dusklight_game)
-else()
-    aurora_copy_runtime_dlls(dusklight)
-endif()
+aurora_copy_runtime_dlls(dusklight)
 
 if (DUSK_SELECTED_OPT)
     if (CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
@@ -848,9 +807,6 @@ function(get_target_prefix target result_var)
     endif ()
 endfunction()
 list(APPEND BINARY_TARGETS dusklight)
-if(WIN32)
-    list(APPEND BINARY_TARGETS dusklight_game)
-endif()
 set(EXTRA_TARGETS "")
 if (TARGET crashpad_handler)
     list(APPEND EXTRA_TARGETS crashpad_handler)
@@ -934,6 +890,10 @@ foreach (target IN LISTS BINARY_TARGETS)
 endforeach ()
 
 if (DUSK_ENABLE_CODE_MODS)
+    # In-tree mods build on every toolchain, including plain MSVC: they only touch
+    # DUSK_GAME_DATA-annotated game data (MODS_LINKING.md §4). An unresolved data symbol
+    # (LNK2001) in one of these under a windows-msvc preset means a new game-data reference
+    # needs its declaration annotated.
     add_subdirectory(tools/mod_test)
     add_subdirectory(tools/mod_test_dep)
     add_subdirectory(tools/crt_mod)

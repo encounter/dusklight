@@ -1,6 +1,7 @@
 #include "registry.hpp"
 
 #include "dusk/hook_system.hpp"
+#include "dusk/mods/manifest.hpp"
 
 namespace dusk::mods::svc {
 namespace {
@@ -34,6 +35,23 @@ ModResult hook_dispatch_post(ModContext* context, void* fnAddr, void* args, void
     return hookDispatchPost(context, fnAddr, args, retval);
 }
 
+ModResult hook_resolve(ModContext*, const char* symbol, void** outAddr, uint32_t* outFlags) {
+    if (symbol == nullptr || outAddr == nullptr) {
+        return MOD_INVALID_ARGUMENT;
+    }
+    switch (manifest::resolve(symbol, outAddr, outFlags)) {
+    case manifest::ResolveStatus::Ok:
+        return MOD_OK;
+    case manifest::ResolveStatus::Unavailable:
+        return MOD_UNSUPPORTED;
+    case manifest::ResolveStatus::NotFound:
+        return MOD_UNAVAILABLE;
+    case manifest::ResolveStatus::Ambiguous:
+        return MOD_CONFLICT;
+    }
+    return MOD_ERROR;
+}
+
 constexpr HookService s_hookService{
     .header = SERVICE_HEADER(HookService, HOOK_SERVICE_MAJOR, HOOK_SERVICE_MINOR),
     .install = hook_install,
@@ -42,6 +60,7 @@ constexpr HookService s_hookService{
     .set_replace = hook_set_replace,
     .dispatch_pre = hook_dispatch_pre,
     .dispatch_post = hook_dispatch_post,
+    .resolve = hook_resolve,
 };
 
 }  // namespace

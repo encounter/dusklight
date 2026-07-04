@@ -9,6 +9,7 @@
 #include "mods/service.hpp"
 #include "mods/svc/camera.h"
 #include "mods/svc/config.h"
+#include "mods/svc/game_code.h"
 #include "mods/svc/gfx.h"
 #include "mods/svc/hook.h"
 #include "mods/svc/host.h"
@@ -27,12 +28,15 @@ IMPORT_SERVICE(HostService, svc_host);
 IMPORT_SERVICE(LogService, svc_log);
 IMPORT_SERVICE(ResourceService, svc_resource);
 IMPORT_SERVICE_VERSION(UiService, svc_ui, 2);
-IMPORT_SERVICE(HookService, svc_hook);
+IMPORT_SERVICE_VERSION(HookService, svc_hook, 1);
 IMPORT_SERVICE(OverlayService, svc_overlay);
 IMPORT_SERVICE(TextureService, svc_texture);
 IMPORT_SERVICE(ConfigService, svc_config);
 IMPORT_SERVICE_VERSION(GfxService, svc_gfx, 1);
 IMPORT_SERVICE(CameraService, svc_camera);
+// mod_test hooks daAlink_c/fapGm_Execute directly, so it participates in the game-code
+// ABI epoch contract like any game-code-touching mod.
+IMPORT_SERVICE(GameCodeService, svc_game_code);
 // Both provided by mod_test_dep, which sorts *after* mod_test.dusk in the mods directory;
 // dependency ordering must initialize it first regardless. The deferred service only
 // resolves if mod_test_dep published it during its initialization.
@@ -1053,6 +1057,44 @@ MOD_EXPORT ModResult mod_initialize(ModError* error) {
     result = dusk::mods::hook_add_pre<&fapGm_Execute>(svc_hook, on_game_loop_pre);
     if (result != MOD_OK) {
         return require_ok(result, error, "failed to register game loop hook");
+    }
+
+    // HookService v1.1: by-name symbol resolution through the build-keyed manifest.
+    {
+        void* addr = nullptr;
+        uint32_t flags = 0;
+        ModResult r = svc_hook->resolve(mod_ctx, "GXSetProjection", &addr, &flags);
+        if (r == MOD_UNSUPPORTED) {
+            svc_log->warn(mod_ctx, "HookService resolve: no symbol manifest (skipped)");
+        } else {
+            bool ok = r == MOD_OK && addr != nullptr && (flags & HOOK_SYMBOL_CODE) != 0;
+            void* dummy = nullptr;
+            ok = ok && svc_hook->resolve(mod_ctx, "dusk_no_such_symbol_xyzzy", &dummy,
+                           nullptr) == MOD_UNAVAILABLE;
+            ok = ok && svc_hook->resolve(mod_ctx, nullptr, &dummy, nullptr) ==
+                           MOD_INVALID_ARGUMENT;
+            ok = ok &&
+                 svc_hook->resolve(mod_ctx, "GXSetProjection", nullptr, nullptr) ==
+                     MOD_INVALID_ARGUMENT;
+            if (ok) {
+                svc_log->info(mod_ctx, "HookService resolve OK");
+            } else {
+                svc_log->error(mod_ctx, "HookService resolve FAILED");
+            }
+        }
+    }
+
+    // GameCodeService: the ABI-epoch import for game-code-touching mods.
+    if (svc_game_code->abi_tag != nullptr &&
+        (svc_game_code->build_id_len == 0 || svc_game_code->build_id != nullptr))
+    {
+        char gcBuf[96];
+        std::snprintf(gcBuf, sizeof(gcBuf), "GameCodeService OK: epoch %u, abi %s, build id len %u",
+            static_cast<unsigned>(svc_game_code->header.major_version), svc_game_code->abi_tag,
+            static_cast<unsigned>(svc_game_code->build_id_len));
+        svc_log->info(mod_ctx, gcBuf);
+    } else {
+        svc_log->error(mod_ctx, "GameCodeService FAILED: invalid payload");
     }
 
     UiModsPanelDesc panelDesc = UI_MODS_PANEL_DESC_INIT;

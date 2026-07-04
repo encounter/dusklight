@@ -8,6 +8,7 @@
 #include "JSystem/JMath/JMath.h"
 #include "dusk/frame_interpolation.h"
 #include "dusk/endian.h"
+#include "global.h"
 
 enum J3DSysDrawBuf {
     /* 0x0 */ J3DSysDrawBuf_Opa,
@@ -208,13 +209,6 @@ struct J3DSys {
 };
 
 extern u32 j3dDefaultViewNo;
-extern J3DSys j3dSys;
-
-#if defined(TARGET_PC) && defined(_WIN32) && !defined(DUSK_BUILDING_GAME)
-namespace dusk {
-J3DSys& j3d_sys();
-}
-#define j3dSys (::dusk::j3d_sys())
-#endif
+DUSK_GAME_EXTERN J3DSys j3dSys;
 
 #endif /* J3DSYS_H */
