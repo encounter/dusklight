@@ -1191,11 +1191,11 @@ MOD_EXPORT ModResult mod_initialize(ModError* error) {
     if (result != MOD_OK) {
         return result;
     }
-    result = register_int_option("mapSize", 1, g_cvarMapSize, error);
+    result = register_int_option("mapSize", 2, g_cvarMapSize, error);
     if (result != MOD_OK) {
         return result;
     }
-    result = register_bool_option("noFrustumClipping", false, g_cvarNoFrustumClipping, error);
+    result = register_bool_option("noFrustumClipping", true, g_cvarNoFrustumClipping, error);
     if (result != MOD_OK) {
         return result;
     }
@@ -1203,11 +1203,11 @@ MOD_EXPORT ModResult mod_initialize(ModError* error) {
     if (result != MOD_OK) {
         return result;
     }
-    result = register_int_option("pcf", 1, g_cvarPcf, error);
+    result = register_int_option("pcf", 2, g_cvarPcf, error);
     if (result != MOD_OK) {
         return result;
     }
-    result = register_int_option("bias", 15, g_cvarBias, error);
+    result = register_int_option("bias", 55, g_cvarBias, error);
     if (result != MOD_OK) {
         return result;
     }
@@ -1215,7 +1215,7 @@ MOD_EXPORT ModResult mod_initialize(ModError* error) {
     if (result != MOD_OK) {
         return result;
     }
-    result = register_bool_option("contactShadows", false, g_cvarContactShadows, error);
+    result = register_bool_option("contactShadows", true, g_cvarContactShadows, error);
     if (result != MOD_OK) {
         return result;
     }
