@@ -12,7 +12,6 @@
 #include "d/d_com_inf_game.h"
 #include "m_Do/m_Do_ext.h"
 #include <cstring>
-#include "dusk/logging.h"
 
 #if DEBUG
 #include "f_pc/f_pc_debug_sv.h"
@@ -928,7 +927,6 @@ int cDyl_LinkASync(s16 i_ProfName) {
     JUT_ASSERT(266, DMC_initialized);
 
     if (!cDyl_Initialized) {
-        DuskLog.debug("cDyl_LinkASync: NOT initialized yet, profName={}", i_ProfName);
         OS_REPORT_ERROR("初期化が終わってないのに呼んでもらっても困ります %d %s\n", i_ProfName, fpcDbSv_getNameString(i_ProfName));
         return cPhs_INIT_e;
     }
@@ -949,12 +947,10 @@ int cDyl_LinkASync(s16 i_ProfName) {
                 return cPhs_COMPLEATE_e;
             } else {
                 // "cDyl_LinkASync: Link failed. Returning\n"
-                DuskLog.debug("cDyl_LinkASync: link FAILED for profName={}", i_ProfName);
                 OSReport_Error("cDyl_LinkASync: リンクに失敗しました。諦めます\n");
                 return cPhs_ERROR_e;
             }
         } else {
-            DuskLog.debug("cDyl_LinkASync: load_async not ready for profName={}", i_ProfName);
             return cPhs_INIT_e;
         }
     }
@@ -964,7 +960,6 @@ int cDyl_LinkASync(s16 i_ProfName) {
 }
 
 static int cDyl_InitCallback(void* param_0) {
-    DuskLog.debug("[DIAG] cDyl_InitCallback: START");
     JUT_ASSERT(335, !cDyl_Initialized);
 
 #ifdef TARGET_PC
@@ -976,13 +971,10 @@ static int cDyl_InitCallback(void* param_0) {
     #else
     JKRHeap* parentHeap = DynamicModuleControlBase::getHeap();
     #endif
-    DuskLog.debug("cDyl_InitCallback: parentHeap={}", (void*)parentHeap);
 
     JKRFileCache* loader = JKRMountDvdDrive("/", parentHeap, NULL);
-    DuskLog.debug("cDyl_InitCallback: JKRMountDvdDrive loader={}", (void*)loader);
 
     DynamicModuleControl::initialize();
-    DuskLog.debug("cDyl_InitCallback: DynamicModuleControl::initialize done");
 
     #if PLATFORM_GCN
     void* strTbl = JKRGetResource("/dvd/str/Final/Release/frameworkF.str");
@@ -991,21 +983,17 @@ static int cDyl_InitCallback(void* param_0) {
     #else
     void* strTbl = JKRGetResource("/dvd/str/Final/Release/frameworkF.str");
     #endif
-    DuskLog.debug("cDyl_InitCallback: frameworkF.str={}", strTbl);
 
     JKRDetachResource(strTbl, loader);
     JKRUnmountDvdDrive(loader);
     OSSetStringTable(strTbl);
 
     DynamicModuleControl dmc("f_pc_profile_lst");
-    DuskLog.debug("cDyl_InitCallback: linking f_pc_profile_lst...");
     dmc.link();
-    DuskLog.debug("cDyl_InitCallback: link done");
 #endif
     cDyl_Initialized = true;
 
     fopScnM_CreateReq(fpcNm_LOGO_SCENE_e, 0x7FFF, 0, 0);
-    DuskLog.debug("cDyl_InitCallback: fpcNm_LOGO_SCENE_e created, DONE");
     return 1;
 }
 

@@ -5,8 +5,6 @@
 
 #include "f_op/f_op_scene_req.h"
 #include <cstdio>
-#include "dusk/imgui/ImGuiConsole.hpp"
-#include "dusk/logging.h"
 #include "f_op/f_op_overlap_mng.h"
 #include "f_op/f_op_scene.h"
 #include "f_op/f_op_scene_pause.h"
@@ -19,12 +17,7 @@ static cPhs_Step fopScnRq_phase_ClearOverlap(scene_request_class* i_sceneReq) {
 }
 
 static cPhs_Step fopScnRq_phase_Execute(scene_request_class* i_sceneReq) {
-    static int sExecLogCount = 0;
     cPhs_Step ret = (cPhs_Step)fpcNdRq_Execute(&i_sceneReq->create_request);
-    if (sExecLogCount < 30) {
-        DuskLog.debug("fopScnRq_phase_Execute: ret={} name={}", ret, i_sceneReq->create_request.name);
-        sExecLogCount++;
-    }
     return ret;
 }
 

@@ -13,7 +13,6 @@
 #include "f_pc/f_pc_layer.h"
 #include "f_pc/f_pc_debug_sv.h"
 #include <cstdio>
-#include "dusk/logging.h"
 
 BOOL fpcCtRq_isCreatingByID(create_tag* i_createTag, fpc_ProcID* i_id) {
     fpc_ProcID id = ((create_request*)i_createTag->base.mpTagData)->id;
@@ -92,12 +91,6 @@ BOOL fpcCtRq_Do(create_request* i_request) {
             phase = pHandler(i_request);
             i_request->is_doing = FALSE;
         }
-    }
-
-    static int sCtRqDoLogCount = 0;
-    if (sCtRqDoLogCount < 30) {
-        DuskLog.debug("fpcCtRq_Do: phase={} process={}", phase, (void*)i_request->process);
-        sCtRqDoLogCount++;
     }
 
     switch (phase) {

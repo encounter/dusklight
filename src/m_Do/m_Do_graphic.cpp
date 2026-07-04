@@ -2197,14 +2197,6 @@ static void drawItem3D() {
 int mDoGph_Painter() {
     ZoneScoped;
 
-    // Diagnostic: log windowNum to track game state machine progress
-    static bool sDiagLoggedWindow = false;
-    if (!sDiagLoggedWindow) {
-        int wn = dComIfGp_getWindowNum();
-        // DuskLog.debug("mDoGph_Painter: windowNum={}", wn);
-        if (wn != 0) sDiagLoggedWindow = true;
-    }
-
 #if TARGET_PC
     dusk::g_imguiConsole.PreDraw();
 #endif
@@ -2832,13 +2824,6 @@ int mDoGph_Painter() {
         GX_DEBUG_GROUP(dComIfGp_particle_draw2DmenuFore, &draw_info3);
         j3dSys.setViewMtx(m4);
     } else {
-        // No camera window active — still draw 2D display lists
-        // (needed for logo scene, which has no 3D camera)
-        static int sElseLogCount = 0;
-        if (sElseLogCount < 10) {
-            DuskLog.debug("mDoGph_Painter else: drawing 2D lists (frame {})", sElseLogCount);
-            sElseLogCount++;
-        }
         ortho.setPort();
         dComIfGd_draw2DOpa();
         dComIfGd_draw2DOpaTop();

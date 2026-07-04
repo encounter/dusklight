@@ -227,13 +227,8 @@ void dScnLogo_c::checkProgSelect() {
 }
 
 int dScnLogo_c::draw() {
-    static int sDrawLogCount = 0;
-    if (sDrawLogCount < 10) {
-        DuskLog.debug("dScnLogo_c::draw: mExecCommand={} mTimer={}", mExecCommand, mTimer);
-    }
     cLib_calcTimer<u16>(&mTimer);
     (this->*l_execFunc[mExecCommand])();
-    sDrawLogCount++;
     return 1;
 }
 
@@ -1059,20 +1054,10 @@ static int resLoad(request_of_phase_process_class* i_phase, dScnLogo_c* i_this) 
 }
 
 int dScnLogo_c::create() {
-    static bool sDiagLogged = false;
-    if (!sDiagLogged) {
-        DuskLog.debug("dScnLogo_c::create START");
-    }
     int phase_state = resLoad(&field_0x1c4, this);
-    if (!sDiagLogged) {
-        DuskLog.debug("dScnLogo_c::create resLoad={} (need {} for complete)", phase_state, fmt::underlying(cPhs_COMPLEATE_e));
-        sDiagLogged = true;
-    }
     if (phase_state != cPhs_COMPLEATE_e) {
         return phase_state;
     }
-
-    DuskLog.debug("dScnLogo_c::create resLoad COMPLETE, continuing init...");
 
     #if PLATFORM_WII
     data_8053a730 = 1;
@@ -1625,7 +1610,6 @@ void dScnLogo_c::dvdDataLoad() {
 }
 
 static int dScnLogo_Create(scene_class* i_this) {
-    DuskLog.debug("[DIAG] dScnLogo_Create: entry i_this={}", (void*)i_this);
     return (JKR_NEW_ARGS (i_this) dScnLogo_c)->create();
 }
 

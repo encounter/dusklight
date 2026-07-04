@@ -22,7 +22,6 @@
 
 #ifndef __MWERKS__
 #include "dusk/extras.h"
-#include "dusk/logging.h"
 #endif
 
 dRes_info_c::dRes_info_c() {
@@ -334,13 +333,6 @@ int dRes_info_c::loadResource() {
                 const char* tmp = mArchive->mStringTable + (mArchive->findIdxResource(fileIndex)->type_flags_and_name_offset & 0xFFFFFF);
 #endif
                 void* res = mArchive->getIdxResource(fileIndex);
-#if TARGET_PC
-                u32 size = mArchive->findIdxResource(fileIndex)->data_size;
-                std::string fileName = mArchive->mStringTable +
-                        (mArchive->findIdxResource(fileIndex)->type_flags_and_name_offset & 0xFFFFFF);
-                DuskLog.debug("Loading Resource: {} (Size: {})", fileName, size);
-#endif
-
                 if (res == NULL) {
                     OSReport_Error("<%s> res == NULL !!\n",
                         mArchive->mStringTable +
