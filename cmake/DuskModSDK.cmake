@@ -80,7 +80,7 @@ function(add_dusk_mod target_name)
                 "$<$<COMPILE_LANGUAGE:C,CXX>:/bigobj>"
                 "$<$<COMPILE_LANGUAGE:C,CXX>:/utf-8>")
         endif()
-        # Match the game's char signedness on ARM (behavior of inline header code).
+        # Use signed char on ARM to match the original game (and x86)
         string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" _mod_arch)
         if(_mod_arch MATCHES "^(arm|aarch64)" AND CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "GNU")
             target_compile_options(${target_name} PRIVATE -fsigned-char)
@@ -104,17 +104,12 @@ function(add_dusk_mod target_name)
     elseif(UNIX)
         target_link_options(${target_name} PRIVATE -Wl,--allow-shlib-undefined)
     elseif(WIN32)
-        # Link against the tool-generated import library (curated game-ABI surface; the OS
-        # loader binds these imports against the running dusklight.exe). Function calls
-        # resolve through import thunks on either toolchain. Data is toolchain-dependent
-        # (MODS_LINKING.md §4):
-        #   - clang-cl: lld's mingw mode auto-imports un-annotated data references, fixed up
-        #     at load by the SDK's pseudo-relocation runtime. -mcmodel=large is REQUIRED —
-        #     default 32-bit RIP-relative references cannot reach across the measured
-        #     28-33 GiB EXE<->DLL ASLR distance.
-        #   - plain MSVC: only DUSK_GAME_DATA-annotated data is reachable (cl has no large
-        #     code model and link.exe no auto-import). Un-annotated references fail the mod
-        #     link with LNK2001; fix by annotating the declaration or using a clang preset.
+        # Link against the symgen import library (game ABI surface). Function calls
+        # resolve through import thunks. Data is toolchain dependent:
+        # - clang-cl: lld's mingw mode auto-imports data references, fixed up at load by
+        #   the mod SDK's pseudo-relocation runtime (pseudo_reloc.cpp).
+        # - cl (MSVC): only DUSK_GAME_DATA-annotated data is reachable. Un-annotated
+        #   references fail to link
         if(NOT DUSK_GAME_IMPLIB)
             message(FATAL_ERROR "add_dusk_mod: DUSK_GAME_IMPLIB is not set.\n"
                 "Full tree: enable DUSK_ENABLE_CODE_MODS and build the 'dusklight' target once "
