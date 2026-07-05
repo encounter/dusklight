@@ -76,6 +76,17 @@ function(dusk_setup_windows_exports target)
             BYPRODUCTS "${_implib}"
             COMMENT "Generating dusklight import library"
             VERBATIM)
-    set(DUSK_GAME_IMPLIB "${_implib}" CACHE INTERNAL "Import library for Windows mod linking")
+    # A user-provided DUSK_GAME_IMPLIB (e.g. a tag artifact, or the slim SDK's
+    # cache variable) takes precedence for mod linking; .def generation and the
+    # executable's /DEF: link run regardless.
+    if ("$CACHE{DUSK_GAME_IMPLIB}" STREQUAL "")
+        set(DUSK_GAME_IMPLIB "${_implib}" CACHE INTERNAL "Import library for Windows mod linking")
+    endif ()
     set(DUSK_GAME_DEF "${_def}" CACHE INTERNAL "Curated export .def for the game executable")
+
+    # Ship the implib with the regular install tree so CI artifacts (and the
+    # release pipeline that promotes them) carry the mod-SDK link input. Named
+    # sdk/dusklight.lib: it binds by symbol name against dusklight.exe, so one
+    # implib built from a tag's sources is valid for any build of that tag.
+    install(FILES "${_implib}" DESTINATION ${CMAKE_INSTALL_PREFIX}/sdk RENAME dusklight.lib)
 endfunction()

@@ -66,6 +66,27 @@ function(add_dusk_mod target_name)
     target_compile_features(${target_name} PRIVATE cxx_std_20)
     target_link_libraries(${target_name} PRIVATE dusklight_game_headers)
 
+    if(NOT TARGET dusklight)
+        # Slim SDK: mirror the game-header-compat flags the root CMakeLists
+        # applies directory-wide for in-tree builds (in-tree mods inherit them).
+        if(CMAKE_SYSTEM_NAME STREQUAL Linux)
+            target_compile_options(${target_name} PRIVATE
+                -Wno-multichar -Wno-trigraphs -Wno-deprecated-declarations)
+        elseif(APPLE)
+            target_compile_options(${target_name} PRIVATE
+                -Wno-declaration-after-statement -Wno-non-pod-varargs)
+        elseif(MSVC)
+            target_compile_options(${target_name} PRIVATE
+                "$<$<COMPILE_LANGUAGE:C,CXX>:/bigobj>"
+                "$<$<COMPILE_LANGUAGE:C,CXX>:/utf-8>")
+        endif()
+        # Match the game's char signedness on ARM (behavior of inline header code).
+        string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" _mod_arch)
+        if(_mod_arch MATCHES "^(arm|aarch64)" AND CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "GNU")
+            target_compile_options(${target_name} PRIVATE -fsigned-char)
+        endif()
+    endif()
+
     # webgpu.h for the gfx service. Header-only on macOS/Linux: wgpu* symbols resolve against
     # the host executable's exports at load time (never link static Dawn into a mod — that would
     # create a second Dawn instance). Windows links the import lib for the DLL the host loads.
@@ -95,7 +116,11 @@ function(add_dusk_mod target_name)
         #     code model and link.exe no auto-import). Un-annotated references fail the mod
         #     link with LNK2001; fix by annotating the declaration or using a clang preset.
         if(NOT DUSK_GAME_IMPLIB)
-            message(FATAL_ERROR "add_dusk_mod: DUSK_GAME_IMPLIB is not set (is DUSK_ENABLE_CODE_MODS on?)")
+            message(FATAL_ERROR "add_dusk_mod: DUSK_GAME_IMPLIB is not set.\n"
+                "Full tree: enable DUSK_ENABLE_CODE_MODS and build the 'dusklight' target once "
+                "(the import library is generated as a byproduct of the game link).\n"
+                "Slim SDK (<dusk>/sdk): pass -DDUSK_GAME_IMPLIB=<sdk/dusklight.lib from the "
+                "matching game build artifact — same tag as this checkout>.")
         endif()
         # No target-level dependency on dusklight here — the SDK already makes dusklight
         # depend on the mod packages, so that would cycle. The implib is a declared

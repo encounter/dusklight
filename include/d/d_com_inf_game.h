@@ -17,7 +17,7 @@
 #include "m_Do/m_Do_graphic.h"
 #include <cstring>
 
-#include "tracy/Tracy.hpp"
+#include "dusk/profiling.hpp"
 
 enum dComIfG_ButtonStatus {
     /* 0x00 */ BUTTON_STATUS_NONE,
@@ -3121,133 +3121,133 @@ inline void dComIfGp_particle_calcMenu() {
 }
 
 inline void dComIfGp_particle_draw(JPADrawInfo* i_drawInfo) {
-    ZoneScoped;
+    DUSK_ZONE;
     if (g_dComIfG_gameInfo.play.getParticle() != NULL) {
         g_dComIfG_gameInfo.play.getParticle()->drawNormal(i_drawInfo);
     }
 }
 
 inline void dComIfGp_particle_drawFog(JPADrawInfo* i_drawInfo) {
-    ZoneScoped;
+    DUSK_ZONE;
     if (g_dComIfG_gameInfo.play.getParticle() != NULL) {
         g_dComIfG_gameInfo.play.getParticle()->drawNormalFog(i_drawInfo);
     }
 }
 
 inline void dComIfGp_particle_drawP1(JPADrawInfo* i_drawInfo) {
-    ZoneScoped;
+    DUSK_ZONE;
     if (g_dComIfG_gameInfo.play.getParticle() != NULL) {
         g_dComIfG_gameInfo.play.getParticle()->drawNormalP1(i_drawInfo);
     }
 }
 
 inline void dComIfGp_particle_drawProjection(JPADrawInfo* i_drawInfo) {
-    ZoneScoped;
+    DUSK_ZONE;
     if (g_dComIfG_gameInfo.play.getParticle() != NULL) {
         g_dComIfG_gameInfo.play.getParticle()->drawProjection(i_drawInfo);
     }
 }
 
 inline void dComIfGp_particle_drawNormalPri0_A(JPADrawInfo* i_drawInfo) {
-    ZoneScoped;
+    DUSK_ZONE;
     if (g_dComIfG_gameInfo.play.getParticle() != NULL) {
         g_dComIfG_gameInfo.play.getParticle()->drawNormalPri0_A(i_drawInfo);
     }
 }
 
 inline void dComIfGp_particle_drawNormalPri0_B(JPADrawInfo* i_drawInfo) {
-    ZoneScoped;
+    DUSK_ZONE;
     if (g_dComIfG_gameInfo.play.getParticle() != NULL) {
         g_dComIfG_gameInfo.play.getParticle()->drawNormalPri0_B(i_drawInfo);
     }
 }
 
 inline void dComIfGp_particle_drawFogPri0_A(JPADrawInfo* i_drawInfo) {
-    ZoneScoped;
+    DUSK_ZONE;
     if (g_dComIfG_gameInfo.play.getParticle() != NULL) {
         g_dComIfG_gameInfo.play.getParticle()->drawFogPri0_A(i_drawInfo);
     }
 }
 
 inline void dComIfGp_particle_drawFogPri0_B(JPADrawInfo* i_drawInfo) {
-    ZoneScoped;
+    DUSK_ZONE;
     if (g_dComIfG_gameInfo.play.getParticle() != NULL) {
         g_dComIfG_gameInfo.play.getParticle()->drawFogPri0_B(i_drawInfo);
     }
 }
 
 inline void dComIfGp_particle_drawFogPri1(JPADrawInfo* i_drawInfo) {
-    ZoneScoped;
+    DUSK_ZONE;
     if (g_dComIfG_gameInfo.play.getParticle() != NULL) {
         g_dComIfG_gameInfo.play.getParticle()->drawFogPri1(i_drawInfo);
     }
 }
 
 inline void dComIfGp_particle_drawFogPri2(JPADrawInfo* i_drawInfo) {
-    ZoneScoped;
+    DUSK_ZONE;
     if (g_dComIfG_gameInfo.play.getParticle() != NULL) {
         g_dComIfG_gameInfo.play.getParticle()->drawFogPri2(i_drawInfo);
     }
 }
 
 inline void dComIfGp_particle_drawFogPri3(JPADrawInfo* i_drawInfo) {
-    ZoneScoped;
+    DUSK_ZONE;
     if (g_dComIfG_gameInfo.play.getParticle() != NULL) {
         g_dComIfG_gameInfo.play.getParticle()->drawFogPri3(i_drawInfo);
     }
 }
 
 inline void dComIfGp_particle_drawFogPri4(JPADrawInfo* i_drawInfo) {
-    ZoneScoped;
+    DUSK_ZONE;
     if (g_dComIfG_gameInfo.play.getParticle() != NULL) {
         g_dComIfG_gameInfo.play.getParticle()->drawFogPri4(i_drawInfo);
     }
 }
 
 inline void dComIfGp_particle_drawDarkworld(JPADrawInfo* i_drawInfo) {
-    ZoneScoped;
+    DUSK_ZONE;
     if (g_dComIfG_gameInfo.play.getParticle() != NULL) {
         g_dComIfG_gameInfo.play.getParticle()->drawDarkworld(i_drawInfo);
     }
 }
 
 inline void dComIfGp_particle_drawScreen(JPADrawInfo* i_drawInfo) {
-    ZoneScoped;
+    DUSK_ZONE;
     if (g_dComIfG_gameInfo.play.getParticle() != NULL) {
         g_dComIfG_gameInfo.play.getParticle()->drawFogScreen(i_drawInfo);
     }
 }
 
 inline void dComIfGp_particle_draw2Dgame(JPADrawInfo* i_drawInfo) {
-    ZoneScoped;
+    DUSK_ZONE;
     if (g_dComIfG_gameInfo.play.getParticle() != NULL) {
         g_dComIfG_gameInfo.play.getParticle()->draw2Dgame(i_drawInfo);
     }
 }
 
 inline void dComIfGp_particle_draw2Dfore(JPADrawInfo* i_drawInfo) {
-    ZoneScoped;
+    DUSK_ZONE;
     if (g_dComIfG_gameInfo.play.getParticle() != NULL) {
         g_dComIfG_gameInfo.play.getParticle()->draw2Dfore(i_drawInfo);
     }
 }
 
 inline void dComIfGp_particle_draw2Dback(JPADrawInfo* i_drawInfo) {
-    ZoneScoped;
+    DUSK_ZONE;
     if (g_dComIfG_gameInfo.play.getParticle() != NULL) {
         g_dComIfG_gameInfo.play.getParticle()->draw2Dback(i_drawInfo);
     }
 }
 
 inline void dComIfGp_particle_draw2DmenuFore(JPADrawInfo* i_drawInfo) {
-    ZoneScoped;
+    DUSK_ZONE;
     if (g_dComIfG_gameInfo.play.getParticle() != NULL) {
         g_dComIfG_gameInfo.play.getParticle()->draw2DmenuFore(i_drawInfo);
     }
 }
 
 inline void dComIfGp_particle_draw2DmenuBack(JPADrawInfo* i_drawInfo) {
-    ZoneScoped;
+    DUSK_ZONE;
     if (g_dComIfG_gameInfo.play.getParticle() != NULL) {
         g_dComIfG_gameInfo.play.getParticle()->draw2DmenuBack(i_drawInfo);
     }
@@ -4777,82 +4777,82 @@ inline void dComIfGd_setViewport(view_port_class* port) {
 }
 
 inline void dComIfGd_entryZSortListZxlu(J3DPacket* i_packet, cXyz& param_1) {
-    ZoneScoped;
+    DUSK_ZONE;
     g_dComIfG_gameInfo.drawlist.entryZSortListZxlu(i_packet, param_1);
 }
 
 inline void dComIfGd_entryZSortXluList(J3DPacket* i_packet, cXyz& param_1) {
-    ZoneScoped;
+    DUSK_ZONE;
     g_dComIfG_gameInfo.drawlist.entryZSortXluList(i_packet, param_1);
 }
 
 inline void dComIfGd_drawCopy2D() {
-    ZoneScoped;
+    DUSK_ZONE;
     g_dComIfG_gameInfo.drawlist.drawCopy2D();
 }
 
 inline void dComIfGd_drawOpaListSky() {
-    ZoneScoped;
+    DUSK_ZONE;
     g_dComIfG_gameInfo.drawlist.drawOpaListSky();
 }
 
 inline void dComIfGd_drawXluListSky() {
-    ZoneScoped;
+    DUSK_ZONE;
     g_dComIfG_gameInfo.drawlist.drawXluListSky();
 }
 
 inline void dComIfGd_drawOpaListBG() {
-    ZoneScoped;
+    DUSK_ZONE;
     g_dComIfG_gameInfo.drawlist.drawOpaListBG();
 }
 
 inline void dComIfGd_drawOpaListDarkBG() {
-    ZoneScoped;
+    DUSK_ZONE;
     g_dComIfG_gameInfo.drawlist.drawOpaListDarkBG();
 }
 
 inline void dComIfGd_drawOpaListMiddle() {
-    ZoneScoped;
+    DUSK_ZONE;
     g_dComIfG_gameInfo.drawlist.drawOpaListMiddle();
 }
 
 inline void dComIfGd_drawOpaList() {
-    ZoneScoped;
+    DUSK_ZONE;
     g_dComIfG_gameInfo.drawlist.drawOpaList();
 }
 
 inline void dComIfGd_drawOpaListDark() {
-    ZoneScoped;
+    DUSK_ZONE;
     g_dComIfG_gameInfo.drawlist.drawOpaListDark();
 }
 
 inline void dComIfGd_drawOpaListPacket() {
-    ZoneScoped;
+    DUSK_ZONE;
     g_dComIfG_gameInfo.drawlist.drawOpaListPacket();
 }
 
 inline void dComIfGd_drawXluListBG() {
-    ZoneScoped;
+    DUSK_ZONE;
     g_dComIfG_gameInfo.drawlist.drawXluListBG();
 }
 
 inline void dComIfGd_drawXluListDarkBG() {
-    ZoneScoped;
+    DUSK_ZONE;
     g_dComIfG_gameInfo.drawlist.drawXluListDarkBG();
 }
 
 inline void dComIfGd_drawXluList() {
-    ZoneScoped;
+    DUSK_ZONE;
     g_dComIfG_gameInfo.drawlist.drawXluList();
 }
 
 inline void dComIfGd_drawXluListDark() {
-    ZoneScoped;
+    DUSK_ZONE;
     g_dComIfG_gameInfo.drawlist.drawXluListDark();
 }
 
 inline void dComIfGd_drawXluListInvisible() {
-    ZoneScoped;
+    DUSK_ZONE;
 #ifdef TARGET_PC
     if (!dusk::getSettings().game.disableWaterRefraction) {
 #endif
@@ -4863,7 +4863,7 @@ inline void dComIfGd_drawXluListInvisible() {
 }
 
 inline void dComIfGd_drawOpaListInvisible() {
-    ZoneScoped;
+    DUSK_ZONE;
 #ifdef TARGET_PC
     if (!dusk::getSettings().game.disableWaterRefraction) {
 #endif
@@ -4874,57 +4874,57 @@ inline void dComIfGd_drawOpaListInvisible() {
 }
 
 inline void dComIfGd_drawXluListZxlu() {
-    ZoneScoped;
+    DUSK_ZONE;
     g_dComIfG_gameInfo.drawlist.drawXluListZxlu();
 }
 
 inline void dComIfGd_drawXluList2DScreen() {
-    ZoneScoped;
+    DUSK_ZONE;
     g_dComIfG_gameInfo.drawlist.drawXluList2DScreen();
 }
 
 inline void dComIfGd_drawOpaList3Dlast() {
-    ZoneScoped;
+    DUSK_ZONE;
     g_dComIfG_gameInfo.drawlist.drawOpaList3Dlast();
 }
 
 inline void dComIfGd_draw2DOpa() {
-    ZoneScoped;
+    DUSK_ZONE;
     g_dComIfG_gameInfo.drawlist.draw2DOpa();
 }
 
 inline void dComIfGd_draw2DOpaTop() {
-    ZoneScoped;
+    DUSK_ZONE;
     g_dComIfG_gameInfo.drawlist.draw2DOpaTop();
 }
 
 inline void dComIfGd_draw2DXlu() {
-    ZoneScoped;
+    DUSK_ZONE;
     g_dComIfG_gameInfo.drawlist.draw2DXlu();
 }
 
 inline void dComIfGd_drawOpaListFilter() {
-    ZoneScoped;
+    DUSK_ZONE;
     g_dComIfG_gameInfo.drawlist.drawOpaListFilter();
 }
 
 inline void dComIfGd_drawIndScreen() {
-    ZoneScoped;
+    DUSK_ZONE;
     g_dComIfG_gameInfo.drawlist.drawOpaListP0();
 }
 
 inline void dComIfGd_drawListZxlu() {
-    ZoneScoped;
+    DUSK_ZONE;
     g_dComIfG_gameInfo.drawlist.drawXluListZxlu();
 }
 
 inline void dComIfGd_drawShadow(Mtx param_0) {
-    ZoneScoped;
+    DUSK_ZONE;
     g_dComIfG_gameInfo.drawlist.drawShadow(param_0);
 }
 
 inline void dComIfGd_imageDrawShadow(Mtx param_0) {
-    ZoneScoped;
+    DUSK_ZONE;
     g_dComIfG_gameInfo.drawlist.imageDrawShadow(param_0);
 }
 

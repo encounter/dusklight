@@ -21,7 +21,7 @@ Everything a mod does besides calling game code goes through **services** — sm
 
 ## Getting Started
 
-Fork the [mod template](../tools/mod_template/), a self-contained CMake project that references Dusklight as a subdirectory:
+Fork the [mod template](../tools/mod_template/), a self-contained CMake project that references a Dusklight checkout:
 
 ```
 my_mod/
@@ -39,7 +39,7 @@ cmake_minimum_required(VERSION 3.25)
 project(my_mod CXX)
 
 set(DUSK_DIR "${CMAKE_CURRENT_SOURCE_DIR}/dusk" CACHE PATH "Path to dusk source root")
-add_subdirectory("${DUSK_DIR}" dusk EXCLUDE_FROM_ALL)
+add_subdirectory("${DUSK_DIR}/sdk" dusk-sdk EXCLUDE_FROM_ALL)
 
 add_dusk_mod(my_mod
     SOURCES      src/mod.cpp
@@ -49,6 +49,25 @@ add_dusk_mod(my_mod
     TEXTURES_DIR textures   # optional
 )
 ```
+
+`<dusk>/sdk` is the **slim mod SDK**: it provides the game headers, ABI defines and
+`add_dusk_mod` without configuring (or building) the game itself — configuring fetches only
+the pinned prebuilt Dawn package (for `webgpu.h`) and takes seconds. On macOS and Linux mods
+never link against the game, so this is all you need against any Dusklight revision.
+
+On **Windows**, mods link a small import library generated from the game build. Point the
+SDK at the one from the matching game build artifact — CI/release artifacts ship it as
+`sdk/dusklight.lib`, valid for any build of the same tag:
+
+```sh
+cmake -B build -DDUSK_GAME_IMPLIB=<path>/sdk/dusklight.lib
+```
+
+The import library must come from the **same tag/revision your headers are checked out at**
+(it binds by symbol name against `dusklight.exe`). For revisions without a published
+artifact, fall back to the full tree with `-DDUSK_MOD_USE_FULL_TREE=ON` (in the template),
+or `add_subdirectory("${DUSK_DIR}" dusk EXCLUDE_FROM_ALL)` directly — that configures the
+whole game; building your mod on Windows then builds the game once to generate the implib.
 
 Building produces `my_mod.dusk` in `mods/` next to the project root (configurable via the `DUSK_MODS_OUTPUT_DIR` cache variable). Copy it into the game's mods folder and launch:
 

@@ -5,7 +5,7 @@
 
 #include <dolphin/gx/GXAurora.h>
 #include <dolphin/gx/GXExtra.h>
-#include "tracy/Tracy.hpp"
+#include "dusk/profiling.hpp"
 
 #if DUSK_GFX_DEBUG_GROUPS
 #define GX_DEBUG_GROUP(name, ...) \
@@ -68,6 +68,6 @@ struct GXScopedDebugGroup {
     ~GXScopedDebugGroup();
 };
 
-#define GX_AND_TRACY_SCOPED(name) GXScopedDebugGroup scope(name); ZoneScopedN(name);
+#define GX_AND_TRACY_SCOPED(name) GXScopedDebugGroup scope(name); DUSK_ZONE_N(name);
 
 #endif  // DUSK_GX_HELPER_H

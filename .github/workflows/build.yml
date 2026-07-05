@@ -280,4 +280,5 @@ jobs:
             build/install/*.exe
             build/install/*.dll
             build/install/res/
+            build/install/sdk/
             build/install/debug.7z
