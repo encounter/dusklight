@@ -5,7 +5,7 @@
 
 namespace dusk::mods::manifest {
 
-// Symbol flags mirrored from tools/symgen (manifest.rs).
+// Symbol flags mirrored from symgen.
 constexpr uint32_t kFlagCode = 1u << 0;
 constexpr uint32_t kFlagData = 1u << 1;
 constexpr uint32_t kFlagLocal = 1u << 2;

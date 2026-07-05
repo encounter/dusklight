@@ -28,11 +28,11 @@ namespace {
 
 static aurora::Module Log("dusk::mods::manifest");
 
-constexpr char kMagic[8] = {'D', 'U', 'S', 'K', 'M', 'A', 'N', '\0'};
+constexpr char kMagic[8] = {'S', 'Y', 'M', 'G', 'E', 'N', '\0', '\0'};
 constexpr uint32_t kVersion = 1;
 
-// Mirrors the writer in tools/symgen/src/manifest.rs. 72 bytes so the entry array
-// that follows is 8-aligned.
+// Mirrors the symgen manifest writer. 72 bytes so the entry array that follows is
+// 8-aligned.
 struct Header {
     char magic[8];
     uint32_t version;

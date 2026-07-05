@@ -487,29 +487,18 @@ target_link_libraries(${DUSK_MAIN_TARGET} PRIVATE aurora::main ${GAME_LIBS} ${JS
 if (DUSK_ENABLE_CODE_MODS)
     include(cmake/DuskSymbolManifest.cmake)
     if (WIN32)
-        # Curated export surface + import library for mod linking (MODS_LINKING.md §3.A′).
+        # Game ABI exports & import library for mod linking
         include(cmake/DuskWindowsExports.cmake)
         dusk_setup_windows_exports(${DUSK_MAIN_TARGET})
     endif ()
-    # Post-link symbol manifest: hookable-surface name→RVA map keyed to the build.
+    # Post-link symbol manifest for hooks
     dusk_setup_symbol_manifest(${DUSK_MAIN_TARGET})
 endif ()
-# The PCH compiles with target-level defines only (per-source COMPILE_DEFINITIONS are not
-# applied to it), so the layout define must be on the target: otherwise the PCH bakes game
-# headers with different struct layouts than the TUs that consume it. Also covers main.cpp,
-# which is in no per-source define group.
 target_compile_definitions(${DUSK_MAIN_TARGET} PRIVATE PARTIAL_DEBUG=1)
 target_precompile_headers(${DUSK_MAIN_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CMAKE_CURRENT_LIST_DIR}/include/dusk_pch.hpp>")
 
-# Hook reliability (MODS_LINKING.md §6): guaranteed patchable entries on the hookable
-# surface (game + JSystem TUs), and no identical-code folding so symbol<->address stays
-# 1:1 for hooks and the symbol manifest. Decomp code has many legitimately-identical
-# small functions, so ICF would silently make one hook intercept several names.
+# Hook reliability: guaranteed patchable entries on the game ABI surface, and no identical-code folding.
 if (MSVC)
-    # >=2-byte first instruction (/hotpatch) plus 6 bytes of padding before every function
-    # (/FUNCTIONPADMIN at link). x64 cl rejects /hotpatch with D9002 — x64 MSVC codegen is
-    # always hotpatch-compatible — so the compile flag only applies to clang-cl (maps to
-    # -fms-hotpatch) and ARM64.
     if (CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_SYSTEM_PROCESSOR MATCHES "ARM64|arm64")
         set(DUSK_PATCHABLE_ENTRY_FLAG $<$<COMPILE_LANGUAGE:C,CXX>:/hotpatch>)
     endif ()

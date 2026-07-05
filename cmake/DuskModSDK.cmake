@@ -99,7 +99,7 @@ function(add_dusk_mod target_name)
     elseif (UNIX)
         target_link_options(${target_name} PRIVATE -Wl,--allow-shlib-undefined)
     elseif (WIN32)
-        # Link against the symgen import library (game ABI surface). Function calls
+        # Link against the generated import library (game ABI surface). Function calls
         # resolve through import thunks. Data is toolchain dependent:
         # - clang-cl: lld's mingw mode auto-imports data references, fixed up at load by
         #   the mod SDK's pseudo-relocation runtime (pseudo_reloc.cpp).

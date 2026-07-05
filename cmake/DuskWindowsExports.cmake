@@ -3,8 +3,8 @@ include_guard(GLOBAL)
 get_filename_component(_DUSK_WINDOWS_EXPORTS_CMAKE_DIR "${CMAKE_CURRENT_LIST_FILE}" DIRECTORY)
 
 # Windows mod linking: generate the curated export surface for the game executable and the
-# import library mods link against. symgen (tools/symgen) scans the built objects, filters
-# by source, and writes a .def used by the main link and import library generation.
+# import library mods link against. symgen scans the built objects, filters by source, and
+# writes a .def used by the main link and import library generation.
 function(dusk_setup_windows_exports target)
     if (NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
         message(WARNING "dusk: Windows code-mod exports are x64-only for now; skipping")
@@ -37,10 +37,9 @@ function(dusk_setup_windows_exports target)
     add_custom_command(TARGET ${target} PRE_LINK
             # TODO: src/dusk/ is NOT excluded: inline code in game headers
             # currently call into it (e.g. dusk::frame_interp::lookup_replacement).
-            COMMAND "${_symgen}" emit-def
+            COMMAND "${_symgen}" def
             --rsp "${_rsp}"
             --out "${_def}"
-            --report "${CMAKE_BINARY_DIR}/dusklight_exports_report.txt"
             --exclude cmake_pch
             --exclude miniz
             --exclude asan_options
