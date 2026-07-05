@@ -65,7 +65,9 @@ function(dusk_setup_symbol_manifest target)
         endif ()
     endif ()
 
+    get_filename_component(_out_dir "${_out}" DIRECTORY) # temp
     add_custom_command(TARGET ${target} POST_BUILD
+            COMMAND "${CMAKE_COMMAND}" -E rm -f "${_out_dir}/dusklight.manifest"
             COMMAND "${DUSK_SYMGEN_EXE}" emit-manifest ${_input} --out "${_out}"
             COMMENT "Generating symbol manifest (dusk-symgen emit-manifest)"
             VERBATIM)
