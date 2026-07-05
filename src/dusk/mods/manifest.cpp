@@ -1,7 +1,9 @@
 #include "manifest.hpp"
 
+#include <algorithm>
 #include <cstring>
 #include <filesystem>
+#include <utility>
 #include <vector>
 
 #include <SDL3/SDL_filesystem.h>
@@ -58,6 +60,9 @@ struct State {
     const char* strings = nullptr;
     uint64_t stringsLen = 0;
     uintptr_t imageBase = 0;
+    // (rva, nameOff) of entries flagged kFlagInlineSites, sorted by rva for the
+    // address-keyed lookup hookInstallByAddr does.
+    std::vector<std::pair<uint64_t, uint32_t>> inlineSites;
     bool loaded = false;
     bool initialized = false;
 };
@@ -252,6 +257,17 @@ void initialize() {
     s_state.strings = reinterpret_cast<const char*>(s_state.data.data() + header.stringsOff);
     s_state.stringsLen = header.stringsLen;
     s_state.imageBase = imageBase;
+    for (uint32_t i = 0; i < s_state.entryCount; ++i) {
+        const Entry& entry = s_state.entries[i];
+        if ((entry.flags & kFlagInlineSites) != 0 && entry.nameOff < s_state.stringsLen) {
+            s_state.inlineSites.emplace_back(entry.rva, entry.nameOff);
+        }
+    }
+    std::sort(s_state.inlineSites.begin(), s_state.inlineSites.end());
+    s_state.inlineSites.erase(
+        std::unique(s_state.inlineSites.begin(), s_state.inlineSites.end(),
+            [](const auto& a, const auto& b) { return a.first == b.first; }),
+        s_state.inlineSites.end());
     s_state.loaded = true;
     Log.info("symbol manifest loaded: {} symbols, build id {}", s_state.entryCount,
         hex_string(header.buildId, header.buildIdLen));
@@ -304,6 +320,22 @@ ResolveStatus resolve(const char* name, void** outAddr, uint32_t* outFlags) {
         return ResolveStatus::Ok;
     }
     return ResolveStatus::NotFound;
+}
+
+bool has_inline_sites(const void* addr, const char** outName) {
+    if (!s_state.loaded || s_state.inlineSites.empty()) {
+        return false;
+    }
+    const auto rva = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(addr) - s_state.imageBase);
+    const auto it = std::lower_bound(s_state.inlineSites.begin(), s_state.inlineSites.end(),
+        std::pair<uint64_t, uint32_t>{rva, 0});
+    if (it == s_state.inlineSites.end() || it->first != rva) {
+        return false;
+    }
+    if (outName != nullptr) {
+        *outName = s_state.strings + it->second;
+    }
+    return true;
 }
 
 }  // namespace dusk::mods::manifest

@@ -4,6 +4,7 @@
 
 #include "dusk/logging.h"
 #include "dusk/mod_loader.hpp"
+#include "dusk/mods/manifest.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -194,6 +195,14 @@ ModResult hookInstallByAddr(ModContext* context, void* fn_addr, void* tramp_fn, 
             context_mod_id(context), fn_addr, tramp_fn, static_cast<void*>(orig_store), known);
         *orig_store = entry.original;
         return MOD_OK;
+    }
+
+    // Inlining can't be intercepted by an entry patch: warn once per target when this
+    // build inlined the function into callers (manifest flag, MODS_LINKING.md §6).
+    if (const char* name = nullptr; mods::manifest::has_inline_sites(fn_addr, &name)) {
+        DuskLog.warn("HookSystem: '{}' ({:p}) for {} was inlined into callers in this build; "
+                     "the hook only covers the calls that were not inlined",
+            name != nullptr ? name : "?", fn_addr, context_mod_id(context));
     }
 
     void* original = nullptr;

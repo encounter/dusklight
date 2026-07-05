@@ -39,6 +39,9 @@ pub const FLAG_MULTI_NAME: u32 = 1 << 3;
 /// This name maps to more than one RVA (internal-linkage statics with the same name in
 /// different TUs). Every RVA is present; a by-name lookup must treat it as ambiguous.
 pub const FLAG_DUP_NAME: u32 = 1 << 4;
+/// This function was inlined into at least one caller in this build (PDB inlinee
+/// records): an entry hook on it only intercepts the calls that were not inlined.
+pub const FLAG_INLINE_SITES: u32 = 1 << 5;
 
 pub fn fnv1a64(bytes: &[u8]) -> u64 {
     let mut hash: u64 = 0xcbf29ce484222325;
@@ -239,6 +242,17 @@ pub fn read_pdb(path: &str) -> Result<ManifestInput, String> {
         }
     }
 
+    // Inlinee identification (§6): each module's inlinee-lines substream lists the
+    // functions that were inlined into that module. Inlinee records name functions by
+    // IPI item id, whose names are *bare* — qualify them through the member parent
+    // (TPI class) or scope (IPI string id) so they compare against the qualified
+    // display names carried by module procedure records.
+    let inlined_names = collect_inlined_names(&mut pdb)
+        .unwrap_or_else(|e| {
+            eprintln!("dusk-symgen: inlinee scan unavailable ({e}); no inline-site flags");
+            Default::default()
+        });
+
     let mut modules = dbi.modules().map_err(|e| format!("{path}: {e}"))?;
     while let Some(module) = modules.next().map_err(|e| format!("{path}: {e}"))? {
         let Some(module_info) = pdb.module_info(&module).map_err(|e| format!("{path}: {e}"))?
@@ -267,11 +281,116 @@ pub fn read_pdb(path: &str) -> Result<ManifestInput, String> {
             if is_manifest_noise(&name) {
                 continue;
             }
+            let mut flags = flags;
+            if flags & FLAG_CODE != 0 && inlined_names.contains(&name) {
+                flags |= FLAG_INLINE_SITES;
+            }
             symbols.push(ManifestSymbol { name, rva: u64::from(rva.0), flags });
         }
     }
 
+    // Propagate the inline-site flag across every code record at the same RVA, so the
+    // decorated public alias of a flagged procedure carries it too.
+    let flagged_rvas: std::collections::HashSet<u64> = symbols
+        .iter()
+        .filter(|s| s.flags & FLAG_INLINE_SITES != 0)
+        .map(|s| s.rva)
+        .collect();
+    let mut flagged_count = 0usize;
+    for sym in &mut symbols {
+        if sym.flags & FLAG_CODE != 0 && flagged_rvas.contains(&sym.rva) {
+            sym.flags |= FLAG_INLINE_SITES;
+            flagged_count += 1;
+        }
+    }
+    if !flagged_rvas.is_empty() {
+        eprintln!(
+            "dusk-symgen: {} functions have inline sites ({} records flagged)",
+            flagged_rvas.len(),
+            flagged_count
+        );
+    }
+
     Ok(ManifestInput { build_id, symbols })
+}
+
+/// Qualified names of every function that appears as an inlinee somewhere in the PDB.
+fn collect_inlined_names(
+    pdb: &mut pdb::PDB<'_, fs::File>,
+) -> Result<std::collections::HashSet<String>, String> {
+    use std::collections::HashMap;
+
+    // TPI: class/struct names for member-function parents.
+    let type_information = pdb.type_information().map_err(|e| e.to_string())?;
+    let mut class_names: HashMap<u32, String> = HashMap::new();
+    let mut type_iter = type_information.iter();
+    while let Some(item) = type_iter.next().map_err(|e| e.to_string())? {
+        if let Ok(pdb::TypeData::Class(class)) = item.parse() {
+            class_names.insert(item.index().0, class.name.to_string().into_owned());
+        }
+    }
+
+    // IPI: function ids (bare name + scope/parent) and scope strings.
+    struct FnId {
+        name: String,
+        scope: Option<u32>,       // IdIndex of a StringId ("ns" / "ns::ns2")
+        parent_class: Option<u32>, // TypeIndex of the owning class
+    }
+    let id_information = pdb.id_information().map_err(|e| e.to_string())?;
+    let mut fn_ids: HashMap<u32, FnId> = HashMap::new();
+    let mut scope_strings: HashMap<u32, String> = HashMap::new();
+    let mut id_iter = id_information.iter();
+    while let Some(item) = id_iter.next().map_err(|e| e.to_string())? {
+        let Ok(data) = item.parse() else { continue };
+        match data {
+            pdb::IdData::Function(f) => {
+                fn_ids.insert(item.index().0, FnId {
+                    name: f.name.to_string().into_owned(),
+                    scope: f.scope.map(|s| s.0),
+                    parent_class: None,
+                });
+            }
+            pdb::IdData::MemberFunction(m) => {
+                fn_ids.insert(item.index().0, FnId {
+                    name: m.name.to_string().into_owned(),
+                    scope: None,
+                    parent_class: Some(m.parent.0),
+                });
+            }
+            pdb::IdData::String(s) => {
+                scope_strings.insert(item.index().0, s.name.to_string().into_owned());
+            }
+            _ => {}
+        }
+    }
+
+    let dbi = pdb.debug_information().map_err(|e| e.to_string())?;
+    let mut names = std::collections::HashSet::new();
+    let mut modules = dbi.modules().map_err(|e| e.to_string())?;
+    while let Some(module) = modules.next().map_err(|e| e.to_string())? {
+        let Some(module_info) = pdb.module_info(&module).map_err(|e| e.to_string())? else {
+            continue;
+        };
+        let Ok(mut inlinees) = module_info.inlinees() else { continue };
+        while let Ok(Some(inlinee)) = inlinees.next() {
+            let Some(f) = fn_ids.get(&inlinee.index().0) else { continue };
+            let qualified = if let Some(parent) = f.parent_class {
+                match class_names.get(&parent) {
+                    Some(class) => format!("{}::{}", class, f.name),
+                    None => f.name.clone(),
+                }
+            } else if let Some(scope) = f.scope {
+                match scope_strings.get(&scope) {
+                    Some(s) => format!("{}::{}", s, f.name),
+                    None => f.name.clone(),
+                }
+            } else {
+                f.name.clone()
+            };
+            names.insert(qualified);
+        }
+    }
+    Ok(names)
 }
 
 /// Verify every export in a generated .def resolves in the manifest (shared-front-end

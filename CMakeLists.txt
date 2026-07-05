@@ -625,6 +625,33 @@ endif ()
 target_compile_definitions(${DUSK_MAIN_TARGET} PRIVATE PARTIAL_DEBUG=1)
 target_precompile_headers(${DUSK_MAIN_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CMAKE_CURRENT_LIST_DIR}/include/dusk_pch.hpp>")
 
+# Hook reliability (MODS_LINKING.md §6): guaranteed patchable entries on the hookable
+# surface (game + JSystem TUs), and no identical-code folding so symbol<->address stays
+# 1:1 for hooks and the symbol manifest. Decomp code has many legitimately-identical
+# small functions, so ICF would silently make one hook intercept several names.
+if (MSVC)
+    # >=2-byte first instruction (/hotpatch; clang-cl maps it to -fms-hotpatch) plus
+    # 6 bytes of padding before every function (/FUNCTIONPADMIN at link).
+    set(DUSK_PATCHABLE_ENTRY_FLAG $<$<COMPILE_LANGUAGE:C,CXX>:/hotpatch>)
+    target_link_options(${DUSK_MAIN_TARGET} PRIVATE /FUNCTIONPADMIN /OPT:NOICF)
+elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    if (CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64" OR CMAKE_OSX_ARCHITECTURES MATCHES "arm64")
+        # One pre-entry nop (future short-branch pad) + one entry nop: a `b` reaches
+        # +-128 MiB and funchook allocates its trampoline nearby, so relocating the
+        # entry instruction is always a plain nop copy.
+        set(DUSK_PATCHABLE_ENTRY_FLAG $<$<COMPILE_LANGUAGE:C,CXX>:-fpatchable-function-entry=2,1>)
+    else ()
+        # x86-64: 5 entry nop bytes (a full jmp rel32 relocates as pure nops) + 5 before.
+        set(DUSK_PATCHABLE_ENTRY_FLAG $<$<COMPILE_LANGUAGE:C,CXX>:-fpatchable-function-entry=10,5>)
+    endif ()
+endif ()
+if (DEFINED DUSK_PATCHABLE_ENTRY_FLAG)
+    target_compile_options(${DUSK_MAIN_TARGET} PRIVATE ${DUSK_PATCHABLE_ENTRY_FLAG})
+    foreach(jsystem_lib IN LISTS JSYSTEM_LIBRARIES)
+        target_compile_options(${jsystem_lib} PRIVATE ${DUSK_PATCHABLE_ENTRY_FLAG})
+    endforeach()
+endif ()
+
 if(WIN32)
     target_link_libraries(${DUSK_MAIN_TARGET} PRIVATE Psapi)
 endif()
