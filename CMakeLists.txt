@@ -928,7 +928,7 @@ foreach (target IN LISTS BINARY_TARGETS)
     endforeach ()
 endforeach ()
 
-if (DUSK_ENABLE_CODE_MODS)
+if (DUSK_ENABLE_CODE_MODS AND CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     # In-tree mods build on every toolchain, including plain MSVC: they only touch
     # DUSK_GAME_DATA-annotated game data (MODS_LINKING.md §4). An unresolved data symbol
     # (LNK2001) in one of these under a windows-msvc preset means a new game-data reference
