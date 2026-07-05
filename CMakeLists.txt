@@ -321,7 +321,6 @@ set(GAME_INCLUDE_DIRS
     ${miniz_SOURCE_DIR})
 
 # Interface target for mods and sub-projects to inherit game headers/defines
-# (the constant ABI surface only -- see cmake/DuskGameABI.cmake)
 dusk_add_game_headers_target(${CMAKE_CURRENT_BINARY_DIR})
 
 find_package(Threads REQUIRED)

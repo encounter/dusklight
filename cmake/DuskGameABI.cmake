@@ -1,4 +1,4 @@
-# The game ABI surface shared by the full build and the mod SDK entry point (sdk/CMakeLists.txt)
+# The game ABI surface shared by the main build and the mod SDK (sdk/CMakeLists.txt)
 include_guard(GLOBAL)
 
 get_filename_component(_DUSK_GAME_ABI_ROOT "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)

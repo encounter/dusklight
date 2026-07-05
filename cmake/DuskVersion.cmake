@@ -1,6 +1,4 @@
-# Version detection shared by the full build and the mod SDK entry point
-# (sdk/CMakeLists.txt). The git working directory is the dusk source root —
-# keyed off this file's location, not the including project's source dir.
+# Version detection shared by the main build and the mod SDK (sdk/CMakeLists.txt)
 include_guard(GLOBAL)
 
 get_filename_component(_DUSK_VERSION_ROOT "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
