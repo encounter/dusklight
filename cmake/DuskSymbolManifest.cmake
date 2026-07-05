@@ -1,5 +1,8 @@
 include_guard(GLOBAL)
 
+get_filename_component(_DUSK_SYMBOL_MANIFEST_CMAKE_DIR "${CMAKE_CURRENT_LIST_FILE}" DIRECTORY)
+get_filename_component(_DUSK_SYMBOL_MANIFEST_SOURCE_DIR "${_DUSK_SYMBOL_MANIFEST_CMAKE_DIR}/.." ABSOLUTE)
+
 # Shared builder for dusk-symgen (tools/symgen). Creates the dusk_symgen target and sets
 # DUSK_SYMGEN_EXE. With required=FALSE, missing cargo just skips (callers must check the
 # target exists).
@@ -23,10 +26,10 @@ function(dusk_ensure_symgen required)
     add_custom_command(
             OUTPUT "${_symgen}"
             COMMAND "${DUSK_CARGO}" build --release --quiet --target-dir "${_symgen_dir}"
-            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/tools/symgen"
-            DEPENDS "${CMAKE_SOURCE_DIR}/tools/symgen/Cargo.toml"
-                    "${CMAKE_SOURCE_DIR}/tools/symgen/src/main.rs"
-                    "${CMAKE_SOURCE_DIR}/tools/symgen/src/manifest.rs"
+            WORKING_DIRECTORY "${_DUSK_SYMBOL_MANIFEST_SOURCE_DIR}/tools/symgen"
+            DEPENDS "${_DUSK_SYMBOL_MANIFEST_SOURCE_DIR}/tools/symgen/Cargo.toml"
+                    "${_DUSK_SYMBOL_MANIFEST_SOURCE_DIR}/tools/symgen/src/main.rs"
+                    "${_DUSK_SYMBOL_MANIFEST_SOURCE_DIR}/tools/symgen/src/manifest.rs"
             COMMENT "Building dusk-symgen"
             VERBATIM)
     add_custom_target(dusk_symgen DEPENDS "${_symgen}")
@@ -65,7 +68,7 @@ function(dusk_setup_symbol_manifest target)
         endif ()
     endif ()
 
-    get_filename_component(_out_dir "${_out}" DIRECTORY) # temp
+    get_filename_component(_out_dir "${_out}" DIRECTORY)
     add_custom_command(TARGET ${target} POST_BUILD
             COMMAND "${CMAKE_COMMAND}" -E rm -f "${_out_dir}/dusklight.manifest"
             COMMAND "${DUSK_SYMGEN_EXE}" emit-manifest ${_input} --out "${_out}"

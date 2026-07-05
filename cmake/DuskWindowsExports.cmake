@@ -1,5 +1,7 @@
 include_guard(GLOBAL)
 
+get_filename_component(_DUSK_WINDOWS_EXPORTS_CMAKE_DIR "${CMAKE_CURRENT_LIST_FILE}" DIRECTORY)
+
 # Windows mod linking: generate the curated export surface for the game executable and the
 # import library mods link against. dusk-symgen (tools/symgen) scans the built objects with
 # provenance filtering and writes the .def consumed by the executable's link; the implib is
@@ -10,7 +12,7 @@ function(dusk_setup_windows_exports target)
         return()
     endif ()
 
-    include(${CMAKE_SOURCE_DIR}/cmake/DuskSymbolManifest.cmake)
+    include("${_DUSK_WINDOWS_EXPORTS_CMAKE_DIR}/DuskSymbolManifest.cmake")
     dusk_ensure_symgen(TRUE)
     set(_symgen "${DUSK_SYMGEN_EXE}")
     add_dependencies(${target} dusk_symgen)
