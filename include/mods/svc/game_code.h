@@ -16,7 +16,9 @@
  * want to gate on more than the epoch.
  */
 #define GAME_CODE_SERVICE_ID "dev.twilitrealm.dusklight.game_code"
-#define GAME_CODE_SERVICE_MAJOR 1u
+/* Epoch 2: PARTIAL_DEBUG became config-independent (always set on PC), changing release
+ * struct layouts — debug/release now share one layout ABI (MODS_LINKING.md §5). */
+#define GAME_CODE_SERVICE_MAJOR 2u
 #define GAME_CODE_SERVICE_MINOR 0u
 
 typedef struct GameCodeService {

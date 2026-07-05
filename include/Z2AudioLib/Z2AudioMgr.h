@@ -48,6 +48,10 @@ public:
     /* 0x1370 */ Z2FxLineMgr mFxLineMgr;
     #if DEBUG
     /* 0x13BC */ Z2DebugSys mDebugSys;
+    #elif PARTIAL_DEBUG
+    // Layout parity with DEBUG TUs. Reserved storage instead of the real member because
+    // Z2DebugSys.cpp is not part of the PC build (its ctor would be undefined).
+    alignas(Z2DebugSys) u8 mDebugSys[sizeof(Z2DebugSys)];
     #endif
 };  // Size: 0x138C
 

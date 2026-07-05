@@ -528,13 +528,16 @@ if (DUSK_GFX_DEBUG_GROUPS)
     target_compile_definitions(aurora_gx PRIVATE AURORA_GFX_DEBUG_GROUPS)
 endif ()
 
-# TODO: make compile defines more stable across configs
+# PARTIAL_DEBUG is the config-independent layout define: PC builds always set it, so debug
+# and release share one struct-layout ABI and a mod binary loads into either. DEBUG (JSystem
+# + GAME_DEBUG_FILES, debug configs only) must never change layout — layout-affecting blocks
+# use `#if PARTIAL_DEBUG || DEBUG` (see d_camera.h).
 target_compile_definitions(dusklight_game_headers INTERFACE
         ${GAME_COMPILE_DEFS}
         NDEBUG=1
         NDEBUG_DEFINED=1
         DEBUG_DEFINED=0
-        $<$<CONFIG:Debug>:PARTIAL_DEBUG=1>
+        PARTIAL_DEBUG=1
 )
 
 # game_debug is for game code files that we know work when compiled with DEBUG=1
@@ -551,7 +554,7 @@ set(GAME_DEBUG_FILES
 set_source_files_properties(
         ${GAME_DEBUG_FILES}
         PROPERTIES
-        COMPILE_DEFINITIONS "$<$<CONFIG:Debug>:DEBUG=1>;$<$<CONFIG:Debug>:PARTIAL_DEBUG=1>"
+        COMPILE_DEFINITIONS "$<$<CONFIG:Debug>:DEBUG=1>;PARTIAL_DEBUG=1"
 )
 
 set(GAME_BASE_FILES
@@ -564,7 +567,7 @@ set(GAME_BASE_FILES
 set_source_files_properties(
         ${GAME_BASE_FILES}
         PROPERTIES
-        COMPILE_DEFINITIONS "NDEBUG=1;NDEBUG_DEFINED=1;DEBUG_DEFINED=0;$<$<CONFIG:Debug>:PARTIAL_DEBUG=1>"
+        COMPILE_DEFINITIONS "NDEBUG=1;NDEBUG_DEFINED=1;DEBUG_DEFINED=0;PARTIAL_DEBUG=1"
 )
 
 foreach(jsystem_lib IN LISTS JSYSTEM_LIBRARIES)
@@ -572,7 +575,7 @@ foreach(jsystem_lib IN LISTS JSYSTEM_LIBRARIES)
             ${GAME_COMPILE_DEFS}
             DUSK_BUILDING_GAME=1
             $<$<CONFIG:Debug>:DEBUG=1>
-            $<$<CONFIG:Debug>:PARTIAL_DEBUG=1>
+            PARTIAL_DEBUG=1
     )
     target_include_directories(${jsystem_lib} PRIVATE ${GAME_INCLUDE_DIRS})
     target_link_libraries(${jsystem_lib} PRIVATE ${GAME_LIBS})
@@ -615,6 +618,11 @@ if (DUSK_ENABLE_CODE_MODS)
     # Post-link symbol manifest: hookable-surface name→RVA map keyed to the build.
     dusk_setup_symbol_manifest(${DUSK_MAIN_TARGET})
 endif ()
+# The PCH compiles with target-level defines only (per-source COMPILE_DEFINITIONS are not
+# applied to it), so the layout define must be on the target: otherwise the PCH bakes game
+# headers with different struct layouts than the TUs that consume it. Also covers main.cpp,
+# which is in no per-source define group.
+target_compile_definitions(${DUSK_MAIN_TARGET} PRIVATE PARTIAL_DEBUG=1)
 target_precompile_headers(${DUSK_MAIN_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CMAKE_CURRENT_LIST_DIR}/include/dusk_pch.hpp>")
 
 if(WIN32)

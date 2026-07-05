@@ -22,7 +22,7 @@
 #include "os_report.h"
 
 Z2SoundObjBase::Z2SoundObjBase()
-#if DEBUG
+#if PARTIAL_DEBUG || DEBUG  // Base exists whenever PARTIAL_DEBUG is set (see Z2SoundObject.h).
 : JSULink<Z2SoundObjBase>(this)
 #endif
 {

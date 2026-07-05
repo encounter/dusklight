@@ -12,11 +12,24 @@ struct JORNodeEvent;
 class JORMContext;
 class JORServer;
 
+// NOTE (PC layout ABI, MODS_LINKING.md §5): these classes stay non-polymorphic outside DEBUG
+// on purpose. Making them polymorphic under PARTIAL_DEBUG would give every one of the ~250
+// derived HIO classes a vptr and turn their plain `void genMessage(JORMContext*);`
+// declarations into implicit virtual overrides whose definitions are #if DEBUG-gated — every
+// instantiated one then fails to link (missing vtable). Closure types shared with DEBUG TUs
+// either declare their own unconditional virtuals (vptr in all TUs anyway) or add a
+// PARTIAL_DEBUG-only virtual dtor for vptr parity (see dAttParam_c).
+// On PC the pure virtuals become empty defaults: ENABLE_REGHIO is never defined, so derived
+// classes like dScnPly_reg_HIO_c have no override and would be abstract wherever DEBUG is set.
 class JOREventListener {
 public:
 #if DEBUG
     JOREventListener() {}
+#if TARGET_PC
+    virtual void listenPropertyEvent(const JORPropertyEvent*) {}
+#else
     virtual void listenPropertyEvent(const JORPropertyEvent*) = 0;
+#endif
 #endif
 };
 
@@ -30,7 +43,11 @@ public:
     virtual void listenPropertyEvent(const JORPropertyEvent*);
     virtual void listen(u32, const JOREvent*);
     virtual void genObjectInfo(const JORGenEvent*);
+#if TARGET_PC
+    virtual void genMessage(JORMContext*) {}
+#else
     virtual void genMessage(JORMContext*) = 0;
+#endif
     virtual void listenNodeEvent(const JORNodeEvent*);
 #endif
 };

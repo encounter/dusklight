@@ -105,6 +105,43 @@ void* resolve_import_thunk(void* addr) {
             break;
         }
     }
+#elif defined(_WIN32) && (defined(_M_ARM64) || defined(__aarch64__))
+    // Import thunks are `adrp x16; ldr x16, [x16, #off]; br x16` (deref the IAT slot);
+    // incremental-link stubs are a plain `b`, or `adrp x16; add x16, x16, #off; br x16`
+    // range-extension thunks when the target is out of B range.
+    for (int i = 0; i < 8; ++i) {
+        const auto* p = static_cast<const uint8_t*>(addr);
+        uint32_t insn0, insn1, insn2;
+        std::memcpy(&insn0, p, 4);
+        if ((insn0 & 0xFC000000u) == 0x14000000u) {  // b imm26
+            auto imm26 = static_cast<int32_t>(insn0 << 6) >> 6;
+            addr = const_cast<uint8_t*>(p) + static_cast<intptr_t>(imm26) * 4;
+            continue;
+        }
+        if ((insn0 & 0x9F00001Fu) != 0x90000010u) {  // adrp x16, page
+            break;
+        }
+        std::memcpy(&insn1, p + 4, 4);
+        std::memcpy(&insn2, p + 8, 4);
+        if (insn2 != 0xD61F0200u) {  // br x16
+            break;
+        }
+        auto immhi = static_cast<int64_t>(static_cast<int32_t>(insn0 << 8) >> 13);  // bits 23:5
+        auto immlo = static_cast<int64_t>((insn0 >> 29) & 3);
+        auto page = (reinterpret_cast<uintptr_t>(p) & ~uintptr_t{0xFFF}) +
+                    (static_cast<intptr_t>((immhi << 2) | immlo) << 12);
+        if ((insn1 & 0xFFC003FFu) == 0xF9400210u) {  // ldr x16, [x16, #imm12*8]
+            auto slot = page + ((insn1 >> 10) & 0xFFF) * 8;
+            addr = *reinterpret_cast<void**>(slot);
+            break;
+        }
+        if ((insn1 & 0xFF8003FFu) == 0x91000210u) {  // add x16, x16, #imm12{, lsl #12}
+            auto imm = static_cast<uintptr_t>((insn1 >> 10) & 0xFFF);
+            addr = reinterpret_cast<void*>(page + (((insn1 >> 22) & 1) != 0 ? imm << 12 : imm));
+            continue;
+        }
+        break;
+    }
 #endif
     return addr;
 }

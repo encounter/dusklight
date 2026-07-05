@@ -97,6 +97,10 @@ public:
 private:
 #if DEBUG
     /* 0x00 */ dVibTest_c mVibTest;
+#elif PARTIAL_DEBUG
+    // Layout parity with DEBUG TUs. Reserved storage instead of the real member because
+    // dVibTest_c's ctor/virtuals are only defined under #if DEBUG (d_vibration.cpp).
+    alignas(dVibTest_c) u8 mVibTest[sizeof(dVibTest_c)];
 #endif
 
     class {

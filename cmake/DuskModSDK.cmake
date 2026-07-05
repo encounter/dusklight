@@ -101,7 +101,13 @@ function(add_dusk_mod target_name)
         # depend on the mod packages, so that would cycle. The implib is a declared
         # BYPRODUCT of dusklight's POST_BUILD, which gives Ninja the file-level edge.
         target_link_libraries(${target_name} PRIVATE "${DUSK_GAME_IMPLIB}")
-        set_target_properties(${target_name} PROPERTIES MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+        # CRT policy (MODS_LINKING.md §5): mods always use the release static CRT and
+        # _ITERATOR_DEBUG_LEVEL=0 regardless of config, so one mod binary loads into both
+        # debug and release games. Corollary: no std containers in game-visible struct
+        # layouts and no CRT-heap ownership across the mod boundary (JKR heaps already
+        # cover allocation).
+        set_target_properties(${target_name} PROPERTIES MSVC_RUNTIME_LIBRARY "MultiThreaded")
+        target_compile_definitions(${target_name} PRIVATE _ITERATOR_DEBUG_LEVEL=0)
         if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
             target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:C,CXX>:/clang:-mcmodel=large>")
             target_sources(${target_name} PRIVATE "${_DUSK_MOD_SDK_DIR}/mod_sdk/pseudo_reloc.cpp")
@@ -109,10 +115,7 @@ function(add_dusk_mod target_name)
             # the CRT libraries and search paths are spelled out explicitly (static CRT per mod).
             target_link_options(${target_name} PRIVATE -lldmingw /nodefaultlib /INCREMENTAL:NO)
             target_link_libraries(${target_name} PRIVATE
-                "$<IF:$<CONFIG:Debug>,libcmtd.lib,libcmt.lib>"
-                "$<IF:$<CONFIG:Debug>,libcpmtd.lib,libcpmt.lib>"
-                "$<IF:$<CONFIG:Debug>,libvcruntimed.lib,libvcruntime.lib>"
-                "$<IF:$<CONFIG:Debug>,libucrtd.lib,libucrt.lib>"
+                libcmt.lib libcpmt.lib libvcruntime.lib libucrt.lib
                 oldnames.lib uuid.lib kernel32.lib user32.lib)
             set(_lib_dirs "$ENV{LIB}")
             if("${_lib_dirs}" STREQUAL "")

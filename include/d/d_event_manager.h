@@ -41,7 +41,7 @@ public:
         BASE_ROOM5,
         BASE_DEMO,
 
-        #if DEBUG
+        #if PARTIAL_DEBUG || DEBUG  // Ensure struct layout consistent in all TUs (sizes mEventList).
         BASE_DEBUG,
         #endif
 
