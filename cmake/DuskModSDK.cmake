@@ -101,21 +101,25 @@ function(add_dusk_mod target_name)
         # depend on the mod packages, so that would cycle. The implib is a declared
         # BYPRODUCT of dusklight's POST_BUILD, which gives Ninja the file-level edge.
         target_link_libraries(${target_name} PRIVATE "${DUSK_GAME_IMPLIB}")
-        # CRT policy (MODS_LINKING.md §5): mods always use the release static CRT and
-        # _ITERATOR_DEBUG_LEVEL=0 regardless of config, so one mod binary loads into both
-        # debug and release games. Corollary: no std containers in game-visible struct
-        # layouts and no CRT-heap ownership across the mod boundary (JKR heaps already
-        # cover allocation).
-        set_target_properties(${target_name} PROPERTIES MSVC_RUNTIME_LIBRARY "MultiThreaded")
+        # CRT policy (MODS_LINKING.md §5): mods always use the release DLL CRT
+        # (MultiThreadedDLL) and _ITERATOR_DEBUG_LEVEL=0 regardless of config, so one mod
+        # binary loads into both debug and release games; in release the mod shares the
+        # game's CRT (the game vendors the vcruntime/msvcp DLLs beside the exe, which is
+        # where the OS loader resolves the mod's CRT imports from). Corollaries: no std
+        # containers in game-visible struct layouts and no CRT-heap ownership across the
+        # mod boundary (JKR heaps already cover allocation). Caveat: vcruntime is not
+        # forward-compatible, so a mod built with a newer MSVC toolset than the game's
+        # vendored runtime fails to load until the game updates.
+        set_target_properties(${target_name} PROPERTIES MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
         target_compile_definitions(${target_name} PRIVATE _ITERATOR_DEBUG_LEVEL=0)
         if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
             target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:C,CXX>:/clang:-mcmodel=large>")
             target_sources(${target_name} PRIVATE "${_DUSK_MOD_SDK_DIR}/mod_sdk/pseudo_reloc.cpp")
             # lld mingw mode rewrites /DEFAULTLIB directives to -l style and skips %LIB%, so
-            # the CRT libraries and search paths are spelled out explicitly (static CRT per mod).
+            # the CRT libraries and search paths are spelled out explicitly (release DLL CRT).
             target_link_options(${target_name} PRIVATE -lldmingw /nodefaultlib /INCREMENTAL:NO)
             target_link_libraries(${target_name} PRIVATE
-                libcmt.lib libcpmt.lib libvcruntime.lib libucrt.lib
+                msvcrt.lib msvcprt.lib vcruntime.lib ucrt.lib
                 oldnames.lib uuid.lib kernel32.lib user32.lib)
             set(_lib_dirs "$ENV{LIB}")
             if("${_lib_dirs}" STREQUAL "")

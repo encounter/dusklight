@@ -18,12 +18,21 @@ void pl_dlclose(void* h) {
     FreeLibrary(static_cast<HMODULE>(h));
 }
 std::string pl_dlerror() {
+    const DWORD err = GetLastError();
     char buf[256]{};
-    FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, nullptr,
-        GetLastError(), 0, buf, sizeof(buf), nullptr);
+    FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, nullptr, err, 0,
+        buf, sizeof(buf), nullptr);
     std::string s = buf;
     while (!s.empty() && (s.back() == '\r' || s.back() == '\n')) {
         s.pop_back();
+    }
+    // Mods link the DLL CRT, whose vcruntime/msvcp are the toolset-versioned DLLs vendored
+    // beside the game exe and are not forward-compatible: a mod built with a newer MSVC
+    // toolset than the vendored runtime fails here with one of these two codes.
+    if (err == ERROR_MOD_NOT_FOUND || err == ERROR_PROC_NOT_FOUND) {
+        s += " (a dependent DLL or entry point is missing; if this mod was built with a newer "
+             "MSVC toolset than the game's bundled VC runtime, update the game or rebuild the "
+             "mod with a matching toolset)";
     }
     return s;
 }
