@@ -630,9 +630,13 @@ target_precompile_headers(${DUSK_MAIN_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CXX>
 # 1:1 for hooks and the symbol manifest. Decomp code has many legitimately-identical
 # small functions, so ICF would silently make one hook intercept several names.
 if (MSVC)
-    # >=2-byte first instruction (/hotpatch; clang-cl maps it to -fms-hotpatch) plus
-    # 6 bytes of padding before every function (/FUNCTIONPADMIN at link).
-    set(DUSK_PATCHABLE_ENTRY_FLAG $<$<COMPILE_LANGUAGE:C,CXX>:/hotpatch>)
+    # >=2-byte first instruction (/hotpatch) plus 6 bytes of padding before every function
+    # (/FUNCTIONPADMIN at link). x64 cl rejects /hotpatch with D9002 — x64 MSVC codegen is
+    # always hotpatch-compatible — so the compile flag only applies to clang-cl (maps to
+    # -fms-hotpatch) and ARM64.
+    if (CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_SYSTEM_PROCESSOR MATCHES "ARM64|arm64")
+        set(DUSK_PATCHABLE_ENTRY_FLAG $<$<COMPILE_LANGUAGE:C,CXX>:/hotpatch>)
+    endif ()
     target_link_options(${DUSK_MAIN_TARGET} PRIVATE /FUNCTIONPADMIN /OPT:NOICF)
 elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     if (CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64" OR CMAKE_OSX_ARCHITECTURES MATCHES "arm64")
