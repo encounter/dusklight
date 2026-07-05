@@ -179,7 +179,7 @@ std::filesystem::path manifest_path() {
     const char* basePath = SDL_GetBasePath();
     std::filesystem::path dir = basePath != nullptr ? std::filesystem::path{basePath}
                                                     : std::filesystem::current_path();
-    return dir / "dusklight.manifest";
+    return dir / "dusklight.symdb";
 }
 
 std::string hex_string(const uint8_t* data, size_t len) {

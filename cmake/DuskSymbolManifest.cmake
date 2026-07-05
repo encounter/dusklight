@@ -52,16 +52,16 @@ function(dusk_setup_symbol_manifest target)
             # curated export is present in the manifest.
             list(APPEND _input --verify-def "${DUSK_GAME_DEF}")
         endif ()
-        set(_out "$<TARGET_FILE_DIR:${target}>/dusklight.manifest")
+        set(_out "$<TARGET_FILE_DIR:${target}>/dusklight.symdb")
     else ()
         set(_input --binary "$<TARGET_FILE:${target}>")
         if (APPLE)
             # Generator expression, not get_target_property: the bundle properties are
             # set later in CMakeLists, but this must be attached before the codesign
             # POST_BUILD so the manifest lands inside the sealed bundle.
-            set(_out "$<TARGET_BUNDLE_CONTENT_DIR:${target}>/Resources/dusklight.manifest")
+            set(_out "$<TARGET_BUNDLE_CONTENT_DIR:${target}>/Resources/dusklight.symdb")
         else ()
-            set(_out "$<TARGET_FILE_DIR:${target}>/dusklight.manifest")
+            set(_out "$<TARGET_FILE_DIR:${target}>/dusklight.symdb")
         endif ()
     endif ()
 
