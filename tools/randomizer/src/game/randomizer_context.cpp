@@ -3,16 +3,18 @@
 #include "dusk/logging.h"
 #include "dusk/main.h"
 #include "dusk/data.hpp"
-#include "dusk/ui/rando_config.hpp"
-#include "dusk/randomizer/game/flags.h"
-#include "dusk/randomizer/game/tools.h"
-#include "dusk/randomizer/game/stages.h"
-#include "dusk/randomizer/game/verify_item_functions.h"
-#include "dusk/randomizer/generator/utility/crc32.hpp"
-#include "dusk/randomizer/generator/utility/endian.hpp"
-#include "dusk/randomizer/generator/utility/yaml.hpp"
-#include "dusk/randomizer/generator/randomizer.hpp"
-#include "dusk/randomizer/generator/utility/text.hpp"
+#include "../paths.hpp"
+#include "game_helpers.hpp"
+#include "flags.h"
+#include "tools.h"
+#include "stages.h"
+#include "item_ids.hpp"
+#include "verify_item_functions.h"
+#include "../../generator/utility/crc32.hpp"
+#include "../../generator/utility/endian.hpp"
+#include "../../generator/utility/yaml.hpp"
+#include "../../generator/randomizer.hpp"
+#include "../../generator/utility/text.hpp"
 
 #include <fstream>
 
@@ -284,7 +286,7 @@ std::optional<std::string> RandomizerContext::LoadFromHash(const std::string& ha
 }
 
 std::filesystem::path RandomizerContext::GetSeedDataPath() const {
-    return dusk::ui::GetRandomizerSeedsPath() / this->mHash / "seed.dat";
+    return ::randomizer::paths::GetRandomizerSeedsPath() / this->mHash / "seed.dat";
 }
 
 int RandomizerContext::SettingToEnum(const std::string& settingName) {
@@ -390,7 +392,7 @@ static bool checkFoolishItemEffectReady()
     }
 
     // Make sure Z button isn't dimmed
-    if (dMeter2Info_getMeterClass()->getMeterDrawPtr()->getZButtonAlpha() != 1.f)
+    if (meter_draw_z_button_alpha(dMeter2Info_getMeterClass()->getMeterDrawPtr()) != 1.f)
     {
         return false;
     }
@@ -439,8 +441,10 @@ static void handleFoolishItem() {
      * eventually run out of memory so it is safer to unload everything and load it back in. */
 
     auto sceneMgr = Z2GetSceneMgr();
-    const u32 seWave1 = mDoAud_getZelAudio().getLoadedSeWave_1();
-    const u32 seWave2 = mDoAud_getZelAudio().getLoadedSeWave_2();
+    // Z2SceneMgr::loadedSeWave_1/_2 are private (branch added getters): documented
+    // offsets 0x0E/0x10.
+    const u32 seWave1 = reinterpret_cast<const u8*>(sceneMgr)[0x0E];
+    const u32 seWave2 = reinterpret_cast<const u8*>(sceneMgr)[0x10];
     sceneMgr->eraseSeWave(seWave1);
     sceneMgr->eraseSeWave(seWave2);
     sceneMgr->loadSeWave(0x46);
@@ -631,7 +635,7 @@ void RandomizerState::initGiveItemToPlayer()
             }
 
             // Ensure that link is not currently in a message-based event.
-            if (daAlink_getAlinkActorClass()->getEventId() != 0)
+            if (alink_msg_flow_event_id(daAlink_getAlinkActorClass()) != 0)
             {
                 break;
             }
@@ -1324,7 +1328,7 @@ static void DeleteFailedGenerationFiles(randomizer::Randomizer& rando) {
 }
 
 bool GenerateAndWriteSeed(std::string& generationStatusMsg) {
-    auto r = randomizer::Randomizer{dusk::ui::GetRandomizerPath()};
+    auto r = randomizer::Randomizer{::randomizer::paths::GetRandomizerPath()};
 
     auto generationResult = r.Generate();
     if (generationResult.has_value()) {

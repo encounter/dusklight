@@ -1,6 +1,12 @@
 #pragma once
 
 #include "dolphin/types.h"
+#include "SSystem/SComponent/c_sxyz.h"
+#include "SSystem/SComponent/c_xyz.h"
+
+#include "../../generator/logic/item_pool.hpp"
+#include "../../generator/logic/location.hpp"
+#include "../../generator/logic/world.hpp"
 
 bool playerIsInRoomStage(s32 room, const char* stage);
 void checkTransformFromWolf();

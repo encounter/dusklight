@@ -1,6 +1,8 @@
 #include "verify_item_functions.h"
 
 #include "d/d_com_inf_game.h"
+#include "game_helpers.hpp"
+#include "item_ids.hpp"
 #include "d/d_item.h"
 #include "d/d_item_data.h"
 

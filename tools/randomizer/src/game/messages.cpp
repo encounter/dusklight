@@ -2,6 +2,7 @@
 
 #include "JSystem/JMessage/control.h"
 #include "d/d_msg_class.h"
+#include "game_helpers.hpp"
 #include "randomizer_context.hpp"
 
 #include "dusk/version.hpp"

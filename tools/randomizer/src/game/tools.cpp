@@ -5,6 +5,9 @@
 #include "d/d_item_data.h"
 #include "dusk/logging.h"
 #include "f_op/f_op_actor_mng.h"
+#include "game_helpers.hpp"
+#include "randomizer_context.hpp"
+#include "item_ids.hpp"
 #include "stages.h"
 #include "verify_item_functions.h"
 

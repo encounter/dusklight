@@ -68,8 +68,20 @@ set(RANDOMIZER_GENERATOR_SOURCES
 
 add_dusk_mod(randomizer
         SOURCES
+        src/game/flags.cpp
+        src/game/item_data.cpp
+        src/game/item_funcs.cpp
+        src/game/layer_resolver.cpp
+        src/game/messages.cpp
+        src/game/randomizer_context.cpp
+        src/game/save_setup.cpp
+        src/game/stages.cpp
+        src/game/tools.cpp
+        src/game/verify_item_functions.cpp
+        src/hooks.cpp
         src/mod.cpp
         src/paths.cpp
+        src/seed_session.cpp
         ${RANDOMIZER_GENERATOR_SOURCES}
         MOD_JSON mod.json
 )
