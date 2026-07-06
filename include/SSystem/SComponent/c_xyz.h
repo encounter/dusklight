@@ -4,6 +4,8 @@
 #include <mtx.h>
 #include <cmath>
 
+#include "global.h"
+
 #ifdef _MSVC_LANG
 #define M_PI 3.14159265358979323846f
 #endif
