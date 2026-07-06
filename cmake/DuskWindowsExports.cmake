@@ -12,9 +12,9 @@ function(dusk_setup_windows_exports target)
     endif ()
 
     include("${_DUSK_WINDOWS_EXPORTS_CMAKE_DIR}/DuskSymbolManifest.cmake")
-    dusk_ensure_symgen(TRUE)
-    set(_symgen "${DUSK_SYMGEN_EXE}")
-    add_dependencies(${target} dusk_symgen)
+    ensure_symgen(TRUE)
+    set(_symgen "${SYMGEN_EXE}")
+    add_dependencies(${target} symgen)
 
     set(_rsp_lines "$<TARGET_OBJECTS:${target}>")
     foreach (_lib IN LISTS JSYSTEM_LIBRARIES)

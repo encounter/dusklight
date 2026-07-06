@@ -2,14 +2,12 @@ include_guard(GLOBAL)
 
 get_filename_component(_SYMBOL_MANIFEST_CMAKE_DIR "${CMAKE_CURRENT_LIST_FILE}" DIRECTORY)
 
-set(_DUSK_SYMGEN_VERSION "1.0.0")
-set(_DUSK_SYMGEN_RELEASE_BASE_URL
-        "https://github.com/encounter/symgen/releases/download/v${_DUSK_SYMGEN_VERSION}")
-set(DUSK_SYMGEN_PATH "" CACHE FILEPATH
-        "Path to a symgen executable; empty downloads the pinned release")
-mark_as_advanced(DUSK_SYMGEN_PATH)
+set(_SYMGEN_VERSION "1.0.0")
+set(_SYMGEN_RELEASE_BASE_URL "https://github.com/encounter/symgen/releases/download/v${_SYMGEN_VERSION}")
+set(SYMGEN_PATH "" CACHE FILEPATH "Path to a symgen executable; empty downloads the pinned release")
+mark_as_advanced(SYMGEN_PATH)
 
-function(dusk_symgen_host_asset out_name out_hash)
+function(symgen_host_asset out_name out_hash)
     string(TOLOWER "${CMAKE_HOST_SYSTEM_PROCESSOR}" _host_processor)
     set(_asset "")
     set(_hash "")
@@ -50,23 +48,23 @@ function(dusk_symgen_host_asset out_name out_hash)
     set(${out_hash} "${_hash}" PARENT_SCOPE)
 endfunction()
 
-function(dusk_ensure_symgen required)
-    if (TARGET dusk_symgen)
+function(ensure_symgen required)
+    if (TARGET symgen)
         return()
     endif ()
 
-    if (DUSK_SYMGEN_PATH)
-        get_filename_component(_symgen "${DUSK_SYMGEN_PATH}" ABSOLUTE)
+    if (SYMGEN_PATH)
+        get_filename_component(_symgen "${SYMGEN_PATH}" ABSOLUTE)
         if (NOT EXISTS "${_symgen}")
             if (required)
-                message(FATAL_ERROR "symgen: DUSK_SYMGEN_PATH does not exist: ${_symgen}")
+                message(FATAL_ERROR "symgen: SYMGEN_PATH does not exist: ${_symgen}")
             endif ()
-            message(STATUS "symgen: DUSK_SYMGEN_PATH does not exist, symbol manifest generation "
+            message(STATUS "symgen: SYMGEN_PATH does not exist, symbol manifest generation "
                     "skipped (by-name hook resolution will be unavailable)")
             return()
         endif ()
     else ()
-        dusk_symgen_host_asset(_asset _hash)
+        symgen_host_asset(_asset _hash)
         if (_asset STREQUAL "")
             if (required)
                 message(FATAL_ERROR "symgen: no prebuilt binary for host "
@@ -81,8 +79,8 @@ function(dusk_ensure_symgen required)
 
         set(_symgen_dir "${CMAKE_BINARY_DIR}/_deps/symgen")
         set(_symgen "${_symgen_dir}/${_asset}")
-        set(_url "${_DUSK_SYMGEN_RELEASE_BASE_URL}/${_asset}")
-        message(STATUS "dusk: Fetching symgen ${_DUSK_SYMGEN_VERSION} (${_asset})")
+        set(_url "${_SYMGEN_RELEASE_BASE_URL}/${_asset}")
+        message(STATUS "dusk: Fetching symgen ${_SYMGEN_VERSION} (${_asset})")
         file(MAKE_DIRECTORY "${_symgen_dir}")
         file(DOWNLOAD "${_url}" "${_symgen}"
                 EXPECTED_HASH "SHA256=${_hash}"
@@ -108,16 +106,16 @@ function(dusk_ensure_symgen required)
         endif ()
     endif ()
 
-    add_custom_target(dusk_symgen DEPENDS "${_symgen}")
-    set(DUSK_SYMGEN_EXE "${_symgen}" CACHE INTERNAL "symgen executable" FORCE)
+    add_custom_target(symgen DEPENDS "${_symgen}")
+    set(SYMGEN_EXE "${_symgen}" CACHE INTERNAL "symgen executable" FORCE)
 endfunction()
 
 function(dusk_setup_symbol_manifest target)
-    dusk_ensure_symgen(TRUE)
-    if (NOT TARGET dusk_symgen)
+    ensure_symgen(TRUE)
+    if (NOT TARGET symgen)
         return()
     endif ()
-    add_dependencies(${target} dusk_symgen)
+    add_dependencies(${target} symgen)
 
     if (WIN32)
         set(_input --pdb "$<TARGET_PDB_FILE:${target}>")
@@ -132,7 +130,7 @@ function(dusk_setup_symbol_manifest target)
     endif ()
 
     add_custom_command(TARGET ${target} POST_BUILD
-            COMMAND "${DUSK_SYMGEN_EXE}" manifest ${_input} --out "${_out}"
+            COMMAND "${SYMGEN_EXE}" manifest ${_input} --out "${_out}"
             COMMENT "Generating symbol manifest"
             VERBATIM)
 endfunction()

@@ -3,15 +3,11 @@ include_guard(GLOBAL)
 
 get_filename_component(_DUSK_VERSION_ROOT "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
 
-set(DUSK_VERSION_OVERRIDE "" CACHE STRING "Override version string (skips git detection and format validation)")
-
-# These feed version.h.in alongside the git-derived values.
 set(DUSK_SENTRY_DSN "" CACHE STRING "Sentry DSN")
 set(DUSK_SENTRY_ENVIRONMENT "development" CACHE STRING "Sentry environment")
 
-# Sets DUSK_WC_DESCRIBE / DUSK_VERSION_STRING / DUSK_SHORT_VERSION_STRING /
-# DUSK_VERSION_CODE / DUSK_WC_REVISION / DUSK_WC_BRANCH / DUSK_WC_DATE in the
-# caller's scope. A macro: the root CMakeLists runs it before project().
+set(DUSK_VERSION_OVERRIDE "" CACHE STRING "Override version string (skips git detection and format validation)")
+
 macro(dusk_detect_version)
     if (DUSK_VERSION_OVERRIDE)
         set(DUSK_WC_DESCRIBE "${DUSK_VERSION_OVERRIDE}")
