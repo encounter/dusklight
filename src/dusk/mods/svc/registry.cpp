@@ -166,6 +166,10 @@ void ModLoader::init_services() {
         &svc::flow_service(), nullptr, false);
     svc::register_service(TEXT_SERVICE_ID, TEXT_SERVICE_MAJOR, TEXT_SERVICE_MINOR,
         &svc::text_service(), nullptr, false);
+    svc::register_service(SAVE_SERVICE_ID, SAVE_SERVICE_MAJOR, SAVE_SERVICE_MINOR,
+        &svc::save_service(), nullptr, false);
+    svc::register_service(STAGE_SERVICE_ID, STAGE_SERVICE_MAJOR, STAGE_SERVICE_MINOR,
+        &svc::stage_service(), nullptr, false);
 }
 
 bool ModLoader::register_static_service_exports(LoadedMod& mod) {

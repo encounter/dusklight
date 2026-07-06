@@ -1,4 +1,5 @@
 #include "dusk/autosave.h"
+#include "dusk/mods/save.hpp"
 #include "dusk/ui/ui.hpp"
 #include "imgui/ImGuiConsole.hpp"
 
@@ -105,6 +106,8 @@ void waitingForWrite() {
 }
 
 void endAutoSave() {
+    const int slot = dComIfGs_getDataNum();
+    dusk::mods::save_slot_written(slot, mSaveBuffer + slot * QUEST_LOG_SIZE);
     dusk::ui::push_toast({
         .type = "autosave",
         .duration = std::chrono::milliseconds(1500),

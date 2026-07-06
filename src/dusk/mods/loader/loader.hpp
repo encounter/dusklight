@@ -12,6 +12,8 @@
 #include "mods/svc/flow.h"
 #include "mods/svc/gfx.h"
 #include "mods/svc/item.h"
+#include "mods/svc/save.h"
+#include "mods/svc/stage.h"
 #include "mods/svc/text.h"
 #include "mods/svc/ui.h"
 
@@ -146,6 +148,31 @@ ModResult text_override_message_fn(
     LoadedMod& mod, uint16_t group, uint16_t messageId, TextMessageFn fn, void* userData);
 ModResult text_clear_override(LoadedMod& mod, uint16_t group, uint16_t messageId);
 void text_remove_mod(LoadedMod& mod);
+
+// Save-service plumbing (loader/save.cpp). Game thread only; the game-code entry points
+// (slot lifecycle seams) are declared in dusk/mods/save.hpp.
+ModResult save_set_blob(LoadedMod& mod, const char* name, const void* data, size_t size);
+ModResult save_get_blob(LoadedMod& mod, const char* name, void* buf, size_t& inoutSize);
+ModResult save_delete_blob(LoadedMod& mod, const char* name);
+ModResult save_observe(LoadedMod& mod, SaveEventFn onNewSave, SaveEventFn onLoaded,
+    SaveEventFn onWritten, void* userData, uint64_t& outHandle);
+ModResult save_unobserve(LoadedMod& mod, uint64_t handle);
+void save_remove_mod(LoadedMod& mod);
+
+// Stage-service plumbing (loader/stage.cpp). Game thread only; the game-code entry points
+// (spawn-time edit application + addition iteration) are declared in dusk/mods/stage.hpp.
+ModResult stage_patch_actor(LoadedMod& mod, const char* stage, uint8_t room, uint8_t layer,
+    uint32_t crc, const void* record, size_t recordSize, uint64_t& outHandle);
+ModResult stage_delete_actor(LoadedMod& mod, const char* stage, uint8_t room, uint8_t layer,
+    uint32_t crc, uint64_t& outHandle);
+ModResult stage_add_actor(LoadedMod& mod, const char* stage, uint8_t room, uint8_t layer,
+    const void* record, size_t recordSize, uint64_t& outHandle);
+ModResult stage_remove_actor_edit(LoadedMod& mod, uint64_t handle);
+void stage_remove_mod(LoadedMod& mod);
+
+// CRC-32 (IEEE, reflected; defined in loader/stage.cpp) shared by stage-edit matching and the
+// save-sidecar staleness snapshots.
+uint32_t mods_crc32(const void* data, size_t size);
 
 // UI service plumbing (loader/ui.cpp). Game thread only, like config.
 ModResult ui_register_mods_panel(LoadedMod& mod, const UiModsPanelDesc& desc);

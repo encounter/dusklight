@@ -27,6 +27,7 @@
 #include <sstream>
 #include "dusk/logging.h"
 #include "dusk/main.h"
+#include "dusk/mods/save.hpp"
 #include "dusk/version.hpp"
 #include "m_Do/m_Do_MemCard.h"
 #endif
@@ -808,6 +809,8 @@ static void load_requested_save_slot(dScnLogo_c* logoScene) {
 
     dComIfGs_setNoFile(dusk::requestedSaveSlot);
     dComIfGs_setDataNum(dusk::requestedSaveSlot - 1);
+    dusk::mods::save_slot_loaded(dusk::requestedSaveSlot - 1,
+        status == 1 ? saveData + (dusk::requestedSaveSlot - 1) * SAVEDATA_SIZE : nullptr);
     apply_requested_time_of_day();
     dComIfGs_gameStart();
 

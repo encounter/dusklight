@@ -12,6 +12,8 @@
 #include "mods/svc/log.h"
 #include "mods/svc/overlay.h"
 #include "mods/svc/resource.h"
+#include "mods/svc/save.h"
+#include "mods/svc/stage.h"
 #include "mods/svc/text.h"
 #include "mods/svc/texture.h"
 #include "mods/svc/ui.h"
@@ -56,5 +58,7 @@ const CameraService& camera_service();
 const ItemService& item_service();
 const FlowService& flow_service();
 const TextService& text_service();
+const SaveService& save_service();
+const StageService& stage_service();
 
 }  // namespace dusk::mods::svc

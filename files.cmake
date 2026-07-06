@@ -1562,6 +1562,8 @@ set(DUSK_FILES
         src/dusk/mods/loader/native_module.cpp
         src/dusk/mods/loader/native_module.hpp
         src/dusk/mods/loader/overlay.cpp
+        src/dusk/mods/loader/save.cpp
+        src/dusk/mods/loader/stage.cpp
         src/dusk/mods/loader/text.cpp
         src/dusk/mods/loader/textures.cpp
         src/dusk/mods/loader/ui.cpp
@@ -1580,6 +1582,8 @@ set(DUSK_FILES
         src/dusk/mods/svc/registry.cpp
         src/dusk/mods/svc/registry.hpp
         src/dusk/mods/svc/resource.cpp
+        src/dusk/mods/svc/save.cpp
+        src/dusk/mods/svc/stage.cpp
         src/dusk/mods/svc/text.cpp
         src/dusk/mods/svc/texture.cpp
         src/dusk/mods/svc/ui.cpp

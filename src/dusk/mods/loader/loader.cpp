@@ -605,6 +605,8 @@ void ModLoader::deactivate_mod(LoadedMod& mod) {
     item_checks_remove_mod(mod);
     flow_remove_mod(mod);
     text_remove_mod(mod);
+    save_remove_mod(mod);
+    stage_remove_mod(mod);
     ui_remove_mod(mod);
     gfx_remove_mod(mod);
     unload_native(mod);

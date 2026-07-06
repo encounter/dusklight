@@ -21,6 +21,8 @@
 #include "mods/svc/log.h"
 #include "mods/svc/overlay.h"
 #include "mods/svc/resource.h"
+#include "mods/svc/save.h"
+#include "mods/svc/stage.h"
 #include "mods/svc/text.h"
 #include "mods/svc/texture.h"
 #include "mods/svc/ui.h"
@@ -45,6 +47,8 @@ IMPORT_SERVICE(GameService, svc_game);
 IMPORT_SERVICE(ItemService, svc_item);
 IMPORT_SERVICE(FlowService, svc_flow);
 IMPORT_SERVICE(TextService, svc_text);
+IMPORT_SERVICE(SaveService, svc_save);
+IMPORT_SERVICE(StageService, svc_stage);
 // Both provided by mod_test_dep, which sorts *after* mod_test.dusk in the mods directory;
 // dependency ordering must initialize it first regardless. The deferred service only
 // resolves if mod_test_dep published it during its initialization.
@@ -84,6 +88,8 @@ bool g_flow_neg_ok = false;
 int g_flow_event_param = -1;
 bool g_text_ok = false;
 bool g_text_neg_ok = false;
+bool g_save_ok = false;
+bool g_stage_ok = false;
 int g_config_change_count = 0;
 int64_t g_config_prev_value = -1;
 int64_t g_config_curr_value = -1;
@@ -749,6 +755,12 @@ ModResult build_panel(ModContext*, UiElementHandle panel, void*, ModError*) {
     svc_ui->pane_add_badge_row(
         mod_ctx, panel, "TextService negative tests", g_text_neg_ok, nullptr);
 
+    svc_ui->pane_add_section(mod_ctx, panel, "Save + Stage");
+    svc_ui->pane_add_badge_row(
+        mod_ctx, panel, "SaveService registration + negatives", g_save_ok, nullptr);
+    svc_ui->pane_add_badge_row(
+        mod_ctx, panel, "StageService registration + negatives", g_stage_ok, nullptr);
+
     svc_ui->pane_add_section(mod_ctx, panel, "UI");
     svc_ui->pane_add_badge_row(mod_ctx, panel, "stack queries", g_ui_stack_ok, nullptr);
     svc_ui->pane_add_badge_row(mod_ctx, panel, "scoped RCSS registered", g_ui_rcss_ok, nullptr);
@@ -1020,6 +1032,67 @@ void test_text() {
     }
 }
 
+// SaveService + StageService: registration/negative coverage. The lifecycle seams are not
+// driven synthetically (they mutate the user's real per-slot sidecar), and blob round trips
+// need an active save slot — those paths are verified in gameplay.
+void save_test_event(ModContext*, uint32_t, void*) {}
+
+void test_save_stage() {
+    SaveObserverHandle observer = 0;
+    bool ok = svc_save->observe_saves(
+                  mod_ctx, save_test_event, save_test_event, save_test_event, nullptr,
+                  &observer) == MOD_OK &&
+              observer != 0;
+    // No slot is active at startup: blob calls report MOD_UNAVAILABLE, not garbage.
+    ok = ok && svc_save->set_blob(mod_ctx, "probe", "x", 1) == MOD_UNAVAILABLE;
+    size_t size = 0;
+    ok = ok && svc_save->get_blob(mod_ctx, "probe", nullptr, &size) == MOD_UNAVAILABLE;
+    ok = ok && svc_save->unobserve_saves(mod_ctx, observer) == MOD_OK;
+    // Negatives.
+    ok = ok && svc_save->observe_saves(mod_ctx, nullptr, nullptr, nullptr, nullptr, &observer) ==
+                   MOD_INVALID_ARGUMENT;
+    ok = ok && svc_save->set_blob(mod_ctx, "", "x", 1) == MOD_INVALID_ARGUMENT;
+    ok = ok && svc_save->get_blob(mod_ctx, "probe", nullptr, nullptr) == MOD_INVALID_ARGUMENT;
+    ok = ok && svc_save->unobserve_saves(mod_ctx, ~UINT64_C(0)) == MOD_INVALID_ARGUMENT;
+    g_save_ok = ok;
+    if (ok) {
+        svc_log->info(mod_ctx, "SaveService registration + negatives OK");
+    } else {
+        svc_log->error(mod_ctx, "SaveService registration + negatives FAILED");
+    }
+
+    uint8_t record[STAGE_ACTOR_RECORD_SIZE] = {'m', 'o', 'd', 't', 'e', 's', 't', 0};
+    StageActorHandle patch = 0;
+    StageActorHandle del = 0;
+    StageActorHandle add = 0;
+    bool stageOk = svc_stage->patch_actor(mod_ctx, "X_TEST", 0, STAGE_LAYER_ANY, 0x12345678u,
+                       record, sizeof(record), &patch) == MOD_OK &&
+                   patch != 0;
+    stageOk = stageOk && svc_stage->delete_actor(mod_ctx, "X_TEST", STAGE_ROOM_STAGE_FILE, 3,
+                             0x9ABCDEF0u, &del) == MOD_OK &&
+              del != 0;
+    stageOk = stageOk && svc_stage->add_actor(mod_ctx, "X_TEST", 0, STAGE_LAYER_ANY, record,
+                             sizeof(record), &add) == MOD_OK &&
+              add != 0;
+    stageOk = stageOk && svc_stage->remove_actor_edit(mod_ctx, patch) == MOD_OK &&
+              svc_stage->remove_actor_edit(mod_ctx, del) == MOD_OK &&
+              svc_stage->remove_actor_edit(mod_ctx, add) == MOD_OK;
+    // Negatives: bad record size, stage-file room on an addition, bogus handle/args.
+    stageOk = stageOk && svc_stage->patch_actor(mod_ctx, "X_TEST", 0, 0, 1, record, 33,
+                             nullptr) == MOD_INVALID_ARGUMENT;
+    stageOk = stageOk && svc_stage->add_actor(mod_ctx, "X_TEST", STAGE_ROOM_STAGE_FILE, 0,
+                             record, sizeof(record), nullptr) == MOD_INVALID_ARGUMENT;
+    stageOk = stageOk && svc_stage->add_actor(mod_ctx, "TOOLONGSTAGE", 0, 0, record,
+                             sizeof(record), nullptr) == MOD_INVALID_ARGUMENT;
+    stageOk = stageOk && svc_stage->remove_actor_edit(mod_ctx, patch) == MOD_INVALID_ARGUMENT;
+    g_stage_ok = stageOk;
+    if (stageOk) {
+        svc_log->info(mod_ctx, "StageService registration + negatives OK");
+    } else {
+        svc_log->error(mod_ctx, "StageService registration + negatives FAILED");
+    }
+}
+
 MOD_EXPORT ModResult mod_initialize(ModError* error) {
     svc_log->info(mod_ctx, "mod_test initializing");
     svc_log->warn(mod_ctx, "LogService::warn smoke test");
@@ -1282,6 +1355,7 @@ MOD_EXPORT ModResult mod_initialize(ModError* error) {
     test_item_checks();
     test_flow();
     test_text();
+    test_save_stage();
 
     ModResult result = dusk::mods::hook_add_pre<&daAlink_c::posMove>(svc_hook, on_pos_move_pre);
     if (result != MOD_OK) {
