@@ -222,7 +222,7 @@ FetchContent_Declare(miniz
 set(DUSK_ENABLE_CODE_MODS_DEFAULT OFF)
 option(DUSK_ENABLE_CODE_MODS "Enable code mods" ${DUSK_ENABLE_CODE_MODS_DEFAULT})
 set(_code_mods_supported TRUE)
-if (ANDROID OR IOS OR TVOS)
+if (IOS OR TVOS)
     set(_code_mods_supported FALSE)
 endif ()
 if (DUSK_ENABLE_CODE_MODS AND NOT _code_mods_supported)
@@ -395,10 +395,6 @@ endif ()
 option(DUSK_ENABLE_DISCORD "Enable Discord Rich Presence support" ${DUSK_ENABLE_DISCORD_DEFAULT})
 if (DUSK_ENABLE_DISCORD AND NOT ANDROID AND NOT IOS AND NOT TVOS)
     list(APPEND GAME_COMPILE_DEFS DUSK_DISCORD=1)
-endif ()
-
-if(ANDROID)
-    list(APPEND GAME_COMPILE_DEFS TARGET_ANDROID=1)
 endif ()
 
 if (DUSK_ENABLE_CODE_MODS)
@@ -778,6 +774,7 @@ foreach (target IN LISTS BINARY_TARGETS)
 endforeach ()
 
 if (DUSK_ENABLE_CODE_MODS AND CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    add_custom_target(dusk_mods) # Aggregate target for all in-tree mods
     add_subdirectory(tools/mod_test)
     add_subdirectory(tools/mod_test_dep)
     add_subdirectory(tools/crt_mod)

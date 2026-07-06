@@ -21,6 +21,8 @@ namespace {
 #define DUSK_ABI_OS "windows"
 #elif defined(__APPLE__)
 #define DUSK_ABI_OS "macos"
+#elif defined(__ANDROID__)
+#define DUSK_ABI_OS "android"
 #else
 #define DUSK_ABI_OS "linux"
 #endif
@@ -34,7 +36,7 @@ GameService s_gameService{
 
 }  // namespace
 
-const GameService& game_code_service() {
+const GameService& game_service() {
     const auto& buildId = manifest::image_build_id();
     s_gameService.build_id = buildId.empty() ? nullptr : buildId.data();
     s_gameService.build_id_len = static_cast<uint32_t>(buildId.size());

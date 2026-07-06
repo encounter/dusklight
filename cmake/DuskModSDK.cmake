@@ -1,29 +1,34 @@
 # add_dusk_mod(<target> SOURCES <file>... MOD_JSON <mod.json> [RES_DIR <res>] [OVERLAY_DIR <overlay>]
 #              [TEXTURES_DIR <textures>] [OUTPUT_DIR <dir>])
-set(DUSK_MODS_OUTPUT_DIR "${CMAKE_SOURCE_DIR}/mods" CACHE PATH "Directory to write .dusk packages into")
+if (CMAKE_CROSSCOMPILING)
+    set(DUSK_MODS_OUTPUT_DIR "${CMAKE_BINARY_DIR}/mods" CACHE PATH "Directory to write .dusk packages into")
+else ()
+    set(DUSK_MODS_OUTPUT_DIR "${CMAKE_SOURCE_DIR}/mods" CACHE PATH "Directory to write .dusk packages into")
+endif ()
 set(_DUSK_MOD_SDK_DIR "${CMAKE_CURRENT_SOURCE_DIR}/sdk")
 
-# The loader matches libraries by platform extension + architecture suffix (_arm64/_x64/_x86)
-function(_dusk_mod_arch_suffix out_var)
+function(_dusk_mod_lib_name out_var)
     set(_arch "${CMAKE_SYSTEM_PROCESSOR}")
     if (APPLE AND CMAKE_OSX_ARCHITECTURES)
         list(LENGTH CMAKE_OSX_ARCHITECTURES _count)
         if (_count GREATER 1)
-            # Universal binary: leave the name arch-neutral
-            set(${out_var} "" PARENT_SCOPE)
-            return()
+            message(FATAL_ERROR "add_dusk_mod: universal binaries are not supported")
         endif ()
         set(_arch "${CMAKE_OSX_ARCHITECTURES}")
     endif ()
-    if (_arch MATCHES "^(arm64|aarch64|ARM64)$")
-        set(${out_var} "_arm64" PARENT_SCOPE)
-    elseif (_arch MATCHES "^(x86_64|AMD64|amd64)$")
-        set(${out_var} "_x64" PARENT_SCOPE)
-    elseif (_arch MATCHES "^(i[3-6]86|x86|X86)$")
-        set(${out_var} "_x86" PARENT_SCOPE)
-    else ()
-        set(${out_var} "" PARENT_SCOPE)
+    string(TOLOWER "${CMAKE_SYSTEM_NAME}" _platform)
+    string(TOLOWER "${_arch}" _arch)
+    if (_arch MATCHES "^(i[3-6]86|x86)$")
+        set(_arch "x86")
     endif ()
+    if (WIN32)
+        set(_ext ".dll")
+    elseif (APPLE)
+        set(_ext ".dylib")
+    else ()
+        set(_ext ".so")
+    endif ()
+    set(${out_var} "${_platform}-${_arch}${_ext}" PARENT_SCOPE)
 endfunction()
 
 function(_dusk_mod_resolve_source_path out_var path)
@@ -55,9 +60,9 @@ function(add_dusk_mod target_name)
     endif ()
 
     add_library(${target_name} SHARED ${ARG_SOURCES})
-    _dusk_mod_arch_suffix(_arch_suffix)
+    _dusk_mod_lib_name(_lib_name)
     set_target_properties(${target_name} PROPERTIES
-            PREFIX "" OUTPUT_NAME "${target_name}${_arch_suffix}"
+            PREFIX ""
             C_VISIBILITY_PRESET hidden
             CXX_VISIBILITY_PRESET hidden
             VISIBILITY_INLINES_HIDDEN ON
@@ -96,6 +101,14 @@ function(add_dusk_mod target_name)
 
     if (APPLE)
         target_link_options(${target_name} PRIVATE -undefined dynamic_lookup)
+    elseif (ANDROID)
+        if (TARGET dusklight)
+            target_link_libraries(${target_name} PRIVATE dusklight)
+        elseif (DUSK_GAME_SOLIB)
+            target_link_libraries(${target_name} PRIVATE "${DUSK_GAME_SOLIB}")
+        else ()
+            message(FATAL_ERROR "add_dusk_mod: DUSK_GAME_SOLIB is not set (libmain.so)")
+        endif ()
     elseif (UNIX)
         target_link_options(${target_name} PRIVATE -Wl,--allow-shlib-undefined)
     elseif (WIN32)
@@ -138,7 +151,7 @@ function(add_dusk_mod target_name)
     set(_stage "${CMAKE_CURRENT_BINARY_DIR}/${target_name}_stage")
     set(_out "${_output_dir}/${target_name}.dusk")
 
-    set(_zip_args "$<TARGET_FILE_NAME:${target_name}>" mod.json)
+    set(_zip_args "${_lib_name}" mod.json)
     set(_package_deps "${_mod_json}")
     set(_package_inputs "${_mod_json}")
     set(_extra_cmds "")
@@ -181,7 +194,7 @@ function(add_dusk_mod target_name)
     add_custom_command(OUTPUT "${_out}"
             COMMAND ${CMAKE_COMMAND} -E rm -rf "${_stage}"
             COMMAND ${CMAKE_COMMAND} -E make_directory "${_stage}" "${_output_dir}"
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:${target_name}>" "${_stage}/$<TARGET_FILE_NAME:${target_name}>"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:${target_name}>" "${_stage}/${_lib_name}"
             COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_mod_json}" "${_stage}/mod.json"
             ${_extra_cmds}
             COMMAND ${CMAKE_COMMAND} -E chdir "${_stage}" ${CMAKE_COMMAND} -E tar cvf "${_out}" --format=zip ${_zip_args}
@@ -191,9 +204,13 @@ function(add_dusk_mod target_name)
             VERBATIM
     )
     add_custom_target(${_package_target} ALL DEPENDS "${_out}")
-    if (NOT WIN32 AND TARGET dusklight)
+    if (NOT WIN32 AND NOT ANDROID AND TARGET dusklight)
         # Windows: mods link dusklight_imports.lib, a byproduct of the dusklight build, so
-        # the dependency direction is inverted there.
+        # the dependency direction is inverted there. On Android, mods link the dusklight
+        # target itself.
         add_dependencies(dusklight ${_package_target})
+    endif ()
+    if (TARGET dusk_mods)
+        add_dependencies(dusk_mods ${_package_target})
     endif ()
 endfunction()

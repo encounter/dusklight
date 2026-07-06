@@ -287,6 +287,7 @@ public class DuskDocumentsProvider extends DocumentsProvider {
             return;
         }
         new File(root, "texture_replacements").mkdirs();
+        new File(root, "mods").mkdirs();
         new File(root, "USA/Card A").mkdirs();
         new File(root, "EUR/Card A").mkdirs();
     }

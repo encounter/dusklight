@@ -23,18 +23,6 @@
       }
     },
     {
-      "name": "release",
-      "hidden": true,
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release",
-        "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreadedDLL",
-        "CMAKE_INTERPROCEDURAL_OPTIMIZATION": {
-          "type": "BOOL",
-          "value": true
-        }
-      }
-    },
-    {
       "name": "ci",
       "hidden": true,
       "cacheVariables": {
@@ -402,9 +390,14 @@
         "CMAKE_INSTALL_PREFIX": "${sourceDir}/build/install",
         "CMAKE_TOOLCHAIN_FILE": "$env{ANDROID_HOME}/ndk/$env{ANDROID_NDK_VERSION}/build/cmake/android.toolchain.cmake",
         "ANDROID_PLATFORM": "android-28",
+        "ANDROID_STL": "c++_shared",
         "BUILD_SHARED_LIBS": {
           "type": "BOOL",
           "value": false
+        },
+        "DUSK_ENABLE_CODE_MODS": {
+          "type": "BOOL",
+          "value": true
         },
         "CMAKE_DISABLE_FIND_PACKAGE_PkgConfig": {
           "type": "BOOL",
@@ -441,8 +434,7 @@
       "hidden": true,
       "inherits": [
         "android-base",
-        "ci",
-        "release"
+        "ci"
       ],
       "cacheVariables": {
         "DUSK_ENABLE_SENTRY_NATIVE": {

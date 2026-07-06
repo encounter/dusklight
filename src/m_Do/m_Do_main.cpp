@@ -843,6 +843,12 @@ int game_main(int argc, char* argv[]) {
     } else {
         dusk::mods::ModLoader::instance().set_mods_dir(dusk::ConfigPath / "mods");
     }
+#if TARGET_ANDROID
+    // A user-relocated data dir can live on external storage, which is mounted noexec;
+    // native mod libraries must be extracted to internal storage to be dlopen-able.
+    // CachePath is always the internal pref path.
+    dusk::mods::ModLoader::instance().set_cache_dir(dusk::CachePath / "mod_cache");
+#endif
 
     DuskLog.info("Initializing mods...");
     dusk::mods::ModLoader::instance().init();

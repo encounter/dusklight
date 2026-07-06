@@ -33,6 +33,35 @@ if [[ -n "$ANDROID_NDK_VER" ]]; then
   fi
 fi
 
+ndk_triple_for_abi() {
+  case "$1" in
+    arm64-v8a) echo "aarch64-linux-android" ;;
+    x86_64) echo "x86_64-linux-android" ;;
+    *) echo "" ;;
+  esac
+}
+
+# The build uses ANDROID_STL=c++_shared so libmain.so and dlopen'd code mods share one
+# C++ runtime; the runtime library ships in the APK alongside libmain.so.
+copy_stl() {
+  local abi="$1"
+  local triple dst_dir src
+  triple="$(ndk_triple_for_abi "$abi")"
+  if [[ -z "$triple" || -z "$ANDROID_NDK_VER" || -z "${HOST_TAG:-}" ]]; then
+    echo "Cannot locate libc++_shared.so for $abi (NDK version or host tag unknown)" >&2
+    exit 1
+  fi
+  src="$ANDROID_HOME_DIR/ndk/$ANDROID_NDK_VER/toolchains/llvm/prebuilt/$HOST_TAG/sysroot/usr/lib/$triple/libc++_shared.so"
+  if [[ ! -f "$src" ]]; then
+    echo "Missing libc++_shared.so for $abi: $src" >&2
+    exit 1
+  fi
+  dst_dir="$APP_DIR/$abi"
+  mkdir -p "$dst_dir"
+  cp -f "$src" "$dst_dir/libc++_shared.so"
+  echo "Staged $src -> $dst_dir/libc++_shared.so"
+}
+
 copy_lib() {
   local abi="$1"
   local src="$2"
@@ -69,4 +98,5 @@ for abi in $ANDROID_STAGE_ABIS; do
       ;;
   esac
   copy_lib "$abi" "$src"
+  copy_stl "$abi"
 done

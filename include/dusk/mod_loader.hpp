@@ -161,6 +161,7 @@ public:
     static ModLoader& instance();
 
     void set_mods_dir(std::filesystem::path dir) { m_modsDir = std::move(dir); }
+    void set_cache_dir(std::filesystem::path dir) { m_cacheDir = std::move(dir); }
     void init();
     void tick();
     void shutdown();
@@ -199,6 +200,7 @@ private:
 
     std::vector<std::unique_ptr<LoadedMod> > m_mods;
     std::filesystem::path m_modsDir;
+    std::filesystem::path m_cacheDir;
     std::vector<Request> m_pendingRequests;
     std::vector<RetiredNative> m_retiredNatives;
     bool m_initialized = false;

@@ -4,6 +4,9 @@ include_guard(GLOBAL)
 get_filename_component(_GAME_ROOT "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
 
 set(GAME_COMPILE_DEFS TARGET_PC WIDESCREEN_SUPPORT=1 AVOID_UB=1 VERSION=0 MTX_USE_PS=1)
+if (ANDROID)
+    list(APPEND GAME_COMPILE_DEFS TARGET_ANDROID=1)
+endif ()
 
 # PARTIAL_DEBUG is the config-independent layout define: Dusklight builds always set
 # it, so debug and release share one struct-layout ABI and a mod is compatible with either.

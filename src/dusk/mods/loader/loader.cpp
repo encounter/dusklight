@@ -4,7 +4,6 @@
 #include "dusk/mod_loader.hpp"
 
 #include <algorithm>
-#include <array>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -26,17 +25,50 @@ static aurora::Module Log("dusk::modLoader");
 using namespace std::string_literals;
 using namespace std::string_view_literals;
 
-#if defined(_M_ARM64) || defined(__aarch64__)
-static constexpr std::string_view k_archSuffix = "_arm64"sv;
-#elif defined(_M_X64) || defined(__x86_64__)
-static constexpr std::string_view k_archSuffix = "_x64"sv;
-#elif defined(_M_IX86) || defined(__i386__)
-static constexpr std::string_view k_archSuffix = "_x86"sv;
+#if defined(_WIN32)
+#if defined(_M_ARM64)
+static constexpr std::string_view k_nativeLibName = "windows-arm64.dll"sv;
+#elif defined(_M_X64)
+static constexpr std::string_view k_nativeLibName = "windows-amd64.dll"sv;
+#elif defined(_M_IX86)
+static constexpr std::string_view k_nativeLibName = "windows-x86.dll"sv;
 #else
-static constexpr std::string_view k_archSuffix = ""sv;
+static constexpr std::string_view k_nativeLibName = ""sv;
 #endif
-
-static constexpr std::array k_allArchSuffixes = {"_arm64"sv, "_x64"sv, "_x86"sv};
+#elif defined(__ANDROID__)
+#if defined(__aarch64__)
+static constexpr std::string_view k_nativeLibName = "android-aarch64.so"sv;
+#elif defined(__x86_64__)
+static constexpr std::string_view k_nativeLibName = "android-x86_64.so"sv;
+#else
+static constexpr std::string_view k_nativeLibName = ""sv;
+#endif
+#elif defined(__APPLE__)
+#include <TargetConditionals.h>
+#if TARGET_OS_IOS
+static constexpr std::string_view k_nativeLibName = "ios-arm64.dylib"sv;
+#elif TARGET_OS_TV
+static constexpr std::string_view k_nativeLibName = "tvos-arm64.dylib"sv;
+#elif defined(__aarch64__)
+static constexpr std::string_view k_nativeLibName = "darwin-arm64.dylib"sv;
+#elif defined(__x86_64__)
+static constexpr std::string_view k_nativeLibName = "darwin-x86_64.dylib"sv;
+#else
+static constexpr std::string_view k_nativeLibName = ""sv;
+#endif
+#elif defined(__linux__)
+#if defined(__aarch64__)
+static constexpr std::string_view k_nativeLibName = "linux-aarch64.so"sv;
+#elif defined(__x86_64__)
+static constexpr std::string_view k_nativeLibName = "linux-x86_64.so"sv;
+#elif defined(__i386__)
+static constexpr std::string_view k_nativeLibName = "linux-x86.so"sv;
+#else
+static constexpr std::string_view k_nativeLibName = ""sv;
+#endif
+#else
+static constexpr std::string_view k_nativeLibName = ""sv;
+#endif
 
 namespace dusk::mods {
 namespace {
@@ -56,37 +88,18 @@ struct DllLocateResult {
     bool anyLibs = false;
 };
 
-std::string_view file_stem(const std::string_view fileName) {
-    return fileName.substr(0, fileName.find_last_of('.'));
-}
-
 DllLocateResult locate_dll_in_bundle(ModBundle& bundle) {
     DllLocateResult result;
-    std::string archNeutral;
     for (const auto& name : bundle.getFileNames()) {
-        if (!name.ends_with(".dll"sv) && !name.ends_with(".dylib"sv) && !name.ends_with(".so"sv))
+        if (name.find('/') != std::string::npos ||
+            (!name.ends_with(".dll"sv) && !name.ends_with(".dylib"sv) && !name.ends_with(".so"sv)))
         {
             continue;
         }
         result.anyLibs = true;
-
-        if (!name.ends_with(loader::NativeModule::LibraryExtension)) {
-            continue;
-        }
-
-        const auto stem = file_stem(name);
-        if (stem.ends_with(k_archSuffix)) {
+        if (name == k_nativeLibName) {
             result.entry = name;
-        } else if (archNeutral.empty() &&
-                   std::ranges::none_of(k_allArchSuffixes,
-                       [&](const std::string_view suffix) { return stem.ends_with(suffix); }))
-        {
-            archNeutral = name;
         }
-    }
-
-    if (result.entry.empty()) {
-        result.entry = std::move(archNeutral);
     }
     return result;
 }
@@ -257,16 +270,16 @@ static std::string lifecycle_error_message(
 static std::string native_status_message(const NativeModStatus status) {
     switch (status) {
     case NativeModStatus::BuildDisabled:
-        return "native code mods are disabled in this build";
+        return "Code mods are disabled on this Dusklight build";
     case NativeModStatus::ModMissingPlatform:
-        return fmt::format("no native library for this platform (expected *{}{})", k_archSuffix,
-            loader::NativeModule::LibraryExtension);
+        return fmt::format("Mod not supported on this platform ({})", k_nativeLibName);
     case NativeModStatus::ApiVersionMismatch:
-        return "mod ABI version mismatch";
+        // TODO: differentiate whether mod or Dusklight is out of date
+        return "Mod ABI version mismatch";
     case NativeModStatus::MissingExport:
-        return "missing required native API export";
+        return "Missing required mod API exports";
     case NativeModStatus::Unknown:
-        return "unknown native load failure";
+        return "Unknown mod load failure";
     case NativeModStatus::None:
     case NativeModStatus::Loaded:
         break;
@@ -284,23 +297,22 @@ void ModLoader::load_native(LoadedMod& mod, const std::string& dllEntry) {
     namespace fs = std::filesystem;
 
     if (dllEntry.empty()) {
-        Log.error("no native library matching *{}{} found in {} — skipping", k_archSuffix,
-            loader::NativeModule::LibraryExtension, mod.metadata.id);
+        Log.error(
+            "no native library named {} found in {} — skipping", k_nativeLibName, mod.metadata.id);
         mod.nativeStatus = NativeModStatus::ModMissingPlatform;
         return;
     }
 
-    const fs::path cacheDir = m_modsDir / ".cache" / mod.metadata.id;
+    const fs::path cacheDir = m_cacheDir / mod.metadata.id;
     std::error_code ec;
     fs::create_directories(cacheDir, ec);
 
     // Generation-versioned filename: every dlopen gets a path it has never seen, so a reload
     // always yields a fresh image with fresh statics even if the previous dlclose did not fully
     // unmap the old one (TLS/ObjC pinning). The .cache dir is wiped on startup.
-    const fs::path entryName = fs::path(dllEntry).filename();
     const fs::path dllCachePath =
-        cacheDir / fmt::format("{}.g{}{}", io::fs_path_to_string(entryName.stem()),
-                       ++mod.cacheGeneration, io::fs_path_to_string(entryName.extension()));
+        cacheDir / fmt::format("{}.g{}{}", mod.metadata.id, ++mod.cacheGeneration,
+                       io::fs_path_to_string(fs::path(dllEntry).extension()));
 
     std::vector<u8> dllData;
     try {
@@ -606,6 +618,10 @@ void ModLoader::init() {
 
     manifest::initialize();
 
+    if (m_cacheDir.empty()) {
+        m_cacheDir = m_modsDir / ".cache";
+    }
+
     namespace fs = std::filesystem;
     if (!fs::is_directory(m_modsDir)) {
         Log.info("mods directory '{}' not found — mod loading skipped",
@@ -616,7 +632,7 @@ void ModLoader::init() {
     std::error_code ec;
 
     // Stale generation-versioned libs from previous sessions (see loadNative).
-    fs::remove_all(m_modsDir / ".cache", ec);
+    fs::remove_all(m_cacheDir, ec);
 
     std::vector<fs::directory_entry> entries;
     for (auto& e : fs::directory_iterator(m_modsDir, ec)) {
