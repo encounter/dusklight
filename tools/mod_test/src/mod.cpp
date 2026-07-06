@@ -1451,6 +1451,12 @@ MOD_EXPORT ModResult mod_initialize(ModError* error) {
             svc_log->warn(mod_ctx, "HookService resolve: no symbol manifest (skipped)");
         } else {
             bool ok = r == MOD_OK && addr != nullptr && (flags & HOOK_SYMBOL_CODE) != 0;
+#if !defined(_WIN32)
+            // The dynamic linker resolves &GXSetProjection to the real game address
+            // (no import thunks off Windows), so the manifest address must match it —
+            // this catches base/RVA convention mismatches (a real macOS bug once).
+            ok = ok && addr == reinterpret_cast<void*>(&GXSetProjection);
+#endif
             void* dummy = nullptr;
             ok = ok && svc_hook->resolve(mod_ctx, "dusk_no_such_symbol_xyzzy", &dummy, nullptr) ==
                            MOD_UNAVAILABLE;

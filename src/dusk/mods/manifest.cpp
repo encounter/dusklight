@@ -119,10 +119,11 @@ bool running_image_identity(std::vector<uint8_t>& outId, uintptr_t& outBase) {
     }
     return false;
 #elif defined(__APPLE__)
-    // Image 0 is the main executable; RVAs are relative to the __TEXT vmaddr, which
-    // is where the mach header lives, so the header address is the runtime base.
+    // Image 0 is the main executable. The manifest stores link-time vmaddrs (nm
+    // convention, __TEXT vmaddr included), so the runtime base to add is the ASLR
+    // slide — not the mach header address, which already contains the __TEXT vmaddr.
     const auto* header = _dyld_get_image_header(0);
-    outBase = reinterpret_cast<uintptr_t>(header);
+    outBase = static_cast<uintptr_t>(_dyld_get_image_vmaddr_slide(0));
     const auto* header64 = reinterpret_cast<const mach_header_64*>(header);
     const auto* cmd = reinterpret_cast<const load_command*>(header64 + 1);
     for (uint32_t i = 0; i < header64->ncmds; ++i) {
