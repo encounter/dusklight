@@ -59,6 +59,8 @@ namespace randomizer
 
         std::unique_ptr<logic::world::World> world = std::make_unique<logic::world::World>(1, this);
         world->SetSettings(this->_config.GetSettingsList().front());
+        // Always use logic when building a tracker world
+        world->Setting("Logic Rules").SetCurrentOption("All Locations Reachable");
         world->Build();
         this->_worlds.emplace_back(std::move(world));
 
@@ -81,6 +83,8 @@ namespace randomizer
     {
         utility::time::ScopedTimer<"Seed generation took ", std::chrono::milliseconds> timer;
         this->_config.LoadFromFile(GetConfigPath(), GetPrefPath());
+        // Set permalink now so that resolving random settings doesn't change it
+        this->_config.SetPermalink(this->_config.GetPermalink());
 
         utility::platform::Log(std::string("Seed: ") + this->_config.GetSeed());
 

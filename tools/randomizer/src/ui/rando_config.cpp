@@ -1,8 +1,5 @@
 #include "rando_config.hpp"
 
-#include <mutex>
-#include <thread>
-
 #include "bool_button.hpp"
 #include "dusk/config.hpp"
 #include "dusk/data.hpp"
@@ -15,17 +12,13 @@
 #include "pane.hpp"
 #include "rando_seed_generation.hpp"
 #include "string_button.hpp"
+#include "d/d_file_select.h"
+#include "SDL3/SDL_clipboard.h"
+
+#include <mutex>
+#include <thread>
 
 namespace dusk::ui {
-struct ConfigBoolProps {
-    Rml::String key;
-    Rml::String icon;
-    Rml::String helpText;
-    std::function<void(bool)> onChange;
-    std::function<bool()> isDisabled;
-};
-
-
 
 randomizer::seedgen::settings::Setting* FindSetting(const std::string& key) {
     if (key.empty()) {
@@ -57,33 +50,40 @@ bool TryCreateRandomSeed() {
     return false;
 }
 
-// ripped straight from settings window
-SelectButton& config_bool_select(
-    Pane& leftPane, Pane& rightPane, ConfigVar<bool>& var, ConfigBoolProps props) {
-    auto& button = leftPane.add_child<BoolButton>(BoolButton::Props{
-        .key = std::move(props.key),
-        .icon = std::move(props.icon),
-        .getValue = [&var] { return var.getValue(); },
-        .setValue =
-        [&var, callback = std::move(props.onChange)](bool value) {
-            if (value == var.getValue()) {
-                return;
-            }
-            var.setValue(value);
-            config::Save();
-            if (callback) {
-                callback(value);
-            }
-        },
-        .isDisabled = std::move(props.isDisabled),
-        .isModified = [&var] { return var.getValue() != var.getDefaultValue(); },
-    });
-    leftPane.register_control(
-        button, rightPane, [helpText = std::move(props.helpText)](Pane& pane) {
-            pane.clear();
-            pane.add_rml(helpText);
-        });
-    return button;
+void rando_config_group_update_right_pane(
+    Pane& pane,
+    randomizer::seedgen::settings::Setting* curSetting,
+    std::function<Component*(const std::string&, Pane&)> onSelected)
+{
+    pane.clear();
+    auto curSelIdx = curSetting->GetCurrentOptionIndex();
+    auto settingInfo = curSetting->GetInfo();
+
+    Rml::Element* text_elem = pane.add_rml(settingInfo->GetDescriptions().at(curSelIdx));
+
+    for (int i = 0; i < settingInfo->GetOptions().size(); ++i) {
+        pane.add_button(
+            {
+                .text = settingInfo->GetOptions()[i],
+                .isSelected = [curSetting, i] {
+                    return curSetting->GetCurrentOptionIndex() == i;
+                },
+            })
+            .on_pressed([i, text_elem, curSetting, &pane, onSelected] {
+                auto settingInfo = curSetting->GetInfo();
+
+                mDoAud_seStartMenu(kSoundItemChange);
+                curSetting->SetCurrentOption(i);
+                text_elem->SetInnerRML(settingInfo->GetDescriptions().at(i));
+
+                SaveRandomizerConfig();
+                rando_config_group_update_right_pane(pane, curSetting, onSelected);
+            });
+    }
+
+    if (onSelected) {
+        onSelected(curSetting->GetCurrentOption(), pane);
+    }
 }
 
 void rando_config_group(Pane& leftPane, Pane& rightPane, std::string settingKey,
@@ -103,68 +103,67 @@ void rando_config_group(Pane& leftPane, Pane& rightPane, std::string settingKey,
             [curSetting] { return Rml::String{curSetting->GetCurrentOption()}; },
         }),
         rightPane, [curSetting, onSelected](Pane& pane) {
-            auto curSelIdx = curSetting->GetCurrentOptionIndex();
-            auto settingInfo = curSetting->GetInfo();
-
-            Rml::Element* text_elem = pane.add_rml(settingInfo->GetDescriptions().at(curSelIdx));
-
-            for (int i = 0; i < settingInfo->GetOptions().size(); ++i) {
-                pane.add_button(
-                    {
-                        .text = settingInfo->GetOptions()[i],
-                        .isSelected = [curSetting, i] {
-                            return curSetting->GetCurrentOptionIndex() == i;
-                        },
-                    })
-                    .on_pressed([i, text_elem, curSetting] {
-                        auto settingInfo = curSetting->GetInfo();
-
-                        mDoAud_seStartMenu(kSoundItemChange);
-                        curSetting->SetCurrentOption(i);
-                        text_elem->SetInnerRML(settingInfo->GetDescriptions().at(i));
-
-                        SaveRandomizerConfig();
-                    });
-            }
-
-            if (onSelected) {
-                onSelected(curSetting->GetCurrentOption(), pane);
-            }
+            rando_config_group_update_right_pane(pane, curSetting, onSelected);
         });
 }
 
-SelectButton& rando_config_toggle(
+SelectButton& rando_config_button(
     Pane& leftPane, Pane& rightPane, std::string settingKey) {
     auto setting = FindSetting(settingKey);
 
-    auto& button = leftPane.add_child<BoolButton>(BoolButton::Props{
-        .key = settingKey,
-        .getValue = [setting] { return setting->GetCurrentOptionIndex() != 0; },
-        .setValue =
-        [setting](bool value) {
-            auto idx = setting->GetCurrentOptionIndex();
-            if (idx == value) {
-                return;
-            }
-
-            setting->SetCurrentOption(value);
-
-            SaveRandomizerConfig();
-        },
-    });
-    auto& comp = leftPane.register_control(
-        button, rightPane, [setting](Pane& pane) {
-            pane.clear();
-
-            auto info = setting->GetInfo();
-            pane.add_rml(info->GetDescriptions()[setting->GetCurrentOptionIndex()]);
-        });
-
-    comp.listen(comp.root(), Rml::EventId::Click, [&rightPane, setting](Rml::Event&) {
+    // Helper function to call when we want to update the right pane
+    auto updateRightPane = [setting, &rightPane] {
         rightPane.clear();
 
         auto info = setting->GetInfo();
-        rightPane.add_rml(info->GetDescriptions()[setting->GetCurrentOptionIndex()]);
+        // Show all options/descriptions
+        for (size_t i = 0; i < info->GetOptions().size(); ++i) {
+            auto text = rightPane.add_rml(fmt::format("<span style=\"color: #C2A42D;\">{}</span>: {}", info->GetOptions()[i], info->GetDescriptions()[i]));
+            // Change styling for currently selected option
+            if (i == setting->GetCurrentOptionIndex()) {
+                text->SetClass("current-option-text", true);
+            } else {
+                text->SetClass("not-current-option-text", true);
+            }
+        }
+    };
+
+    // Helper function for changing the setting index based on button presses
+    auto changeOptionIndex = [setting, updateRightPane](int change) {
+        auto newIndex = setting->GetCurrentOptionIndex() + change;
+        if (newIndex < 0) {
+            newIndex = setting->GetInfo()->GetOptions().size() - 1;
+        } else if (newIndex >= setting->GetInfo()->GetOptions().size()) {
+            newIndex = 0;
+        }
+        setting->SetCurrentOption(newIndex);
+        updateRightPane();
+    };
+
+    auto& button = leftPane.add_select_button(ControlledSelectButton::Props{
+        .key = settingKey,
+        .getValue = [setting] { return setting->GetCurrentOption(); }
+    })
+    // Cycle through the options forward when the button is pressed
+    .on_pressed([changeOptionIndex] {
+        changeOptionIndex(1);
+    });
+
+    // Update the right pane info when we change between options
+    auto& comp = leftPane.register_control(button, rightPane, [updateRightPane](Pane&) {
+        updateRightPane();
+    });
+
+    // Listen for left/right nav commands to cycle between the available options
+    comp.listen(comp.root(), Rml::EventId::Keydown, [changeOptionIndex](Rml::Event& event) {
+        auto cmd = map_nav_event(event);
+        if (cmd == NavCommand::Left) {
+            changeOptionIndex(-1);
+            event.StopPropagation();
+        } else if (cmd == NavCommand::Right) {
+            changeOptionIndex(1);
+            event.StopPropagation();
+        }
     });
 
     return button;
@@ -650,143 +649,147 @@ void RandomizerWindow::rando_excluded_locations_update_left_pane(Pane& innerLeft
 
 // Focus the closest child in the next Pane. Returns true if a child was found to focus
 bool focus_closest_child_on_next_pane(Pane& currentPane, Pane& nextPane) {
-    float childToFocusY = 0.f;
-    for (const auto& child : currentPane.children()) {
-        if (child->root()->IsPseudoClassSet("focus")) {
-            childToFocusY = child->root()->GetAbsoluteTop();
-        }
-    }
-
-    Rml::Element* closestchild = nullptr;
-    // If there was no focused child in this pane, select the middle one of the next pane
-    if (childToFocusY == 0.f && !nextPane.children().empty()) {
-        closestchild = nextPane.children().at(nextPane.children().size() / 2)->root();
-    // Otherwise, choose the closest one
-    } else if (childToFocusY > 0.f) {
-        float closestRightChildDistance = 100000.f;
-        for (const auto& child : nextPane.children()) {
-            float distance = std::abs(childToFocusY - child->root()->GetAbsoluteTop());
-            if (distance < closestRightChildDistance) {
-                closestchild = child->root();
-                closestRightChildDistance = distance;
-            }
-        }
-    }
-
-    if (closestchild) {
-        closestchild->SetPseudoClass("focus-visible", true);
-        closestchild->Focus();
-        return true;
-    }
-
-    return false;
+    auto childToFocusY = currentPane.get_focused_child_y();
+    return nextPane.focus_closest_child(childToFocusY);
 }
 
-RandomizerWindow::RandomizerWindow() {
+void delete_seed_callback(Pane& pane) {
+    // Get the Y position to focus the child nearest to after we rebuild this pane
+    auto childToFocusY = pane.get_focused_child_y();
+
+    pane.clear();
+    std::filesystem::path seedDirectory = GetRandomizerSeedsPath();
+
+    if (std::filesystem::is_empty(seedDirectory)) {
+        pane.add_rml(
+        "No seeds generated.");
+        return;
+    }
+
+    pane.add_rml(
+    "Delete any seed not currently being used.");
+
+    for (const auto& entry : std::filesystem::directory_iterator(seedDirectory)) {
+        if (entry.is_directory()) {
+            std::string hash = entry.path().filename().string();
+
+            // If the hash is attached to any files, add the file number(s) afterward
+            auto& seedHashes = getSettings().randomizer.seedHashes;
+            auto hashCopy = hash;
+            for (int i = 0; i < seedHashes.size(); ++i) {
+                if (seedHashes[i].getValue() == hashCopy) {
+                    hash += " (File " + std::to_string(i + 1) + ")";
+                }
+            }
+
+            pane.add_button(
+                {
+                    .text = hash,
+                    .isDisabled = [hash] {
+                        return !playerIsOnTitleScreen() || hash.ends_with(')');
+                    }
+                })
+                .on_pressed([entry, &pane, hash] {
+                    // If the currently selected seed is deleted, reset the context
+                    if (randomizer_GetContext().mHash == hash) {
+                        randomizer_GetContext() = RandomizerContext{};
+                    }
+                    std::filesystem::remove_all(entry);
+                    delete_seed_callback(pane);
+                });
+        }
+    }
+
+    // Refocus the closest child to the seed we just deleted
+    pane.focus_closest_child(childToFocusY);
+};
+
+RandomizerWindow::RandomizerWindow(dFile_select_c* fileSelect /*= nullptr*/) : mFileSelectMenu(fileSelect) {
 
     // Create rando directories if they don't exist
     if (!std::filesystem::exists(GetRandomizerSeedsPath())) {
         std::filesystem::create_directories(GetRandomizerSeedsPath());
+    }
+    if (!std::filesystem::exists(GetRandomizerPresetsPath())) {
+        std::filesystem::create_directories(GetRandomizerPresetsPath());
+    }
+
+    // If we're bringing this menu up during file selection
+    if (mFileSelectMenu) {
+        // Don't allow going back to the main dusklight menu while this menu
+        // is active
+        mTabBar->listen(Rml::EventId::Keydown, [](Rml::Event& event) {
+            auto cmd = map_nav_event(event);
+            if (cmd == NavCommand::Menu || cmd == NavCommand::Cancel) {
+                event.StopPropagation();
+            }
+        });
+
+        add_tab("Play", [this](Rml::Element* content) {
+            auto& leftPane = add_child<Pane>(content, Pane::Type::Controlled);
+            auto& rightPane = add_child<Pane>(content, Pane::Type::Controlled);
+
+            leftPane.register_control(
+                leftPane.add_select_button({
+                    .key = "Selected Seed",
+                    .getValue =
+                    [] {
+                        return randomizer_GetContext().mHash.empty() ?
+                                   "None" :
+                                   randomizer_GetContext().mHash;
+                    },
+                }),
+                rightPane, [](Pane& pane) {
+                    std::filesystem::path seedDirectory = GetRandomizerSeedsPath();
+
+                    if (std::filesystem::is_empty(seedDirectory)) {
+                        pane.add_rml(
+                        "No seeds generated! You can generate a seed from the Seed Management Tab.");
+                        return;
+                    }
+
+                    pane.add_rml(
+                        "Choose which seed you want to play.");
+
+                    for (const auto& entry : std::filesystem::directory_iterator(seedDirectory)) {
+                        if (entry.is_directory()) {
+                            std::string hash = entry.path().filename().string();
+
+                            pane.add_button(
+                                {
+                                    .text = hash,
+                                    .isSelected = [hash] {
+                                        return randomizer_GetContext().mHash == hash;
+                                    },
+                                })
+                                .on_pressed([hash] {
+                                    randomizer_GetContext() = RandomizerContext();
+                                    randomizer_GetContext().LoadFromHash(hash);
+                                });
+                        }
+                    }
+                });
+
+            leftPane.add_button({
+                .text = "Start Randomizer",
+                .isDisabled = []{return randomizer_GetContext().mHash.empty();},
+            })
+            .on_pressed([this]{
+                if (mFileSelectMenu) {
+                    mFileSelectMenu->mDusk.mBackToFileSelect = false;
+                }
+                mDoAud_seStartMenu(Z2SE_SY_CURSOR_OK);
+                this->hide(true);
+            });
+        });
     }
 
     add_tab("Seed Management", [this](Rml::Element* content) {
         auto& leftPane = add_child<Pane>(content, Pane::Type::Controlled);
         auto& rightPane = add_child<Pane>(content, Pane::Type::Controlled);
 
-        leftPane.register_control(
-            leftPane.add_select_button({
-                .key = "Selected Seed",
-                .getValue =
-                [] {
-                    return randomizer_GetContext().mHash.empty() ?
-                               "None" :
-                               randomizer_GetContext().mHash;
-                },
-            }),
-            rightPane, [](Pane& pane) {
-                std::filesystem::path seedDirectory = GetRandomizerSeedsPath();
-
-                if (std::filesystem::is_empty(seedDirectory)) {
-                    pane.add_rml(
-                    "No seeds generated! Check out the options tab and generate a seed using the button below.");
-                    return;
-                }
-
-                pane.add_rml(
-                    "Apply a seed generated using the randomizer generator. (Note: must be done before selecting a save file).");
-
-                for (const auto& entry : std::filesystem::directory_iterator(seedDirectory)) {
-                    if (entry.is_directory()) {
-                        std::string hash = entry.path().filename().string();
-
-                        pane.add_button(
-                            {
-                                .text = hash,
-                                .isSelected = [hash] {
-                                    return randomizer_GetContext().mHash == hash;
-                                },
-                            })
-                            .on_pressed([hash] {
-                                randomizer_GetContext() = RandomizerContext();
-                                randomizer_GetContext().LoadFromHash(hash);
-                            });
-                    }
-                }
-            });
-
-        leftPane.register_control(
-            leftPane.add_button("Delete Seeds"),
-            rightPane, [](Pane& pane) {
-                std::filesystem::path seedDirectory = GetRandomizerSeedsPath();
-
-                if (std::filesystem::is_empty(seedDirectory)) {
-                    pane.add_rml(
-                    "No seeds generated.");
-                    return;
-                }
-
-                pane.add_rml(
-                "Delete any seed currently not active in the randomizer.");
-
-                for (const auto& entry : std::filesystem::directory_iterator(seedDirectory)) {
-                    if (entry.is_directory()) {
-                        std::string hash = entry.path().filename().string();
-
-                        // TODO: our ui lib doesnt have an easy way to either refresh or remove values from the right pane
-                        pane.add_button(
-                            {
-                                .text = hash,
-                                .isDisabled = [hash] {
-                                    return !playerIsOnTitleScreen() || randomizer_GetContext().mHash == hash;
-                                }
-                            })
-                            .on_pressed([hash, entry] {
-                                if (randomizer_GetContext().mHash != hash) {
-                                    std::filesystem::remove_all(entry);
-                                } else if (!randomizer_IsActive()){
-                                    // If the user selected the currently seed, but it's not active, we'll allow the delete
-                                    std::filesystem::remove_all(entry);
-                                    randomizer_GetContext() = RandomizerContext();
-                                }
-                            });
-                    }
-                }
-            });
-
-        leftPane.register_control(leftPane.add_button(ControlledButton::Props{
-            .text = "Deactivate Seed",
-            .isDisabled = [] { return randomizer_GetContext().mHash.empty() || !playerIsOnTitleScreen(); }
-        }).on_pressed([] {
-            if (!randomizer_IsActive()) {
-                randomizer_GetContext() = RandomizerContext();
-            }
-        }), rightPane, [](Pane& pane) {
-            pane.clear();
-            pane.add_rml("Disables currently chosen seed.");
-        });
-
         leftPane.register_control(leftPane.add_button("Generate Seed").on_pressed(
-        [this, &rightPane] {
+        [] {
             if (TryCreateRandomSeed()) {
                 DuskLog.info("Created new Seed for generator.");
             }
@@ -800,30 +803,121 @@ RandomizerWindow::RandomizerWindow() {
         });
 
         leftPane.register_control(leftPane.add_child<StringButton>(StringButton::Props{
-                .key = "Seed String",
-                .getValue = [] {
-                    return GetRandomizerConfig().GetSeed();
-                },
-                .setValue = [](Rml::String value) {
-                    GetRandomizerConfig().SetSeed(value);
-                    SaveRandomizerConfig();
-                },
-                .maxLength = 32,
+            .key = "Seed String",
+            .getValue = [] {
+                return GetRandomizerConfig().GetSeed();
+            },
+            .setValue = [](Rml::String value) {
+                GetRandomizerConfig().SetSeed(value);
+                SaveRandomizerConfig();
+            },
+            .maxLength = 32,
+        }),
+        rightPane, [](Pane& pane) {
+            pane.clear();
+            pane.add_rml(
+                "Current value of the seed used by the randomizer for generation. Leave blank for a random value.");
+        });
+
+        leftPane.register_control(
+            leftPane.add_button("Delete Seeds"),
+            rightPane, delete_seed_callback
+            );
+
+        leftPane.add_section("Permalink");
+        leftPane.register_control(
+            leftPane.add_button("Copy Permalink")
+            .on_pressed([] {
+                CopyPermalinkToClipboard();
             }),
             rightPane, [](Pane& pane) {
                 pane.clear();
-                pane.add_rml(
-                    "Current value of the seed used by the randomizer for generation. Leave blank for a random value.");
-            });
+                pane.add_text("Copy your current settings permalink to share with others.");
+                auto text = pane.add_text(fmt::format("Current Permalink: {}", GetRandomizerConfig().GetPermalink()));
+                text->SetProperty("word-break", "break-word");
+        });
+
+        leftPane.register_control(
+            leftPane.add_button("Paste Permalink")
+            .on_pressed([] {
+                PastePermalinkFromClipboard();
+            }),
+            rightPane, [](Pane& pane) {
+                pane.clear();
+                pane.add_text("Paste in a permalink from your clipboard. This will overwrite your current settings.");
+        });
+
+        leftPane.add_section("Presets");
+        leftPane.register_control(
+            leftPane.add_button("Save Current Settings as Preset")
+            .on_pressed([] {
+                push_document(std::make_unique<TextInputModal>(Modal::Props{
+                    .title = "Preset Name",
+                    .bodyRml = "",
+                    .actions = {
+                        ModalAction{
+                            .label = "Save",
+                            .onPressed = [](Modal& modal) {
+                                auto textModal = dynamic_cast<TextInputModal*>(&modal);
+                                if (!textModal->get_input_text().empty()) {
+                                    modal.pop();
+                                    SaveNewRandomizerPreset(textModal->get_input_text());
+                                }
+                            },
+                        },
+                        ModalAction{
+                            .label = "Cancel",
+                            .onPressed = [](Modal& modal) {
+                                modal.pop();
+                            },
+                        },
+                    },
+                    .icon = "information"
+                }));
+
+            }),
+            rightPane, [](Pane& pane) {
+                pane.clear();
+                pane.add_text("Save the current settings to your list of presets.");
+        });
+
+        leftPane.register_control(
+            leftPane.add_button("Load Preset"),
+            rightPane, [](Pane& pane) {
+                pane.clear();
+                pane.add_text("Choose an existing preset to load from.");
+
+                for (const auto& file : std::filesystem::directory_iterator{GetRandomizerPresetsPath()}) {
+                    const auto& filepath = file.path();
+                    auto presetName = file.path().stem().generic_string();
+                    pane.add_button(ControlledButton::Props{
+                        .text = presetName,
+                    })
+                    .on_pressed([filepath] {
+                        ApplyExistingRandomizerPreset(filepath);
+                    });
+                }
+        });
     });
 
     add_tab("Seed Options", [this](Rml::Element* content) {
         auto& leftPane = add_child<Pane>(content, Pane::Type::Controlled);
         auto& rightPane = add_child<Pane>(content, Pane::Type::Uncontrolled);
 
+        leftPane.register_control(leftPane.add_button("Reset Settings to Default")
+            .on_pressed([] {
+                GetRandomizerConfig().ResetSettingsToDefault();
+                SaveRandomizerConfig();
+            }),
+            rightPane, [](Pane& pane) {
+            pane.clear();
+            pane.add_rml(
+                "Reset all settings to their default values. This will also clear starting items and excluded locations.");
+        });
+
         leftPane.add_section("Logic Settings");
 
-        rando_config_group(leftPane, rightPane, "Logic Rules");
+        rando_config_button(leftPane, rightPane, "Logic Rules");
 
         leftPane.add_section("Access Options");
 
@@ -831,72 +925,72 @@ RandomizerWindow::RandomizerWindow() {
             [](const std::string& value, Pane& pane) {
                 return rando_add_optional_setting(value, "Hyrule Barrier", pane);
             });
-        rando_config_group(leftPane, rightPane, "Palace of Twilight Requirements");
-        rando_config_group(leftPane, rightPane, "Faron Woods Logic");
+        rando_config_button(leftPane, rightPane, "Palace of Twilight Requirements");
+        rando_config_button(leftPane, rightPane, "Faron Woods Logic");
+        rando_config_button(leftPane, rightPane, "Mirror Chamber Access");
 
-        leftPane.add_section("World (TODO)");
+        leftPane.add_section("Shuffles");
 
-        leftPane.add_section("Item Pool");
+        rando_config_button(leftPane, rightPane, "Golden Bugs");
+        rando_config_button(leftPane, rightPane, "Sky Characters");
+        rando_config_button(leftPane, rightPane, "Gifts From NPCs");
+        rando_config_button(leftPane, rightPane, "Shop Items");
+        rando_config_button(leftPane, rightPane, "Hidden Skills");
+        rando_config_button(leftPane, rightPane, "Hidden Rupees");
+        rando_config_button(leftPane, rightPane, "Freestanding Rupees");
 
-        rando_config_toggle(leftPane, rightPane, "Golden Bugs");
-        rando_config_toggle(leftPane, rightPane, "Sky Characters");
-        rando_config_toggle(leftPane, rightPane, "Gifts From NPCs");
-        rando_config_toggle(leftPane, rightPane, "Shop Items");
-        rando_config_toggle(leftPane, rightPane, "Hidden Skills");
-        rando_config_toggle(leftPane, rightPane, "Hidden Rupees");
-        rando_config_toggle(leftPane, rightPane, "Freestanding Rupees");
-
-        rando_config_group(leftPane, rightPane, "Poe Souls");
-        rando_config_group(leftPane, rightPane, "Ilia Memory Quest");
-        rando_config_group(leftPane, rightPane, "Item Scarcity");
+        rando_config_button(leftPane, rightPane, "Poe Souls");
+        rando_config_button(leftPane, rightPane, "Ilia Memory Quest");
+        rando_config_button(leftPane, rightPane, "Item Scarcity");
+        rando_config_button(leftPane, rightPane, "Trap Item Frequency");
 
         leftPane.add_section("Dungeon Items");
 
-        rando_config_group(leftPane, rightPane, "Small Keys");
-        rando_config_group(leftPane, rightPane, "Big Keys");
-        rando_config_group(leftPane, rightPane, "Maps and Compasses");
+        rando_config_button(leftPane, rightPane, "Small Keys");
+        rando_config_button(leftPane, rightPane, "Big Keys");
+        rando_config_button(leftPane, rightPane, "Maps and Compasses");
         rando_config_group(leftPane, rightPane, "Hyrule Castle Big Key Requirements",
             [](const std::string& value, Pane& pane) {
                 return rando_add_optional_setting(value, "Hyrule Castle Big Key", pane);
             });
 
-        rando_config_toggle(leftPane, rightPane, "Dungeon Rewards Can Be Anywhere");
-        rando_config_toggle(leftPane, rightPane, "No Small Keys on Bosses");
-        rando_config_toggle(leftPane, rightPane, "Unrequired Dungeons Are Barren");
+        rando_config_button(leftPane, rightPane, "Dungeon Rewards Can Be Anywhere");
+        rando_config_button(leftPane, rightPane, "No Small Keys on Bosses");
+        rando_config_button(leftPane, rightPane, "Unrequired Dungeons Are Barren");
 
         leftPane.add_section("Timesavers");
 
-        rando_config_toggle(leftPane, rightPane, "Skip Prologue");
-        rando_config_toggle(leftPane, rightPane, "Faron Twilight Cleared");
-        rando_config_toggle(leftPane, rightPane, "Eldin Twilight Cleared");
-        rando_config_toggle(leftPane, rightPane, "Lanayru Twilight Cleared");
-        rando_config_toggle(leftPane, rightPane, "Skip Midna's Desparate Hour");
-        rando_config_toggle(leftPane, rightPane, "Skip Minor Cutscenes");
-        rando_config_toggle(leftPane, rightPane, "Skip Major Cutscenes");
-        rando_config_toggle(leftPane, rightPane, "Unlock Map Regions");
-        rando_config_toggle(leftPane, rightPane, "Open Door of Time");
-        rando_config_toggle(leftPane, rightPane, "Active Goron Mines Magnets");
-        rando_config_toggle(leftPane, rightPane, "Lower Hyrule Castle Chandelier");
-        rando_config_toggle(leftPane, rightPane, "Skip Bridge Donation");
+        rando_config_button(leftPane, rightPane, "Skip Prologue");
+        rando_config_button(leftPane, rightPane, "Faron Twilight Cleared");
+        rando_config_button(leftPane, rightPane, "Eldin Twilight Cleared");
+        rando_config_button(leftPane, rightPane, "Lanayru Twilight Cleared");
+        rando_config_button(leftPane, rightPane, "Skip Midna's Desparate Hour");
+        rando_config_button(leftPane, rightPane, "Skip Minor Cutscenes");
+        rando_config_button(leftPane, rightPane, "Skip Major Cutscenes");
+        rando_config_button(leftPane, rightPane, "Unlock Map Regions");
+        rando_config_button(leftPane, rightPane, "Open Door of Time");
+        rando_config_button(leftPane, rightPane, "Active Goron Mines Magnets");
+        rando_config_button(leftPane, rightPane, "Lower Hyrule Castle Chandelier");
+        rando_config_button(leftPane, rightPane, "Skip Bridge Donation");
 
         leftPane.add_section("Additional Settings");
 
         // rando_config_group(leftPane, rightPane, "Starting Form");
-        // rando_config_toggle(leftPane, rightPane, "Increase Wallet Capacity");
-        // rando_config_toggle(leftPane, rightPane, "Shops Display The Replaced Item");
         // rando_config_toggle(leftPane, rightPane, "Bonks Do Damage");
-        rando_config_group(leftPane, rightPane, "Trap Item Frequency");
-        rando_config_group(leftPane, rightPane, "Starting Time of Day");
+        rando_config_button(leftPane, rightPane, "Starting Time of Day");
+        rando_config_button(leftPane, rightPane, "Logic Transform Anywhere");
+        rando_config_button(leftPane, rightPane, "Logic Increase Wallet Capacity");
+        rando_config_button(leftPane, rightPane, "Logic Damage Multiplier");
 
         leftPane.add_section("Dungeon Entrance Settings");
 
-        rando_config_toggle(leftPane, rightPane, "Lakebed Does Not Require Water Bombs");
-        rando_config_toggle(leftPane, rightPane, "Arbiters Does Not Require Bulblin Camp");
-        rando_config_toggle(leftPane, rightPane, "Snowpeak Does Not Require Reekfish Scent");
-        rando_config_toggle(leftPane, rightPane, "Sacred Grove Does Not Require Skull Kid");
-        rando_config_toggle(leftPane, rightPane, "City Does Not Require Filled Skybook");
-        rando_config_group(leftPane, rightPane, "Goron Mines Entrance");
-        rando_config_group(leftPane, rightPane, "Temple of Time Sword Requirement");
+        rando_config_button(leftPane, rightPane, "Lakebed Does Not Require Water Bombs");
+        rando_config_button(leftPane, rightPane, "Arbiters Does Not Require Bulblin Camp");
+        rando_config_button(leftPane, rightPane, "Snowpeak Does Not Require Reekfish Scent");
+        rando_config_button(leftPane, rightPane, "Sacred Grove Does Not Require Skull Kid");
+        rando_config_button(leftPane, rightPane, "City Does Not Require Filled Skybook");
+        rando_config_button(leftPane, rightPane, "Goron Mines Entrance");
+        rando_config_button(leftPane, rightPane, "Temple of Time Sword Requirement");
         // rando_config_toggle(leftPane, rightPane, "Randomize Starting Spawn");
         // rando_config_group(leftPane, rightPane, "Randomize Dungeon Entrances");
         // rando_config_toggle(leftPane, rightPane, "Randomize Boss Entrances");
@@ -909,9 +1003,8 @@ RandomizerWindow::RandomizerWindow() {
 
         leftPane.add_section("Tricks");
 
-        rando_config_toggle(leftPane, rightPane, "Back Slice as Sword");
-        rando_config_toggle(leftPane, rightPane, "Ball and Chain Webs");
-        rando_config_toggle(leftPane, rightPane, "Logic Transform Anywhere");
+        rando_config_button(leftPane, rightPane, "Back Slice as Sword");
+        rando_config_button(leftPane, rightPane, "Ball and Chain Webs");
     });
 
     add_tab("Starting Inventory", [this](Rml::Element* content) {
@@ -1127,8 +1220,7 @@ RandomizerWindow::RandomizerWindow() {
 
             leftPane.register_control(leftPane.add_button("Warp to Start").on_pressed([] {
                 mDoAud_seStartMenu(kSoundClick);
-                auto& locData = randomizer_GetContext().mStartLocation;
-                dComIfGp_setNextStage(locData.mapName.c_str(), locData.pointNo, locData.roomNo, locData.mapLayer);
+                dComIfGp_setNextStage("F_SP103", 1, 1, -1);
             }), rightPane, [](Pane& pane) {
                 pane.clear();
                 pane.add_rml("Respawns the player at their appropriate starting location.");
@@ -1138,6 +1230,147 @@ RandomizerWindow::RandomizerWindow() {
                 g_randomizerState.mShowTracker = !g_randomizerState.mShowTracker;
             });
         });
+    }
+}
+
+FileSelectRandomizerWindow::FileSelectRandomizerWindow(dFile_select_c* fileSelectMenu) :
+    RandomizerWindow(fileSelectMenu) { }
+
+bool FileSelectRandomizerWindow::consume_close_request() {
+    hide(true);
+    return true;
+}
+
+void SaveNewRandomizerPreset(const std::string& presetName, bool overwriteExisting /*= false*/) {
+    auto presetFilepath = GetRandomizerPresetsPath() / (presetName + ".yaml");
+
+    // If the preset exists, ask the user if they want to overwrite it. If so, call this function
+    // again but force overwrite the existing preset
+    if (std::filesystem::exists(presetFilepath) && !overwriteExisting) {
+        push_document(std::make_unique<Modal>(Modal::Props{
+            .title = "Overwrite Existing Preset",
+            .bodyRml = "A preset with the name " + presetName + " already exists. Do you wish to overwrite it?",
+            .actions = {
+                ModalAction{
+                    .label = "Yes",
+                    .onPressed = [presetName](Modal& modal) {
+                        modal.pop();
+                        SaveNewRandomizerPreset(presetName, true);
+                    }
+                },
+                ModalAction{
+                    .label = "No",
+                    .onPressed = [](Modal& modal) {
+                        modal.pop();
+                    }
+                }
+            }
+        }));
+    }
+
+    // If there was an error trying to save, let the user know
+    try {
+        GetRandomizerConfig().WriteSettingsToFile(presetFilepath);
+    } catch (std::exception& e) {
+        push_document(std::make_unique<Modal>(Modal::Props{
+            .title = "Error Saving Preset",
+            .bodyRml = fmt::format("Error: {}", e.what()),
+            .actions = {
+                ModalAction{
+                    .label = "Okay",
+                    .onPressed = [](Modal& modal) {
+                        modal.pop();
+                    }
+                }
+            },
+            .icon = "error"
+        }));
+        return;
+    }
+
+    push_toast(Toast{
+        .title = "",
+        .content = fmt::format("Saved preset {}", presetName),
+        .duration = std::chrono::seconds(3)
+    });
+}
+
+void ApplyExistingRandomizerPreset(const std::filesystem::path& presetFilePath) {
+    // Don't overwrite the seed with the one from the preset
+    auto seed = GetRandomizerConfig().GetSeed();
+    try {
+        GetRandomizerConfig().LoadFromFile(presetFilePath, GetRandomizerPreferencesPath(), false, true);
+        GetRandomizerConfig().SetSeed(seed);
+    } catch (std::exception& e) {
+        push_document(std::make_unique<Modal>(Modal::Props{
+            .title = "Error Loading Preset",
+            .bodyRml = fmt::format("Error: {}", e.what()),
+            .actions = {
+                ModalAction{
+                    .label = "Okay",
+                    .onPressed = [](Modal& modal) {
+                        modal.pop();
+                    }
+                }
+            },
+            .icon = "error"
+        }));
+        return;
+    }
+
+    push_toast(Toast{
+        .title = "",
+        .content = fmt::format("Loaded preset {}", presetFilePath.stem().generic_string()),
+        .duration = std::chrono::seconds(3)
+    });
+}
+
+void CopyPermalinkToClipboard() {
+    if (SDL_SetClipboardText(GetRandomizerConfig().GetPermalink().data())) {
+        push_toast(Toast{
+            .content = "Permalink Copied",
+            .duration = std::chrono::seconds(3)
+        });
+    } else {
+        push_document(std::make_unique<Modal>(Modal::Props{
+            .title = "Permalink Error",
+            .bodyRml = fmt::format("Could not copy permalink to clipboard. Reason: {}", SDL_GetError()),
+            .actions = {
+                ModalAction{
+                    .label = "Okay",
+                    .onPressed = [](Modal& modal) {
+                        modal.pop();
+                    }
+                }
+            },
+            .icon = "error"
+        }));
+    }
+}
+
+void PastePermalinkFromClipboard() {
+    if (SDL_HasClipboardText()) {
+        std::string clipBoardText = SDL_GetClipboardText();
+        auto result = GetRandomizerConfig().LoadFromPermalink(clipBoardText);
+        if (result.has_value()) {
+            auto modal = dynamic_cast<Modal*>(&push_document(std::make_unique<Modal>(Modal::Props{
+                .title = "Permalink Error",
+                .bodyRml = result.value(),
+                .actions = {
+                    ModalAction{
+                        .label = "Okay",
+                        .onPressed = [](Modal& modal) {
+                            modal.pop();
+                        }
+                    }
+                },
+                .icon = "error"
+            })));
+            modal->root()->SetProperty("white-space", "pre-line");
+        } else {
+            push_toast(Toast{.content = "Applied Permalink", .duration = std::chrono::seconds(3)});
+            SaveRandomizerConfig();
+        }
     }
 }
 
@@ -1151,6 +1384,10 @@ std::filesystem::path GetRandomizerSettingsPath() {
 
 std::filesystem::path GetRandomizerPreferencesPath() {
     return GetRandomizerPath() / "preferences.yaml";
+}
+
+std::filesystem::path GetRandomizerPresetsPath() {
+    return GetRandomizerPath() / "presets";
 }
 
 std::filesystem::path GetRandomizerSeedsPath() {
