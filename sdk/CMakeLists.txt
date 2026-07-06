@@ -19,10 +19,6 @@ endif ()
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/../cmake/WindowsTargetProcessor.cmake")
 
-if (ANDROID OR IOS OR TVOS or (WIN32 AND NOT CMAKE_SYSTEM_PROCESSOR STREQUAL "AMD64"))
-    message(FATAL_ERROR "Mod SDK is not supported on this platform")
-endif ()
-
 if (NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING
             "Build type options: Debug Release RelWithDebInfo MinSizeRel" FORCE)
