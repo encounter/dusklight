@@ -34,7 +34,7 @@ struct ModDependencyEdge {
 
 // The dependency-relevant parts of a mod's manifest, captured at load time. Outlives the dylib
 // (a runtime-disabled mod's manifest is unmapped), so the dependency graph can be rebuilt from
-// it at any point — e.g. when a reload changes a mod's imports or exports.
+// it at any point (e.g. when a reload changes a mod's imports or exports).
 struct ModManifestInfo {
     struct Import {
         std::string id;

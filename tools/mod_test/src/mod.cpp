@@ -9,7 +9,7 @@
 #include "mods/service.hpp"
 #include "mods/svc/camera.h"
 #include "mods/svc/config.h"
-#include "mods/svc/game_code.h"
+#include "mods/svc/game.h"
 #include "mods/svc/gfx.h"
 #include "mods/svc/hook.h"
 #include "mods/svc/host.h"
@@ -34,9 +34,7 @@ IMPORT_SERVICE(TextureService, svc_texture);
 IMPORT_SERVICE(ConfigService, svc_config);
 IMPORT_SERVICE_VERSION(GfxService, svc_gfx, 1);
 IMPORT_SERVICE(CameraService, svc_camera);
-// mod_test hooks daAlink_c/fapGm_Execute directly, so it participates in the game-code
-// ABI epoch contract like any game-code-touching mod.
-IMPORT_SERVICE(GameCodeService, svc_game_code);
+IMPORT_SERVICE(GameService, svc_game);
 // Both provided by mod_test_dep, which sorts *after* mod_test.dusk in the mods directory;
 // dependency ordering must initialize it first regardless. The deferred service only
 // resolves if mod_test_dep published it during its initialization.
@@ -217,7 +215,8 @@ HookAction on_game_loop_pre(ModContext*, void*, void*, void*) {
             alignas(32) char buf[64] = {};
             const s32 read = DVDReadPrio(&fileInfo, buf, 32, 0, 2);
             constexpr s32 expected = sizeof(kRuntimeOverlayData) - 1;
-            g_overlay_read_ok = read == expected && std::memcmp(buf, kRuntimeOverlayData, expected) == 0;
+            g_overlay_read_ok =
+                read == expected && std::memcmp(buf, kRuntimeOverlayData, expected) == 0;
             DVDClose(&fileInfo);
         }
         if (g_overlay_read_ok) {
@@ -286,8 +285,8 @@ void add_control(UiElementHandle pane, const UiControlDesc& desc) {
     svc_ui->pane_add_control(mod_ctx, pane, &desc, nullptr);
 }
 
-ModResult build_window_controls_tab(ModContext*, UiWindowHandle, UiElementHandle left,
-    UiElementHandle right, void*, ModError*) {
+ModResult build_window_controls_tab(
+    ModContext*, UiWindowHandle, UiElementHandle left, UiElementHandle right, void*, ModError*) {
     (void)right;  // help_rml and SELECT options render there automatically
 
     svc_ui->pane_add_section(mod_ctx, left, "Config");
@@ -372,8 +371,8 @@ ModResult build_window_controls_tab(ModContext*, UiWindowHandle, UiElementHandle
     return MOD_OK;
 }
 
-ModResult build_window_info_tab(ModContext*, UiWindowHandle, UiElementHandle left,
-    UiElementHandle right, void*, ModError*) {
+ModResult build_window_info_tab(
+    ModContext*, UiWindowHandle, UiElementHandle left, UiElementHandle right, void*, ModError*) {
     (void)right;
     svc_ui->pane_add_section(mod_ctx, left, "Info");
     svc_ui->pane_add_text(mod_ctx, left,
@@ -463,8 +462,8 @@ void on_gfx_draw(
         g_gfx_draw_ctx_ok.store(ctxOk, std::memory_order_release);
         g_gfx_draw_fired.store(true, std::memory_order_release);
     } else {
-        g_gfx_offscreen_draw_ok.store(ctxOk && ctx->target_width == 64 &&
-                                          ctx->target_height == 64 && ctx->sample_count == 1,
+        g_gfx_offscreen_draw_ok.store(
+            ctxOk && ctx->target_width == 64 && ctx->target_height == 64 && ctx->sample_count == 1,
             std::memory_order_release);
     }
 }
@@ -517,8 +516,8 @@ bool build_compute_resources(WGPUDevice device) {
 void on_gfx_compute(
     ModContext*, const GfxComputeContext* ctx, const void* payload, size_t payloadSize, void*) {
     bool ok = ctx != nullptr && ctx->device != nullptr && ctx->queue != nullptr &&
-        ctx->encoder != nullptr && ctx->uniform_buffer != nullptr &&
-        payloadSize == sizeof(GfxTestPayload) && g_gfx_compute_pipeline != nullptr;
+              ctx->encoder != nullptr && ctx->uniform_buffer != nullptr &&
+              payloadSize == sizeof(GfxTestPayload) && g_gfx_compute_pipeline != nullptr;
     if (ok) {
         GfxTestPayload data;
         std::memcpy(&data, payload, sizeof(data));
@@ -534,8 +533,7 @@ void on_gfx_compute(
         bindGroupDesc.entries = &entry;
         WGPUBindGroup bindGroup = wgpuDeviceCreateBindGroup(ctx->device, &bindGroupDesc);
         if (bindGroup != nullptr) {
-            WGPUComputePassEncoder pass =
-                wgpuCommandEncoderBeginComputePass(ctx->encoder, nullptr);
+            WGPUComputePassEncoder pass = wgpuCommandEncoderBeginComputePass(ctx->encoder, nullptr);
             wgpuComputePassEncoderSetPipeline(pass, g_gfx_compute_pipeline);
             wgpuComputePassEncoderSetBindGroup(pass, 0, bindGroup, 0, nullptr);
             wgpuComputePassEncoderDispatchWorkgroups(pass, 1, 1, 1);
@@ -561,7 +559,8 @@ void on_gfx_stage(ModContext*, const GfxStageContext* stageCtx, void*) {
     const float verts[8] = {0.f, 0.f, 1.f, 0.f, 0.f, 1.f, 1.f, 1.f};
     GfxRange vertRange{0, 0};
     GfxRange uniformRange{0, 0};
-    g_gfx_stage_ok = g_gfx_stage_ok &&
+    g_gfx_stage_ok =
+        g_gfx_stage_ok &&
         svc_gfx->push_verts(mod_ctx, verts, sizeof(verts), 4, &vertRange) == MOD_OK &&
         vertRange.size == sizeof(verts) &&
         svc_gfx->push_uniform(mod_ctx, verts, sizeof(verts), &uniformRange) == MOD_OK &&
@@ -572,35 +571,35 @@ void on_gfx_stage(ModContext*, const GfxStageContext* stageCtx, void*) {
     resolveDesc.depth = true;
     GfxResolvedTargets targets = GFX_RESOLVED_TARGETS_INIT;
     g_gfx_resolve_ok = svc_gfx->resolve_pass(mod_ctx, &resolveDesc, &targets) == MOD_OK &&
-        targets.color != nullptr && targets.depth != nullptr && targets.width > 0 &&
-        targets.height > 0;
+                       targets.color != nullptr && targets.depth != nullptr && targets.width > 0 &&
+                       targets.height > 0;
 
     GfxTestPayload payload{kGfxPayloadMagic, 0};
-    g_gfx_resolve_ok = g_gfx_resolve_ok &&
-        svc_gfx->push_draw(mod_ctx, g_gfx_draw_type, &payload, sizeof(payload)) == MOD_OK;
+    g_gfx_resolve_ok = g_gfx_resolve_ok && svc_gfx->push_draw(mod_ctx, g_gfx_draw_type, &payload,
+                                               sizeof(payload)) == MOD_OK;
 
     // Offscreen pass round trip; nesting must be rejected while it is open, and so must
     // compute tasks (the encoder-task pass break only handles the EFB).
     g_gfx_create_ok = svc_gfx->create_pass(mod_ctx, 64, 64) == MOD_OK &&
-        svc_gfx->create_pass(mod_ctx, 32, 32) == MOD_UNAVAILABLE;
+                      svc_gfx->create_pass(mod_ctx, 32, 32) == MOD_UNAVAILABLE;
     GfxTestPayload computePayload{kGfxPayloadMagic, 2};
     g_gfx_compute_push_ok = svc_gfx->push_compute(mod_ctx, g_gfx_compute_type, &computePayload,
                                 sizeof(computePayload)) == MOD_UNAVAILABLE;
     payload.mode = 1;
-    g_gfx_create_ok = g_gfx_create_ok &&
-        svc_gfx->push_draw(mod_ctx, g_gfx_draw_type, &payload, sizeof(payload)) == MOD_OK;
+    g_gfx_create_ok = g_gfx_create_ok && svc_gfx->push_draw(mod_ctx, g_gfx_draw_type, &payload,
+                                             sizeof(payload)) == MOD_OK;
     GfxResolveDesc colorOnly = GFX_RESOLVE_DESC_INIT;
     GfxResolvedTargets offscreenTargets = GFX_RESOLVED_TARGETS_INIT;
     g_gfx_create_ok = g_gfx_create_ok &&
-        svc_gfx->resolve_pass(mod_ctx, &colorOnly, &offscreenTargets) == MOD_OK &&
-        offscreenTargets.width == 64 && offscreenTargets.height == 64 &&
-        offscreenTargets.color != nullptr;
+                      svc_gfx->resolve_pass(mod_ctx, &colorOnly, &offscreenTargets) == MOD_OK &&
+                      offscreenTargets.width == 64 && offscreenTargets.height == 64 &&
+                      offscreenTargets.color != nullptr;
 
     // With the EFB pass active again, a real compute task records here and executes on the
     // frame encoder between the split scene passes.
-    g_gfx_compute_push_ok = g_gfx_compute_push_ok &&
-        svc_gfx->push_compute(mod_ctx, g_gfx_compute_type, &computePayload,
-            sizeof(computePayload)) == MOD_OK;
+    g_gfx_compute_push_ok =
+        g_gfx_compute_push_ok && svc_gfx->push_compute(mod_ctx, g_gfx_compute_type, &computePayload,
+                                     sizeof(computePayload)) == MOD_OK;
 }
 
 // Column-major (CameraInfo convention) helpers for the camera math self-check.
@@ -618,8 +617,8 @@ void camera_mat_mul(const float a[16], const float b[16], float out[16]) {
 
 void camera_mat_vec(const float m[16], const float v[4], float out[4]) {
     for (int r = 0; r < 4; ++r) {
-        out[r] = m[0 * 4 + r] * v[0] + m[1 * 4 + r] * v[1] + m[2 * 4 + r] * v[2] +
-            m[3 * 4 + r] * v[3];
+        out[r] =
+            m[0 * 4 + r] * v[0] + m[1 * 4 + r] * v[1] + m[2 * 4 + r] * v[2] + m[3 * 4 + r] * v[3];
     }
 }
 
@@ -652,7 +651,7 @@ bool check_camera_math(const CameraInfo& cam) {
     const float nearZ = nearView[2] / nearView[3];
     const float farZ = farView[2] / farView[3];
     return std::fabs(nearZ + cam.near_plane) <= cam.near_plane * 1e-3f &&
-        std::fabs(farZ + cam.far_plane) <= cam.far_plane * 1e-2f;
+           std::fabs(farZ + cam.far_plane) <= cam.far_plane * 1e-2f;
 }
 
 ModResult build_panel(ModContext*, UiElementHandle panel, void*, ModError*) {
@@ -729,14 +728,13 @@ ModResult build_panel(ModContext*, UiElementHandle panel, void*, ModError*) {
         nullptr);
     svc_ui->pane_add_badge_row(mod_ctx, panel, "compute task (render worker)",
         g_gfx_compute_fired.load() && g_gfx_compute_ok.load() && g_gfx_compute_push_ok, nullptr);
-    svc_ui->pane_add_badge_row(mod_ctx, panel, "gfx negative tests",
-        g_gfx_neg_ok && g_gfx_compute_neg_ok, nullptr);
+    svc_ui->pane_add_badge_row(
+        mod_ctx, panel, "gfx negative tests", g_gfx_neg_ok && g_gfx_compute_neg_ok, nullptr);
 
     svc_ui->pane_add_section(mod_ctx, panel, "Camera");
-    svc_ui->pane_add_badge_row(mod_ctx, panel, "get_camera + projection math",
-        g_camera_checked && g_camera_ok, nullptr);
     svc_ui->pane_add_badge_row(
-        mod_ctx, panel, "camera negative tests", g_camera_neg_ok, nullptr);
+        mod_ctx, panel, "get_camera + projection math", g_camera_checked && g_camera_ok, nullptr);
+    svc_ui->pane_add_badge_row(mod_ctx, panel, "camera negative tests", g_camera_neg_ok, nullptr);
 
     svc_ui->pane_add_section(mod_ctx, panel, "API Fields");
     svc_ui->pane_add_badge_row(
@@ -910,7 +908,8 @@ MOD_EXPORT ModResult mod_initialize(ModError* error) {
     cfgDesc.name = "testFlag";
     cfgDesc.type = CONFIG_VAR_BOOL;
     cfgDesc.default_bool = true;
-    g_config_ok = svc_config->register_var(mod_ctx, &cfgDesc, &g_cfg_flag) == MOD_OK && g_cfg_flag != 0;
+    g_config_ok =
+        svc_config->register_var(mod_ctx, &cfgDesc, &g_cfg_flag) == MOD_OK && g_cfg_flag != 0;
 
     cfgDesc = CONFIG_VAR_DESC_INIT;
     cfgDesc.name = "testInt";
@@ -928,13 +927,15 @@ MOD_EXPORT ModResult mod_initialize(ModError* error) {
     cfgDesc.name = "testString";
     cfgDesc.type = CONFIG_VAR_STRING;
     cfgDesc.default_string = "hello";
-    g_config_ok = g_config_ok && svc_config->register_var(mod_ctx, &cfgDesc, &g_cfg_string) == MOD_OK;
+    g_config_ok =
+        g_config_ok && svc_config->register_var(mod_ctx, &cfgDesc, &g_cfg_string) == MOD_OK;
 
     // Backs the SELECT control in the UI test window (value = option index).
     cfgDesc = CONFIG_VAR_DESC_INIT;
     cfgDesc.name = "testChoice";
     cfgDesc.type = CONFIG_VAR_INT;
-    g_config_ok = g_config_ok && svc_config->register_var(mod_ctx, &cfgDesc, &g_cfg_choice) == MOD_OK;
+    g_config_ok =
+        g_config_ok && svc_config->register_var(mod_ctx, &cfgDesc, &g_cfg_choice) == MOD_OK;
 
     // Values persist across sessions, so assert the set/get round trip, not the defaults.
     bool cfgBoolValue = true;
@@ -942,15 +943,14 @@ MOD_EXPORT ModResult mod_initialize(ModError* error) {
     double cfgFloatValue = 0.0;
     char cfgStringBuf[8] = {};
     size_t cfgStringLength = 0;
-    g_config_ok = g_config_ok &&
-        svc_config->set_bool(mod_ctx, g_cfg_flag, false) == MOD_OK &&
+    g_config_ok =
+        g_config_ok && svc_config->set_bool(mod_ctx, g_cfg_flag, false) == MOD_OK &&
         svc_config->get_bool(mod_ctx, g_cfg_flag, &cfgBoolValue) == MOD_OK && !cfgBoolValue &&
         svc_config->set_int(mod_ctx, g_cfg_int, 1234) == MOD_OK &&
         svc_config->get_int(mod_ctx, g_cfg_int, &cfgIntValue) == MOD_OK && cfgIntValue == 1234 &&
         svc_config->set_float(mod_ctx, cfgFloat, 2.25) == MOD_OK &&
         svc_config->get_float(mod_ctx, cfgFloat, &cfgFloatValue) == MOD_OK &&
-        cfgFloatValue == 2.25 &&
-        svc_config->set_string(mod_ctx, g_cfg_string, "abc") == MOD_OK &&
+        cfgFloatValue == 2.25 && svc_config->set_string(mod_ctx, g_cfg_string, "abc") == MOD_OK &&
         // Length query with a null buffer, then an exact-size read.
         svc_config->get_string(mod_ctx, g_cfg_string, nullptr, 0, &cfgStringLength) == MOD_OK &&
         cfgStringLength == 3 &&
@@ -962,10 +962,9 @@ MOD_EXPORT ModResult mod_initialize(ModError* error) {
     cfgDesc.name = "testTemp";
     cfgDesc.type = CONFIG_VAR_BOOL;
     ConfigVarHandle cfgTemp = 0;
-    g_config_ok = g_config_ok &&
-        svc_config->register_var(mod_ctx, &cfgDesc, &cfgTemp) == MOD_OK &&
-        svc_config->unregister_var(mod_ctx, cfgTemp) == MOD_OK &&
-        svc_config->register_var(mod_ctx, &cfgDesc, &cfgTemp) == MOD_OK;
+    g_config_ok = g_config_ok && svc_config->register_var(mod_ctx, &cfgDesc, &cfgTemp) == MOD_OK &&
+                  svc_config->unregister_var(mod_ctx, cfgTemp) == MOD_OK &&
+                  svc_config->register_var(mod_ctx, &cfgDesc, &cfgTemp) == MOD_OK;
     if (g_config_ok) {
         svc_log->info(mod_ctx, "ConfigService register/get/set OK");
     } else {
@@ -977,9 +976,8 @@ MOD_EXPORT ModResult mod_initialize(ModError* error) {
     g_config_change_ok =
         svc_config->subscribe(
             mod_ctx, g_cfg_int, on_config_changed, &g_config_change_count, &cfgSub) == MOD_OK &&
-        cfgSub != 0 &&
-        svc_config->set_int(mod_ctx, g_cfg_int, 5678) == MOD_OK && g_config_change_count == 1 &&
-        g_config_prev_value == 1234 && g_config_curr_value == 5678 &&
+        cfgSub != 0 && svc_config->set_int(mod_ctx, g_cfg_int, 5678) == MOD_OK &&
+        g_config_change_count == 1 && g_config_prev_value == 1234 && g_config_curr_value == 5678 &&
         // Writes that don't change the value don't notify.
         svc_config->set_int(mod_ctx, g_cfg_int, 5678) == MOD_OK && g_config_change_count == 1 &&
         svc_config->unsubscribe(mod_ctx, cfgSub) == MOD_OK &&
@@ -1069,13 +1067,11 @@ MOD_EXPORT ModResult mod_initialize(ModError* error) {
         } else {
             bool ok = r == MOD_OK && addr != nullptr && (flags & HOOK_SYMBOL_CODE) != 0;
             void* dummy = nullptr;
-            ok = ok && svc_hook->resolve(mod_ctx, "dusk_no_such_symbol_xyzzy", &dummy,
-                           nullptr) == MOD_UNAVAILABLE;
-            ok = ok && svc_hook->resolve(mod_ctx, nullptr, &dummy, nullptr) ==
+            ok = ok && svc_hook->resolve(mod_ctx, "dusk_no_such_symbol_xyzzy", &dummy, nullptr) ==
+                           MOD_UNAVAILABLE;
+            ok = ok && svc_hook->resolve(mod_ctx, nullptr, &dummy, nullptr) == MOD_INVALID_ARGUMENT;
+            ok = ok && svc_hook->resolve(mod_ctx, "GXSetProjection", nullptr, nullptr) ==
                            MOD_INVALID_ARGUMENT;
-            ok = ok &&
-                 svc_hook->resolve(mod_ctx, "GXSetProjection", nullptr, nullptr) ==
-                     MOD_INVALID_ARGUMENT;
             if (ok) {
                 svc_log->info(mod_ctx, "HookService resolve OK");
             } else {
@@ -1084,17 +1080,16 @@ MOD_EXPORT ModResult mod_initialize(ModError* error) {
         }
     }
 
-    // GameCodeService: the ABI-epoch import for game-code-touching mods.
-    if (svc_game_code->abi_tag != nullptr &&
-        (svc_game_code->build_id_len == 0 || svc_game_code->build_id != nullptr))
+    if (svc_game->abi_tag != nullptr &&
+        (svc_game->build_id_len == 0 || svc_game->build_id != nullptr))
     {
         char gcBuf[96];
-        std::snprintf(gcBuf, sizeof(gcBuf), "GameCodeService OK: epoch %u, abi %s, build id len %u",
-            static_cast<unsigned>(svc_game_code->header.major_version), svc_game_code->abi_tag,
-            static_cast<unsigned>(svc_game_code->build_id_len));
+        std::snprintf(gcBuf, sizeof(gcBuf), "GameService OK: epoch %u, abi %s, build id len %u",
+            static_cast<unsigned>(svc_game->header.major_version), svc_game->abi_tag,
+            static_cast<unsigned>(svc_game->build_id_len));
         svc_log->info(mod_ctx, gcBuf);
     } else {
-        svc_log->error(mod_ctx, "GameCodeService FAILED: invalid payload");
+        svc_log->error(mod_ctx, "GameService FAILED: invalid payload");
     }
 
     UiModsPanelDesc panelDesc = UI_MODS_PANEL_DESC_INIT;
@@ -1122,10 +1117,9 @@ MOD_EXPORT ModResult mod_initialize(ModError* error) {
     UiStyleHandle tempFileStyle = 0;
     g_ui_rcss_ok =
         svc_ui->register_styles(mod_ctx, UI_SCOPE_OVERLAY, "toast { }", &tempStyle) == MOD_OK &&
-        tempStyle != 0 &&
-        svc_ui->unregister_styles(mod_ctx, tempStyle) == MOD_OK &&
-        svc_ui->register_styles_file(mod_ctx, UI_SCOPE_GRAPHICS_TUNER, "pride.rcss",
-            &tempFileStyle) == MOD_OK &&
+        tempStyle != 0 && svc_ui->unregister_styles(mod_ctx, tempStyle) == MOD_OK &&
+        svc_ui->register_styles_file(
+            mod_ctx, UI_SCOPE_GRAPHICS_TUNER, "pride.rcss", &tempFileStyle) == MOD_OK &&
         svc_ui->unregister_styles(mod_ctx, tempFileStyle) == MOD_OK;
     if (g_ui_rcss_ok) {
         svc_log->info(mod_ctx, "UiService styles registered OK");
@@ -1153,7 +1147,7 @@ MOD_EXPORT ModResult mod_initialize(ModError* error) {
     badSelect.kind = UI_CONTROL_SELECT;
     badSelect.label = "bad";
     badSelect.get = cb_number_get;
-    badSelect.set = cb_number_set;  // SELECT without options is invalid
+    badSelect.set = cb_number_set;                 // SELECT without options is invalid
     UiWindowDesc badWindow = UI_WINDOW_DESC_INIT;  // no tabs
     const uint64_t bogus = (UINT64_C(1) << 32) | UINT64_C(0xdead);
     g_ui_neg_ok =
@@ -1178,9 +1172,10 @@ MOD_EXPORT ModResult mod_initialize(ModError* error) {
     // in the BEFORE_HUD stage callback and are reported from mod_update.
     GfxDeviceInfo gfxInfo = GFX_DEVICE_INFO_INIT;
     g_gfx_device_ok = svc_gfx->get_device_info(mod_ctx, &gfxInfo) == MOD_OK &&
-        gfxInfo.device != nullptr && gfxInfo.queue != nullptr &&
-        gfxInfo.color_format != WGPUTextureFormat_Undefined && gfxInfo.sample_count >= 1 &&
-        svc_gfx->get_proc_address(mod_ctx, "wgpuDeviceCreateBuffer") != nullptr;
+                      gfxInfo.device != nullptr && gfxInfo.queue != nullptr &&
+                      gfxInfo.color_format != WGPUTextureFormat_Undefined &&
+                      gfxInfo.sample_count >= 1 &&
+                      svc_gfx->get_proc_address(mod_ctx, "wgpuDeviceCreateBuffer") != nullptr;
     if (g_gfx_device_ok) {
         svc_log->info(mod_ctx, "GfxService device info OK");
     } else {
@@ -1196,8 +1191,8 @@ MOD_EXPORT ModResult mod_initialize(ModError* error) {
     }
     GfxStageHookDesc gfxStageDesc = GFX_STAGE_HOOK_DESC_INIT;
     gfxStageDesc.callback = on_gfx_stage;
-    gfxResult =
-        svc_gfx->register_stage_hook(mod_ctx, GFX_STAGE_BEFORE_HUD, &gfxStageDesc, &g_gfx_stage_hook);
+    gfxResult = svc_gfx->register_stage_hook(
+        mod_ctx, GFX_STAGE_BEFORE_HUD, &gfxStageDesc, &g_gfx_stage_hook);
     if (gfxResult != MOD_OK) {
         return require_ok(gfxResult, error, "failed to register gfx stage hook");
     }
@@ -1207,12 +1202,12 @@ MOD_EXPORT ModResult mod_initialize(ModError* error) {
     GfxDrawTypeHandle gfxTempDraw = 0;
     GfxStageHookHandle gfxTempStage = 0;
     bool gfxCycleOk = svc_gfx->register_draw_type(mod_ctx, &gfxDrawDesc, &gfxTempDraw) == MOD_OK &&
-        svc_gfx->unregister_draw_type(mod_ctx, gfxTempDraw) == MOD_OK &&
-        svc_gfx->register_draw_type(mod_ctx, &gfxDrawDesc, &gfxTempDraw) == MOD_OK &&
-        svc_gfx->unregister_draw_type(mod_ctx, gfxTempDraw) == MOD_OK &&
-        svc_gfx->register_stage_hook(
-            mod_ctx, GFX_STAGE_AFTER_HUD, &gfxStageDesc, &gfxTempStage) == MOD_OK &&
-        svc_gfx->unregister_stage_hook(mod_ctx, gfxTempStage) == MOD_OK;
+                      svc_gfx->unregister_draw_type(mod_ctx, gfxTempDraw) == MOD_OK &&
+                      svc_gfx->register_draw_type(mod_ctx, &gfxDrawDesc, &gfxTempDraw) == MOD_OK &&
+                      svc_gfx->unregister_draw_type(mod_ctx, gfxTempDraw) == MOD_OK &&
+                      svc_gfx->register_stage_hook(
+                          mod_ctx, GFX_STAGE_AFTER_HUD, &gfxStageDesc, &gfxTempStage) == MOD_OK &&
+                      svc_gfx->unregister_stage_hook(mod_ctx, gfxTempStage) == MOD_OK;
 
     // Negative tests. Expected host error lines: game-owned/no-pass rejections come back as
     // MOD_UNAVAILABLE with aurora::gfx warnings; the stale handles log dusk::mods::gfx errors.
@@ -1222,7 +1217,8 @@ MOD_EXPORT ModResult mod_initialize(ModError* error) {
     GfxResolvedTargets gfxTargets = GFX_RESOLVED_TARGETS_INIT;
     GfxDrawTypeDesc gfxBadDesc = GFX_DRAW_TYPE_DESC_INIT;  // draw callback left null
     const uint64_t gfxBogus = (UINT64_C(1) << 32) | UINT64_C(0xdead);
-    g_gfx_neg_ok = gfxCycleOk &&
+    g_gfx_neg_ok =
+        gfxCycleOk &&
         svc_gfx->push_draw(mod_ctx, g_gfx_draw_type, &gfxPayload, sizeof(gfxPayload)) ==
             MOD_UNAVAILABLE &&
         svc_gfx->resolve_pass(mod_ctx, &gfxResolveDesc, &gfxTargets) == MOD_UNAVAILABLE &&
@@ -1263,8 +1259,8 @@ MOD_EXPORT ModResult mod_initialize(ModError* error) {
             sizeof(gfxComputePayload)) == MOD_UNAVAILABLE &&
         svc_gfx->register_compute_type(mod_ctx, &gfxBadComputeDesc, &gfxTempCompute) ==
             MOD_INVALID_ARGUMENT &&
-        svc_gfx->push_compute(mod_ctx, g_gfx_compute_type, gfxBigPayload,
-            sizeof(gfxBigPayload)) == MOD_INVALID_ARGUMENT &&
+        svc_gfx->push_compute(mod_ctx, g_gfx_compute_type, gfxBigPayload, sizeof(gfxBigPayload)) ==
+            MOD_INVALID_ARGUMENT &&
         svc_gfx->unregister_compute_type(mod_ctx, gfxBogus) == MOD_INVALID_ARGUMENT;
     if (g_gfx_compute_neg_ok) {
         svc_log->info(mod_ctx, "GfxService compute negative tests OK");
@@ -1279,8 +1275,8 @@ MOD_EXPORT ModResult mod_initialize(ModError* error) {
     CameraInfo camSmall = CAMERA_INFO_INIT;
     camSmall.struct_size = 4;
     g_camera_neg_ok = svc_camera->get_camera(mod_ctx, &camInfo) == MOD_UNAVAILABLE &&
-        svc_camera->get_camera(mod_ctx, &camSmall) == MOD_INVALID_ARGUMENT &&
-        svc_camera->get_camera(mod_ctx, nullptr) == MOD_INVALID_ARGUMENT;
+                      svc_camera->get_camera(mod_ctx, &camSmall) == MOD_INVALID_ARGUMENT &&
+                      svc_camera->get_camera(mod_ctx, nullptr) == MOD_INVALID_ARGUMENT;
     if (g_camera_neg_ok) {
         svc_log->info(mod_ctx, "CameraService negative tests OK");
     } else {

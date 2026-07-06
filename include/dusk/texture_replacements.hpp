@@ -5,8 +5,7 @@
 
 namespace dusk::texture_replacements {
 
-// Mod-registered replacements always win over the user's texture_replacements config directory
-// (mods use their m_mods index + 1 as priority; see sync_texture_replacements).
+// Mod replacements are prioritized *over* user replacements (<data folder>/texture_replacements/)
 inline constexpr int32_t kUserTextureReplacementPriority = -1'000'000;
 
 void reload();

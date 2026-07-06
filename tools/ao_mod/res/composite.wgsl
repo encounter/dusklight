@@ -5,7 +5,7 @@
 // Debug views (drawn with an unblended pipeline variant):
 //   1 = raw AO visibility as grayscale
 //   2 = view-space normals reconstructed from depth, exactly as the GTAO pass computes them
-//       (keep the functions in sync with gtao.wgsl) — corrupted normals show here
+//       (keep the functions in sync with gtao.wgsl)
 //   3 = the preprocessed depth input, as an exponential distance gradient (white = near)
 //   4 = depth staircase detector: second-difference / gradient ratio of the raw depth,
 //       per axis (red = x, green = y). Rasterized depth is planar per triangle, so smooth

@@ -65,4 +65,4 @@ size_t ModBundleZip::getFileSize(const std::string& fileName) {
     return stat.m_uncomp_size;
 }
 
-}  // namespace dusk::mods::loader
+}  // namespace dusk::mods

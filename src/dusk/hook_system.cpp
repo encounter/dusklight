@@ -198,7 +198,7 @@ ModResult hookInstallByAddr(ModContext* context, void* fn_addr, void* tramp_fn, 
     }
 
     // Inlining can't be intercepted by an entry patch: warn once per target when this
-    // build inlined the function into callers (manifest flag, MODS_LINKING.md §6).
+    // build inlined the function into callers.
     if (const char* name = nullptr; mods::manifest::has_inline_sites(fn_addr, &name)) {
         DuskLog.warn("HookSystem: '{}' ({:p}) for {} was inlined into callers in this build; "
                      "the hook only covers the calls that were not inlined",

@@ -448,10 +448,6 @@ private:
     bool m_showTopOnClose;
 };
 
-// Pushes a mod window/dialog the way host documents stack (Document::push):
-// the current top document hides while the new one shows. The close paths
-// re-show it only if it was visible here — that decision is baked into the
-// pushed document (ModWindow::Desc::showTopOnClose / ModDialog) beforehand.
 void push_stacked_document(std::unique_ptr<ui::Document> document) {
     if (auto* previousTop = ui::top_document()) {
         previousTop->push(std::move(document));

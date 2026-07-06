@@ -850,8 +850,6 @@ inline void dMeter2Info_setFloatingMessage(u16 i_msgID, s16 i_msgTimer, bool i_w
     g_meter2_info.setFloatingMessage(i_msgID, i_msgTimer, i_wakuVisible);
 }
 
-// Show a custom text notification using the floating-message HUD display.
-
 inline void dMeter2Info_setMiniGameCount(s8 i_count) {
     g_meter2_info.setMiniGameCount(i_count);
 }

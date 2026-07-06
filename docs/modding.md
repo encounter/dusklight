@@ -527,10 +527,10 @@ address-based hooking still works, so treat by-name resolution as gracefully deg
 ### The game-code ABI contract
 
 If your mod calls or hooks game code directly (anything beyond the service APIs), import
-`GameCodeService` (`mods/svc/game_code.h`):
+`GameService` (`mods/svc/game.h`):
 
 ```cpp
-IMPORT_SERVICE(GameCodeService, svc_game_code);
+IMPORT_SERVICE(GameService, svc_game);
 ```
 
 Its **major version is the game-code ABI epoch**: it's bumped when game struct layouts change

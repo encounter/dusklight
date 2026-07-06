@@ -150,7 +150,7 @@ using Subscription = u64;
  *
  * Fired synchronously on the mutating thread (in practice the game thread) whenever the CVar's
  * effective value changes at runtime: setValue, override/speedrun setters and clears. Values
- * applied by config load or launch arguments do *not* notify — loads happen during startup
+ * applied by config load or launch arguments do *not* notify: loads happen during startup
  * before the subsystems callbacks push values into are initialized, and each subsystem reads
  * its initial value itself at its own init. Callbacks may mutate other CVars; a nested
  * mutation of the same CVar applies but does not re-notify.

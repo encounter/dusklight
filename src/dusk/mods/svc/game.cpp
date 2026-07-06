@@ -25,8 +25,8 @@ namespace {
 #define DUSK_ABI_OS "linux"
 #endif
 
-GameCodeService s_gameCodeService{
-    .header = SERVICE_HEADER(GameCodeService, GAME_CODE_SERVICE_MAJOR, GAME_CODE_SERVICE_MINOR),
+GameService s_gameService{
+    .header = SERVICE_HEADER(GameService, GAME_SERVICE_MAJOR, GAME_SERVICE_MINOR),
     .build_id = nullptr,
     .build_id_len = 0,
     .abi_tag = DUSK_ABI_COMPILER "-" DUSK_ABI_ARCH "-" DUSK_ABI_OS,
@@ -34,11 +34,11 @@ GameCodeService s_gameCodeService{
 
 }  // namespace
 
-const GameCodeService& game_code_service() {
+const GameService& game_code_service() {
     const auto& buildId = manifest::image_build_id();
-    s_gameCodeService.build_id = buildId.empty() ? nullptr : buildId.data();
-    s_gameCodeService.build_id_len = static_cast<uint32_t>(buildId.size());
-    return s_gameCodeService;
+    s_gameService.build_id = buildId.empty() ? nullptr : buildId.data();
+    s_gameService.build_id_len = static_cast<uint32_t>(buildId.size());
+    return s_gameService;
 }
 
 }  // namespace dusk::mods::svc

@@ -71,8 +71,6 @@ function(dusk_setup_windows_exports target)
     set(DUSK_GAME_DEF "${_def}" CACHE INTERNAL "Curated export .def for the game executable")
 
     # Ship the import library as sdk/dusklight.lib in the install tree: mods may use it to
-    # compile against Dusklight without having to build the whole game. It stays out of the
-    # game root on purpose — nothing reads it at runtime, and sdk/ is where the rest of the
-    # out-of-tree mod surface (def, SDK sources) would land. (See DUSK_GAME_IMPLIB)
+    # compile against Dusklight without having to build the whole game. (See DUSK_GAME_IMPLIB)
     install(FILES "${_implib}" DESTINATION sdk RENAME dusklight.lib)
 endfunction()

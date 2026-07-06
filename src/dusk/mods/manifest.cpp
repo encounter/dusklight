@@ -26,13 +26,12 @@
 namespace dusk::mods::manifest {
 namespace {
 
-static aurora::Module Log("dusk::mods::manifest");
+aurora::Module Log("dusk::mods::manifest");
 
 constexpr char kMagic[8] = {'S', 'Y', 'M', 'G', 'E', 'N', '\0', '\0'};
 constexpr uint32_t kVersion = 1;
 
-// Mirrors the symgen manifest writer. 72 bytes so the entry array that follows is
-// 8-aligned.
+// Mirrors the symgen manifest writer.
 struct Header {
     char magic[8];
     uint32_t version;
@@ -60,8 +59,7 @@ struct State {
     const char* strings = nullptr;
     uint64_t stringsLen = 0;
     uintptr_t imageBase = 0;
-    // (rva, nameOff) of entries flagged kFlagInlineSites, sorted by rva for the
-    // address-keyed lookup hookInstallByAddr does.
+    // (rva, nameOff) of entries flagged kFlagInlineSites, sorted by rva
     std::vector<std::pair<uint64_t, uint32_t>> inlineSites;
     bool loaded = false;
     bool initialized = false;
@@ -245,7 +243,7 @@ void initialize() {
     if (imageId.size() != header.buildIdLen ||
         std::memcmp(imageId.data(), header.buildId, imageId.size()) != 0) {
         Log.error(
-            "symbol manifest {} is stale: built for {}, running image is {} — rebuild the game",
+            "symbol manifest {} is stale: built for {}, running image is {}",
             dusk::io::fs_path_to_string(path), hex_string(header.buildId, header.buildIdLen),
             hex_string(imageId.data(), imageId.size()));
         return;
@@ -294,7 +292,6 @@ ResolveStatus resolve(const char* name, void** outAddr, uint32_t* outFlags) {
     const uint64_t hash = fnv1a64(name);
     const Entry* begin = s_state.entries;
     const Entry* end = begin + s_state.entryCount;
-    // Lower bound by hash, then walk the (tiny) equal-hash range comparing names.
     size_t lo = 0;
     size_t hi = s_state.entryCount;
     while (lo < hi) {

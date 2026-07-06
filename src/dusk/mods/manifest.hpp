@@ -39,9 +39,9 @@ const std::vector<uint8_t>& image_build_id();
 ResolveStatus resolve(const char* name, void** outAddr, uint32_t* outFlags = nullptr);
 
 // True if the manifest records that the function at this code address was inlined into
-// at least one caller in this build — an entry hook on it only intercepts the calls
-// that were not inlined (MODS_LINKING.md §6). outName receives the symbol name (valid
-// for the process lifetime) when known. False when no manifest is loaded.
+// at least one caller in this build. An entry hook on it only intercepts the calls
+// that were not inlined. outName receives the symbol name (valid for the process lifetime)
+// when known. False when no manifest is loaded.
 bool has_inline_sites(const void* addr, const char** outName = nullptr);
 
 }  // namespace dusk::mods::manifest
