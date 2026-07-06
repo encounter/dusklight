@@ -3,6 +3,7 @@
 #include "dusk/mod_loader.hpp"
 #include "mods/svc/camera.h"
 #include "mods/svc/config.h"
+#include "mods/svc/flow.h"
 #include "mods/svc/game.h"
 #include "mods/svc/gfx.h"
 #include "mods/svc/hook.h"
@@ -11,6 +12,7 @@
 #include "mods/svc/log.h"
 #include "mods/svc/overlay.h"
 #include "mods/svc/resource.h"
+#include "mods/svc/text.h"
 #include "mods/svc/texture.h"
 #include "mods/svc/ui.h"
 
@@ -52,5 +54,7 @@ const GameService& game_service();
 const GfxService& gfx_service();
 const CameraService& camera_service();
 const ItemService& item_service();
+const FlowService& flow_service();
+const TextService& text_service();
 
 }  // namespace dusk::mods::svc

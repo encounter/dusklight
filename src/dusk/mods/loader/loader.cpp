@@ -603,6 +603,8 @@ void ModLoader::deactivate_mod(LoadedMod& mod) {
     textures_remove_mod(mod);
     config_remove_mod(mod);
     item_checks_remove_mod(mod);
+    flow_remove_mod(mod);
+    text_remove_mod(mod);
     ui_remove_mod(mod);
     gfx_remove_mod(mod);
     unload_native(mod);

@@ -1554,6 +1554,7 @@ set(DUSK_FILES
         src/dusk/mods/loader/context.cpp
         src/dusk/mods/loader/depgraph.cpp
         src/dusk/mods/loader/depgraph.hpp
+        src/dusk/mods/loader/flow.cpp
         src/dusk/mods/loader/gfx.cpp
         src/dusk/mods/loader/item_checks.cpp
         src/dusk/mods/loader/loader.cpp
@@ -1561,12 +1562,14 @@ set(DUSK_FILES
         src/dusk/mods/loader/native_module.cpp
         src/dusk/mods/loader/native_module.hpp
         src/dusk/mods/loader/overlay.cpp
+        src/dusk/mods/loader/text.cpp
         src/dusk/mods/loader/textures.cpp
         src/dusk/mods/loader/ui.cpp
         src/dusk/mods/manifest.cpp
         src/dusk/mods/manifest.hpp
         src/dusk/mods/svc/camera.cpp
         src/dusk/mods/svc/config.cpp
+        src/dusk/mods/svc/flow.cpp
         src/dusk/mods/svc/game.cpp
         src/dusk/mods/svc/gfx.cpp
         src/dusk/mods/svc/hook.cpp
@@ -1577,6 +1580,7 @@ set(DUSK_FILES
         src/dusk/mods/svc/registry.cpp
         src/dusk/mods/svc/registry.hpp
         src/dusk/mods/svc/resource.cpp
+        src/dusk/mods/svc/text.cpp
         src/dusk/mods/svc/texture.cpp
         src/dusk/mods/svc/ui.cpp
         src/dusk/gx_helper.cpp

@@ -15,6 +15,10 @@
 #include "SSystem/SComponent/c_math.h"
 #include <cstring>
 
+#if TARGET_PC
+#include "dusk/mods/flow.hpp"
+#endif
+
 dMsgFlow_c::dMsgFlow_c() {
     mNonStopJunpFlowFlag = 0;
     setInitValue(1);
@@ -90,6 +94,18 @@ void dMsgFlow_c::initWord(fopAc_ac_c* i_partner, const char* i_word, u8 i_output
     init(i_partner, flowID, param_3, param_4);
 }
 
+#if TARGET_PC
+static u32 flow_node_override_key(const void* nodeTbl, u16 nodeIdx) {
+    static_assert(dusk::mods::FlowFirstExtensionQuery == std::size(dMsgFlow_c::mQueryList));
+    static_assert(dusk::mods::FlowFirstExtensionEvent == std::size(dMsgFlow_c::mEventList));
+    u32 key = static_cast<u32>(dMsgObject_getGroupID()) << 16 | nodeIdx;
+    if (*static_cast<const u16*>(nodeTbl) == 0x0803) {
+        key &= 0x0000FFFFu;
+    }
+    return key;
+}
+#endif
+
 int dMsgFlow_c::checkOpenDoor(fopAc_ac_c* i_speaker_p, int* param_2) {
     if (dMsgObject_isTalkNowCheck()) {
         return 0;
@@ -130,7 +146,17 @@ int dMsgFlow_c::checkOpenDoor(fopAc_ac_c* i_speaker_p, int* param_2) {
                 break;
             }
 
+#if TARGET_PC
+            u16 query_ret;
+            if (branch_node->query_idx >= dusk::mods::FlowFirstExtensionQuery) {
+                query_ret = dusk::mods::flow_dispatch_query(
+                    branch_node->query_idx, branch_node->param, i_speaker_p, 0);
+            } else {
+                query_ret = (this->*mQueryList[branch_node->query_idx])(branch_node, i_speaker_p, 0);
+            }
+#else
             u16 query_ret = (this->*mQueryList[branch_node->query_idx])(branch_node, i_speaker_p, 0);
+#endif
             u16 spE = branch_node->next_node_idx + query_ret;
             nodeIdx = mFlowIdxTBL[spE];
             break;
@@ -624,7 +650,20 @@ int dMsgFlow_c::messageNodeProc(fopAc_ac_c* i_speaker_p, fopAc_ac_c** i_talkPart
 int dMsgFlow_c::branchNodeProc(fopAc_ac_c* i_speaker_p, fopAc_ac_c** i_talkPartners) {
     mesg_flow_node_branch* node = NULL;
     node = &mFlowNodeTBL[mNodeIdx].branch;
+#if TARGET_PC
+    mesg_flow_node_branch patched;
+    if (dusk::mods::flow_node_override(flow_node_override_key(mFlowNodeTBL, mNodeIdx), &patched)) {
+        node = &patched;
+    }
+    u16 proc_status;
+    if (node->query_idx >= dusk::mods::FlowFirstExtensionQuery) {
+        proc_status = dusk::mods::flow_dispatch_query(node->query_idx, node->param, i_speaker_p, 1);
+    } else {
+        proc_status = (this->*mQueryList[node->query_idx])(node, i_speaker_p, 1);
+    }
+#else
     u16 proc_status = (this->*mQueryList[node->query_idx])(node, i_speaker_p, 1);
+#endif
 
     u16 var_r28 = node->next_node_idx + proc_status;
     setNodeIndex(mFlowIdxTBL[var_r28], i_talkPartners);
@@ -634,7 +673,21 @@ int dMsgFlow_c::branchNodeProc(fopAc_ac_c* i_speaker_p, fopAc_ac_c** i_talkPartn
 int dMsgFlow_c::eventNodeProc(fopAc_ac_c* i_speaker_p, fopAc_ac_c** i_talkPartners) {
     mesg_flow_node_event* node = NULL;
     node = &mFlowNodeTBL[mNodeIdx].event;
+#if TARGET_PC
+    mesg_flow_node_event patched{};
+    if (dusk::mods::flow_node_override(flow_node_override_key(mFlowNodeTBL, mNodeIdx), &patched)) {
+        node = &patched;
+    }
+    int proc_status;
+    if (node->event_idx >= dusk::mods::FlowFirstExtensionEvent) {
+        dusk::mods::flow_dispatch_event(node->event_idx, node->params, i_speaker_p);
+        proc_status = 1;
+    } else {
+        proc_status = (this->*mEventList[node->event_idx])(node, i_speaker_p);
+    }
+#else
     int proc_status = (this->*mEventList[node->event_idx])(node, i_speaker_p);
+#endif
 
     switch (node->event_idx) {
     case 8: {
@@ -706,6 +759,17 @@ int dMsgFlow_c::nodeProc(fopAc_ac_c* i_speaker_p, fopAc_ac_c** i_talkPartners) {
         }
 
         u8 type = mFlowNodeTBL[mNodeIdx].message.type;
+#if TARGET_PC
+        // A mod flow-node override can change the node's type (e.g. message -> event)
+        {
+            mesg_flow_node patchedType{};
+            if (dusk::mods::flow_node_override(
+                    flow_node_override_key(mFlowNodeTBL, mNodeIdx), &patchedType))
+            {
+                type = patchedType.type;
+            }
+        }
+#endif
         switch (type) {
         case NODETYPE_MESSAGE_e:
             proc_status = messageNodeProc(aSpeaker_p, i_talkPartners);

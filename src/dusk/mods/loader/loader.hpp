@@ -9,8 +9,10 @@
 
 #include "dusk/mod_loader.hpp"
 #include "mods/svc/config.h"
+#include "mods/svc/flow.h"
 #include "mods/svc/gfx.h"
 #include "mods/svc/item.h"
+#include "mods/svc/text.h"
 #include "mods/svc/ui.h"
 
 namespace dusk::ui {
@@ -120,6 +122,30 @@ ModResult item_check_add_observer(
     LoadedMod& mod, ItemCheckObserveFn fn, void* userData, uint64_t& outHandle);
 ModResult item_check_remove_observer(LoadedMod& mod, uint64_t handle);
 void item_checks_remove_mod(LoadedMod& mod);
+
+// Flow-service plumbing (loader/flow.cpp). Game thread only, like config; the game-code entry
+// points (extension dispatch + node-override lookup) are declared in dusk/mods/flow.hpp.
+ModResult flow_register_query(
+    LoadedMod& mod, const char* name, FlowQueryFn fn, void* userData, uint16_t& outId);
+ModResult flow_unregister_query(LoadedMod& mod, uint16_t id);
+ModResult flow_register_event(
+    LoadedMod& mod, const char* name, FlowEventFn fn, void* userData, uint16_t& outId);
+ModResult flow_unregister_event(LoadedMod& mod, uint16_t id);
+ModResult flow_find_query(const char* name, uint16_t& outId);
+ModResult flow_find_event(const char* name, uint16_t& outId);
+ModResult flow_override_node(LoadedMod& mod, uint16_t group, uint16_t nodeIndex,
+    const void* nodeBytes, uint64_t& outHandle);
+ModResult flow_clear_node_override(LoadedMod& mod, uint64_t handle);
+void flow_remove_mod(LoadedMod& mod);
+
+// Text-service plumbing (loader/text.cpp). Game thread only; the game-code entry points
+// (seam application + keyed lookup) are declared in dusk/mods/text.hpp.
+ModResult text_override_message(LoadedMod& mod, uint16_t group, uint16_t messageId,
+    const char* text);
+ModResult text_override_message_fn(
+    LoadedMod& mod, uint16_t group, uint16_t messageId, TextMessageFn fn, void* userData);
+ModResult text_clear_override(LoadedMod& mod, uint16_t group, uint16_t messageId);
+void text_remove_mod(LoadedMod& mod);
 
 // UI service plumbing (loader/ui.cpp). Game thread only, like config.
 ModResult ui_register_mods_panel(LoadedMod& mod, const UiModsPanelDesc& desc);

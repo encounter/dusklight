@@ -3,13 +3,16 @@
 #include "d/actor/d_a_alink.h"
 #include "dolphin/dvd.h"
 #include "dolphin/mtx.h"
+#include "dusk/mods/flow.hpp"
 #include "dusk/mods/item_checks.hpp"
+#include "dusk/mods/text.hpp"
 #include "f_ap/f_ap_game.h"
 #include "m_Do/m_Do_controller_pad.h"
 #include "mods/hook.hpp"
 #include "mods/service.hpp"
 #include "mods/svc/camera.h"
 #include "mods/svc/config.h"
+#include "mods/svc/flow.h"
 #include "mods/svc/game.h"
 #include "mods/svc/gfx.h"
 #include "mods/svc/hook.h"
@@ -18,6 +21,7 @@
 #include "mods/svc/log.h"
 #include "mods/svc/overlay.h"
 #include "mods/svc/resource.h"
+#include "mods/svc/text.h"
 #include "mods/svc/texture.h"
 #include "mods/svc/ui.h"
 #include "test_services.h"
@@ -39,6 +43,8 @@ IMPORT_SERVICE_VERSION(GfxService, svc_gfx, 1);
 IMPORT_SERVICE(CameraService, svc_camera);
 IMPORT_SERVICE(GameService, svc_game);
 IMPORT_SERVICE(ItemService, svc_item);
+IMPORT_SERVICE(FlowService, svc_flow);
+IMPORT_SERVICE(TextService, svc_text);
 // Both provided by mod_test_dep, which sorts *after* mod_test.dusk in the mods directory;
 // dependency ordering must initialize it first regardless. The deferred service only
 // resolves if mod_test_dep published it during its initialization.
@@ -73,6 +79,11 @@ bool g_item_check_ok = false;
 bool g_item_check_neg_ok = false;
 int g_item_observed = -1;
 int g_item_observed_vanilla = -1;
+bool g_flow_ok = false;
+bool g_flow_neg_ok = false;
+int g_flow_event_param = -1;
+bool g_text_ok = false;
+bool g_text_neg_ok = false;
 int g_config_change_count = 0;
 int64_t g_config_prev_value = -1;
 int64_t g_config_curr_value = -1;
@@ -728,6 +739,16 @@ ModResult build_panel(ModContext*, UiElementHandle panel, void*, ModError*) {
     svc_ui->pane_add_badge_row(
         mod_ctx, panel, "ItemService negative tests", g_item_check_neg_ok, nullptr);
 
+    svc_ui->pane_add_section(mod_ctx, panel, "Flow + Text");
+    svc_ui->pane_add_badge_row(
+        mod_ctx, panel, "FlowService register/dispatch/override", g_flow_ok, nullptr);
+    svc_ui->pane_add_badge_row(
+        mod_ctx, panel, "FlowService negative tests", g_flow_neg_ok, nullptr);
+    svc_ui->pane_add_badge_row(
+        mod_ctx, panel, "TextService override/resolver", g_text_ok, nullptr);
+    svc_ui->pane_add_badge_row(
+        mod_ctx, panel, "TextService negative tests", g_text_neg_ok, nullptr);
+
     svc_ui->pane_add_section(mod_ctx, panel, "UI");
     svc_ui->pane_add_badge_row(mod_ctx, panel, "stack queries", g_ui_stack_ok, nullptr);
     svc_ui->pane_add_badge_row(mod_ctx, panel, "scoped RCSS registered", g_ui_rcss_ok, nullptr);
@@ -861,6 +882,141 @@ void test_item_checks() {
         svc_log->info(mod_ctx, "ItemService negative tests OK");
     } else {
         svc_log->error(mod_ctx, "ItemService negative tests FAILED");
+    }
+}
+
+// FlowService: query/event registration + synthetic dispatch through the game seam entry
+// points (real flows only run in gameplay), name lookup, node-override round trip, the shared
+// event budget's failure mode, and negatives.
+uint16_t flow_test_query(ModContext*, uint16_t param, void*, int mode, void*) {
+    return static_cast<uint16_t>(param + mode);
+}
+
+void flow_test_event(ModContext*, const uint8_t* params, void*, void*) {
+    g_flow_event_param = params[0];
+}
+
+void test_flow() {
+    uint16_t queryId = 0;
+    uint8_t eventId = 0;
+    bool ok = svc_flow->register_query(
+                  mod_ctx, "mod_test:query", flow_test_query, nullptr, &queryId) == MOD_OK &&
+              queryId >= 0x100;
+    ok = ok && svc_flow->register_event(
+                   mod_ctx, "mod_test:event", flow_test_event, nullptr, &eventId) == MOD_OK &&
+         eventId >= 43;
+
+    // Dispatch through the same entry points the d_msg_flow seams call.
+    ok = ok && dusk::mods::flow_dispatch_query(queryId, 7, nullptr, 1) == 8;
+    const uint8_t eventParams[4] = {42, 0, 0, 0};
+    dusk::mods::flow_dispatch_event(eventId, eventParams, nullptr);
+    ok = ok && g_flow_event_param == 42;
+    // Unregistered extension ids fall back safely.
+    ok = ok && dusk::mods::flow_dispatch_query(0xFFFE, 7, nullptr, 1) == 0;
+
+    uint16_t foundQuery = 0;
+    uint8_t foundEvent = 0;
+    ok = ok && svc_flow->find_query(mod_ctx, "mod_test:query", &foundQuery) == MOD_OK &&
+         foundQuery == queryId;
+    ok = ok && svc_flow->find_event(mod_ctx, "mod_test:event", &foundEvent) == MOD_OK &&
+         foundEvent == eventId;
+
+    // Node override round trip via the seam's lookup, including the copy-out contract.
+    const uint8_t nodeBytes[8] = {1, 0, 0, 5, 0, 9, 0, 0};
+    FlowNodeHandle nodeHandle = 0;
+    ok = ok && svc_flow->override_flow_node(mod_ctx, 0x1234, 5, nodeBytes, &nodeHandle) ==
+                   MOD_OK &&
+         nodeHandle != 0;
+    uint8_t fetched[8] = {};
+    ok = ok && dusk::mods::flow_node_override(0x1234u << 16 | 5, fetched) &&
+         std::memcmp(fetched, nodeBytes, sizeof(fetched)) == 0;
+    ok = ok && svc_flow->clear_flow_node_override(mod_ctx, nodeHandle) == MOD_OK;
+    ok = ok && !dusk::mods::flow_node_override(0x1234u << 16 | 5, fetched);
+
+    ok = ok && svc_flow->unregister_query(mod_ctx, queryId) == MOD_OK;
+    ok = ok && svc_flow->unregister_event(mod_ctx, eventId) == MOD_OK;
+    ok = ok && dusk::mods::flow_dispatch_query(queryId, 7, nullptr, 1) == 0;
+    g_flow_ok = ok;
+    if (ok) {
+        svc_log->info(mod_ctx, "FlowService register/dispatch/override OK");
+    } else {
+        svc_log->error(mod_ctx, "FlowService register/dispatch/override FAILED");
+    }
+
+    // Negatives: duplicate name, bad args, bogus removals.
+    uint16_t dupId = 0;
+    bool neg = svc_flow->register_query(
+                   mod_ctx, "mod_test:dup", flow_test_query, nullptr, &dupId) == MOD_OK;
+    uint16_t dupId2 = 0;
+    neg = neg && svc_flow->register_query(mod_ctx, "mod_test:dup", flow_test_query, nullptr,
+                     &dupId2) == MOD_CONFLICT;
+    neg = neg && svc_flow->unregister_query(mod_ctx, dupId) == MOD_OK;
+    neg = neg && svc_flow->register_query(mod_ctx, "", flow_test_query, nullptr, &dupId2) ==
+                     MOD_INVALID_ARGUMENT;
+    neg = neg && svc_flow->register_event(mod_ctx, "mod_test:nullfn", nullptr, nullptr,
+                     nullptr) == MOD_INVALID_ARGUMENT;
+    neg = neg && svc_flow->find_query(mod_ctx, "mod_test:missing", &dupId2) == MOD_UNAVAILABLE;
+    neg = neg && svc_flow->unregister_event(mod_ctx, 200) == MOD_INVALID_ARGUMENT;
+    neg = neg && svc_flow->clear_flow_node_override(mod_ctx, 0) == MOD_INVALID_ARGUMENT;
+    neg = neg && svc_flow->override_flow_node(mod_ctx, 1, 1, nullptr, nullptr) ==
+                     MOD_INVALID_ARGUMENT;
+    g_flow_neg_ok = neg;
+    if (neg) {
+        svc_log->info(mod_ctx, "FlowService negative tests OK");
+    } else {
+        svc_log->error(mod_ctx, "FlowService negative tests FAILED");
+    }
+}
+
+// TextService: fixed override + resolver callback (incl. NULL-pass fallthrough to vanilla) +
+// clear, driven through the seam's keyed lookup; real messages only resolve in gameplay.
+const char* text_test_resolver(
+    ModContext*, uint16_t, uint16_t messageId, const char* original, void* userData) {
+    if (*static_cast<const bool*>(userData)) {
+        static char buf[64];
+        std::snprintf(buf, sizeof(buf), "resolved:%u:%s", messageId, original);
+        return buf;
+    }
+    return nullptr;  // pass -> vanilla
+}
+
+void test_text() {
+    using dusk::mods::text_lookup;
+    bool ok = text_lookup(0x12, 500, "orig") == nullptr;  // nothing registered yet
+
+    ok = ok && svc_text->override_message(mod_ctx, 0x12, 500, "modded text") == MOD_OK;
+    const char* got = text_lookup(0x12, 500, "orig");
+    ok = ok && got != nullptr && std::strcmp(got, "modded text") == 0;
+    ok = ok && text_lookup(0x12, 501, "orig") == nullptr;  // other ids untouched
+
+    static bool resolverActive = true;
+    resolverActive = true;
+    ok = ok && svc_text->override_message_fn(
+                   mod_ctx, 0x34, 600, text_test_resolver, &resolverActive) == MOD_OK;
+    got = text_lookup(0x34, 600, "orig");
+    ok = ok && got != nullptr && std::strcmp(got, "resolved:600:orig") == 0;
+    resolverActive = false;  // NULL-pass falls through to vanilla
+    ok = ok && text_lookup(0x34, 600, "orig") == nullptr;
+
+    ok = ok && svc_text->clear_message_override(mod_ctx, 0x12, 500) == MOD_OK;
+    ok = ok && text_lookup(0x12, 500, "orig") == nullptr;
+    ok = ok && svc_text->clear_message_override(mod_ctx, 0x34, 600) == MOD_OK;
+    g_text_ok = ok;
+    if (ok) {
+        svc_log->info(mod_ctx, "TextService override/resolver/clear OK");
+    } else {
+        svc_log->error(mod_ctx, "TextService override/resolver/clear FAILED");
+    }
+
+    bool neg = svc_text->override_message(mod_ctx, 1, 1, nullptr) == MOD_INVALID_ARGUMENT;
+    neg = neg && svc_text->override_message_fn(mod_ctx, 1, 1, nullptr, nullptr) ==
+                     MOD_INVALID_ARGUMENT;
+    neg = neg && svc_text->clear_message_override(mod_ctx, 0x77, 700) == MOD_INVALID_ARGUMENT;
+    g_text_neg_ok = neg;
+    if (neg) {
+        svc_log->info(mod_ctx, "TextService negative tests OK");
+    } else {
+        svc_log->error(mod_ctx, "TextService negative tests FAILED");
     }
 }
 
@@ -1124,6 +1280,8 @@ MOD_EXPORT ModResult mod_initialize(ModError* error) {
     }
 
     test_item_checks();
+    test_flow();
+    test_text();
 
     ModResult result = dusk::mods::hook_add_pre<&daAlink_c::posMove>(svc_hook, on_pos_move_pre);
     if (result != MOD_OK) {

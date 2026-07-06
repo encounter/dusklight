@@ -162,6 +162,10 @@ void ModLoader::init_services() {
         &svc::game_service(), nullptr, false);
     svc::register_service(ITEM_SERVICE_ID, ITEM_SERVICE_MAJOR, ITEM_SERVICE_MINOR,
         &svc::item_service(), nullptr, false);
+    svc::register_service(FLOW_SERVICE_ID, FLOW_SERVICE_MAJOR, FLOW_SERVICE_MINOR,
+        &svc::flow_service(), nullptr, false);
+    svc::register_service(TEXT_SERVICE_ID, TEXT_SERVICE_MAJOR, TEXT_SERVICE_MINOR,
+        &svc::text_service(), nullptr, false);
 }
 
 bool ModLoader::register_static_service_exports(LoadedMod& mod) {
