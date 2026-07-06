@@ -780,4 +780,5 @@ if (DUSK_ENABLE_CODE_MODS AND CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR
     add_subdirectory(tools/crt_mod)
     add_subdirectory(tools/ao_mod)
     add_subdirectory(tools/shadow_mod)
+    add_subdirectory(tools/randomizer)
 endif ()
