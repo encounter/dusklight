@@ -206,7 +206,7 @@ void daItem_c::CreateInit() {
     initBaseMtx();
     animPlay(1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f);
 
-    if (m_itemNo == dItemNo_BOOMERANG_e) {
+    if (m_itemNo == dItemNo_BOOMERANG_e IF_DUSK(&& !mItemOverridden)) {
         itemGetNextExecute();
     } else if ((m_itemNo == dItemNo_ORANGE_RUPEE_e || m_itemNo == dItemNo_SILVER_RUPEE_e) &&
                mSparkleEmtr.getEmitter() == NULL)
@@ -264,6 +264,22 @@ int daItem_c::_daItem_create() {
         shape_angle.z = 0;
         shape_angle.x = 0;
 
+#if TARGET_PC
+        {
+            // Freestanding item check: rewrite the low param byte so the vanilla
+            // model/collision/arc machinery follows the resolved item.
+            const u32 params = fopAcM_GetParam(this);
+            const u8 vanillaItem = params & 0xFF;
+            const u8 resolved = dusk::mods::item_check_freestanding(
+                daItem_prm::getItemBitNo(this), vanillaItem, this);
+            if (resolved != vanillaItem) {
+                fopAcM_SetParam(this, (params & 0xFFFFFF00) | resolved);
+                mItemOverridden = true;
+                mItemGiveTag =
+                    dusk::mods::give_tag_freestanding(daItem_prm::getItemBitNo(this));
+            }
+        }
+#endif
         field_0x95d = true;
     }
 
@@ -507,9 +523,20 @@ void daItem_c::procInitGetDemoEvent() {
     fopAcM_orderItemEvent(this, 0, 0);
     eventInfo.onCondition(dEvtCnd_CANGETITEM_e);
 
+#if TARGET_PC
+    // Re-resolve at pickup (progressive overrides); the loaded arc is deleted by the
+    // spawn-time m_itemNo, so restore it after the create.
+    const u8 oldItemNo = m_itemNo;
+    if (mItemOverridden) {
+        m_itemNo = dusk::mods::item_check_freestanding(mItemBitNo, m_itemNo, this);
+    }
+#endif
     m_item_id = fopAcM_createItemForTrBoxDemo(&current.pos, m_itemNo, -1, fopAcM_GetRoomNo(this),
                                               NULL, NULL IF_DUSK_ARG(mItemGiveTag));
     JUT_ASSERT(0, m_item_id != fpcM_ERROR_PROCESS_ID_e);
+#if TARGET_PC
+    m_itemNo = oldItemNo;
+#endif
 
     setStatus(STATUS_WAIT_GET_DEMO_EVENT_e);
 }
@@ -521,7 +548,7 @@ void daItem_c::procWaitGetDemoEvent() {
             dComIfGp_event_setItemPartnerId(m_item_id);
         }
     } else {
-        if (m_itemNo == dItemNo_BOOMERANG_e) {
+        if (m_itemNo == dItemNo_BOOMERANG_e IF_DUSK(&& !mItemOverridden)) {
             fopAcM_orderItemEvent(this, 0, 0);
             eventInfo.onCondition(dEvtCnd_CANGETITEM_e);
             return;
@@ -537,7 +564,9 @@ void daItem_c::procWaitGetDemoEvent() {
 
             procInitSimpleGetDemo();
             itemGet();
-            if (!haveItem) {
+            // Overridden non-rupee items keep their first-get bit.
+            if (!haveItem IF_DUSK(&& (!mItemOverridden || (m_itemNo >= dItemNo_GREEN_RUPEE_e &&
+                                                              m_itemNo <= dItemNo_SILVER_RUPEE_e)))) {
                 dComIfGs_offItemFirstBit(m_itemNo);
             }
         } else {
@@ -864,6 +893,12 @@ void daItem_c::itemGetNextExecute() {
             procInitGetDemoEvent();
             break;
         default:
+#if TARGET_PC
+            if (mItemOverridden) {
+                procInitGetDemoEvent();
+                break;
+            }
+#endif
             // "[daItem_c] Get process not defined[%d]\n"
             OS_REPORT_ERROR("[daItem_c]ゲット処理が定義されていません[%d]\n", m_itemNo);
         }
@@ -877,7 +912,19 @@ void daItem_c::itemGetNextExecute() {
 }
 
 void daItem_c::itemGet() {
+#if TARGET_PC
+    // Re-resolve at grant (progressive overrides); the actor's arc is deleted by the
+    // spawn-time m_itemNo, so restore it after.
+    const u8 oldItemNo = m_itemNo;
+    if (mItemOverridden) {
+        m_itemNo = dusk::mods::item_check_freestanding(mItemBitNo, m_itemNo, this);
+    }
+#endif
     switch (m_itemNo) {
+#if TARGET_PC
+    case dItemNo_UTAWA_HEART_e:
+    case dItemNo_KAKERA_HEART_e:
+#endif
     case dItemNo_HEART_e:
         mDoAud_seStart(Z2SE_HEART_PIECE_GET, NULL, 0, 0);
         execItemGet(m_itemNo IF_DUSK_ARG(mItemGiveTag) IF_DUSK_ARG(this));
@@ -919,11 +966,24 @@ void daItem_c::itemGet() {
     case dItemNo_PACHINKO_SHOT_e:
         mDoAud_seStart(Z2SE_CONSUMP_ITEM_GET, NULL, 0, 0);
         execItemGet(m_itemNo IF_DUSK_ARG(mItemGiveTag) IF_DUSK_ARG(this));
+#if TARGET_PC
+        break;
+#endif
     default:
+#if TARGET_PC
+        if (mItemOverridden) {
+            mDoAud_seStart(Z2SE_CONSUMP_ITEM_GET, NULL, 0, 0);
+            execItemGet(m_itemNo, mItemGiveTag, this);
+            break;
+        }
+#endif
         // "[daItem_c] Get process not defined[%d]\n"
         OS_REPORT_ERROR("[daItem_c]ゲット処理が定義されていません[%d]\n", m_itemNo);
         break;
     }
+#if TARGET_PC
+    m_itemNo = oldItemNo;
+#endif
 }
 
 BOOL daItem_c::checkCountTimer() {

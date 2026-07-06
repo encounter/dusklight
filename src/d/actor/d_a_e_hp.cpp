@@ -726,11 +726,20 @@ void daE_HP_c::executeDead() {
             fopAcM_onSwitch(this, bitSw);
         }
 
+#if TARGET_PC
+        // Collected in wolf form, where the present demo cannot run: an overridden
+        // check grants through the give queue instead of the vanilla soul accounting.
+        const bool overridden = dusk::mods::item_check_poe(
+            bitSw, dItemNo_POU_SPIRIT_e, this) != dItemNo_POU_SPIRIT_e;
+        if (overridden) {
+            dusk::mods::item_check_enqueue_poe(bitSw, dItemNo_POU_SPIRIT_e, this);
+        } else
+#endif
         dComIfGs_addPohSpiritNum();
 
         field_0x784 = -1;
 
-        if (dComIfGs_getPohSpiritNum() == 20) {
+        if (dComIfGs_getPohSpiritNum() == 20 IF_DUSK(&& !overridden)) {
             dComIfGs_onEventBit(dSv_event_flag_c::saveBitLabels[0x1c9]);
         }
 
@@ -752,13 +761,17 @@ void daE_HP_c::executeDead() {
                     field_0x788 = 1;
                 }
             }
-        } else if (field_0x788 != 0) {
+        } else if (field_0x788 != 0
+                   // Overridden checks were granted through the queue in case 0; skip the demo.
+                   // TODO: should we save whether it was overridden previously instead of re-running the check that may change?
+                   IF_DUSK(|| dusk::mods::item_check_poe(bitSw, dItemNo_POU_SPIRIT_e, this) !=
+                               dItemNo_POU_SPIRIT_e)) {
             fopAcM_createDisappear(this, &current.pos, 8, 3, 0xff);
             fopAcM_delete(this);
         } else {
             if (field_0x784 == -1) {
                 field_0x784 = fopAcM_createItemForPresentDemo(&current.pos, dItemNo_POU_SPIRIT_e, 0, -1,
-                                                              -1, 0, 0);
+                                                              -1, 0, 0 IF_DUSK_ARG(dusk::mods::give_tag_poe(bitSw)));
             }
 
             if (fopAcM_IsExecuting(field_0x784) != FALSE) {

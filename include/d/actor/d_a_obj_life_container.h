@@ -88,6 +88,10 @@ private:
     /* 0x99C */ dPa_followEcallBack mEffect2;
     /* 0x9B0 */ Z2SoundObjSimple mSound;
     /* 0x9D0 */ u8 mIsHookCarry;
+#if TARGET_PC
+    bool mItemOverridden;
+    bool mOverrideHover;
+#endif
 };
 
 STATIC_ASSERT(sizeof(daObjLife_c) == 0x9d4);

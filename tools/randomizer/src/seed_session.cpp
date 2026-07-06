@@ -2,7 +2,9 @@
 
 #include <cstdlib>
 #include <cstring>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "mods/api.h"
@@ -20,6 +22,7 @@
 #include "game/save_setup.hpp"
 #include "game/stages.h"
 #include "game/tools.h"
+#include "game/verify_item_functions.h"
 
 extern "C" MOD_EXPORT ModContext* mod_ctx;
 
@@ -60,6 +63,42 @@ SaveObserverHandle s_save_observer{};
 
 // --- item checks -----------------------------------------------------------------
 
+// Derived funnel names are "<tag>:<stage>:<n>"; the branch keyed the matching override
+// maps by (stageID << 8) | n.
+struct DerivedKey {
+    int stage_id;
+    u16 key;
+};
+
+std::optional<DerivedKey> parse_derived(const char* name, std::string_view prefix) {
+    if (std::strncmp(name, prefix.data(), prefix.size()) != 0) {
+        return std::nullopt;
+    }
+    const char* stage_begin = name + prefix.size();
+    const char* stage_end = std::strchr(stage_begin, ':');
+    if (stage_end == nullptr) {
+        return std::nullopt;
+    }
+    const std::string stage{stage_begin, stage_end};
+    const int stage_id = getStageID(stage.c_str());
+    if (stage_id < 0) {
+        return std::nullopt;
+    }
+    const int n = std::atoi(stage_end + 1);
+    return DerivedKey{stage_id, static_cast<u16>((stage_id << 8) | (n & 0xFF))};
+}
+
+// progressive: the branch ran verifyProgressiveItem on this funnel's overrides.
+template <typename Map>
+bool lookup_override(const Map& map, u16 key, uint8_t* out_item, bool progressive) {
+    const auto it = map.find(key);
+    if (it == map.end()) {
+        return false;
+    }
+    *out_item = progressive ? static_cast<uint8_t>(verifyProgressiveItem(it->second)) : it->second;
+    return true;
+}
+
 bool resolve_check(ModContext*, const ItemCheckInfo* info, uint8_t* out_item, void*) {
     if (!s_seed_active) {
         return false;
@@ -72,23 +111,39 @@ bool resolve_check(ModContext*, const ItemCheckInfo* info, uint8_t* out_item, vo
         return true;
     }
 
-    // Derived chest names: "chest:<stage>:<boxNo>" -> branch key (stageID << 8) | boxNo.
-    if (std::strncmp(info->name, "chest:", 6) == 0) {
-        const char* stage_begin = info->name + 6;
-        const char* stage_end = std::strchr(stage_begin, ':');
-        if (stage_end != nullptr) {
-            const std::string stage{stage_begin, stage_end};
-            const int stage_id = getStageID(stage.c_str());
-            const int box_no = std::atoi(stage_end + 1);
-            if (stage_id >= 0) {
-                const u16 key = static_cast<u16>((stage_id << 8) | (box_no & 0xFF));
-                if (auto it = ctx.mTreasureChestOverrides.find(key);
-                    it != ctx.mTreasureChestOverrides.end()) {
-                    *out_item = it->second;
-                    return true;
-                }
+    if (auto key = parse_derived(info->name, "chest:")) {
+        return lookup_override(ctx.mTreasureChestOverrides, key->key, out_item, false);
+    }
+    if (auto key = parse_derived(info->name, "freestanding:")) {
+        // The Gale Boomerang pedestal in Ook is a named location, not a save-bit key
+        // (branch: the stage-wide special case in daObjLife_c::create).
+        if (key->stage_id == Ook) {
+            if (auto it = ctx.mItemLocations.find("Forest Temple Gale Boomerang");
+                it != ctx.mItemLocations.end()) {
+                *out_item = static_cast<uint8_t>(verifyProgressiveItem(it->second.itemId));
+                return true;
             }
+            return false;
         }
+        return lookup_override(ctx.mFreestandingItemOverrides, key->key, out_item, true);
+    }
+    if (auto key = parse_derived(info->name, "poe:")) {
+        return lookup_override(ctx.mPoeOverrides, key->key, out_item, false);
+    }
+    if (auto key = parse_derived(info->name, "shop:")) {
+        return lookup_override(ctx.mShopOverrides, key->key, out_item, true);
+    }
+    if (auto key = parse_derived(info->name, "sky:")) {
+        return lookup_override(ctx.mSkyCharacterOverrides, key->key, out_item, true);
+    }
+    // Bug rewards are stage-independent: "bug:<insect item id>".
+    if (std::strncmp(info->name, "bug:", 4) == 0) {
+        const u8 insect = static_cast<u8>(std::atoi(info->name + 4));
+        if (auto it = ctx.mBugRewardOverrides.find(insect); it != ctx.mBugRewardOverrides.end()) {
+            *out_item = static_cast<uint8_t>(verifyProgressiveItem(it->second));
+            return true;
+        }
+        return false;
     }
 
     return false;
@@ -101,6 +156,16 @@ void observe_give(ModContext*, const ItemGiveInfo* info, void*) {
     auto& ctx = randomizer_GetContext();
     if (ctx.mItemLocations.contains(info->check_name)) {
         randomizer_setTempFlagForLocation(info->check_name);
+    }
+
+    // Branch custom collection flags: Stallord's dungeon reward (queued from
+    // daB_DS_c::executeBattle2Dead) and the Gale Boomerang pedestal in Ook.
+    if (std::strcmp(info->check_name, "Arbiters Grounds Dungeon Reward") == 0) {
+        dComIfGs_onItem(0x9E, -1);
+    } else if (auto key = parse_derived(info->check_name, "freestanding:");
+               key && key->stage_id == Ook) {
+        dComIfGs_onItem(0x9D, -1);
+        randomizer_setTempFlagForLocation("Forest Temple Gale Boomerang");
     }
 }
 

@@ -34,18 +34,37 @@ uint8_t item_check(const char* name, uint8_t itemNo, fopAc_ac_c* giver);
 uint8_t item_check_chest(uint8_t boxNo, uint8_t itemNo, fopAc_ac_c* chest);
 // Name format "boss:<stage>" — the per-stage boss reward funnel (fopAcM_createItemForBoss).
 uint8_t item_check_boss(uint8_t itemNo);
+// Name format "freestanding:<stage>:<bitNo>" — freestanding items (daItem_c / daObjLife_c),
+// bitNo = the item save bit (daItem_prm::getItemBitNo / getSaveBitNo).
+uint8_t item_check_freestanding(uint8_t bitNo, uint8_t itemNo, fopAc_ac_c* item);
+// Name format "poe:<stage>:<bitSw>" — poe soul drops (e_po_dead, daE_HP_c::executeDead).
+uint8_t item_check_poe(uint8_t bitSw, uint8_t itemNo, fopAc_ac_c* poe);
+// Name format "shop:<stage>:<itemNo>" — shop purchases (dShopSystem_c::seq_decide_yes), keyed
+// by the vanilla event item; also peeked by daShopItem_c for the display model.
+uint8_t item_check_shop(uint8_t itemNo, fopAc_ac_c* giver);
+// Name format "bug:<insectId>" — Agitha's bug rewards, keyed by the handed-in insect.
+uint8_t item_check_bug(uint8_t insectId, uint8_t itemNo, fopAc_ac_c* agitha);
+// Name format "sky:<stage>:<room>" — sky-character statue rewards, room = mStayNo.
+uint8_t item_check_sky(uint8_t itemNo, fopAc_ac_c* statue);
 
 // Intern a check name for give attribution; returns a stable non-zero id for the session.
 // Derived-name variants mirror the item_check_* helpers above.
 uint32_t give_tag(const char* name);
 uint32_t give_tag_chest(uint8_t boxNo);
 uint32_t give_tag_boss();
+uint32_t give_tag_freestanding(uint8_t bitNo);
+uint32_t give_tag_poe(uint8_t bitSw);
+uint32_t give_tag_shop(uint8_t itemNo);
+uint32_t give_tag_bug(uint8_t insectId);
+uint32_t give_tag_sky();
 
 // Resolve a named check and queue the result to be granted at the next safe moment (resolution
 // runs at dispatch time, so progressive items see the then-current inventory). For sites whose
 // vanilla behavior grants nothing, pass dItemNo_NONE_e as itemNo — a NONE resolution grants
 // nothing. This is the in-tree entry to the give queue; mods use ItemService::give_item.
 void item_check_enqueue(const char* name, uint8_t itemNo, fopAc_ac_c* giver);
+// Derived-name variant for poes collected where no present demo can run (wolf form).
+void item_check_enqueue_poe(uint8_t bitSw, uint8_t itemNo, fopAc_ac_c* poe);
 
 // Give seam, called from execItemGet after the inventory write: notifies mod give observers
 // and completes a matching in-flight queued give. giveTag is the granting actor's interned

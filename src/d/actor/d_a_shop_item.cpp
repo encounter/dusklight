@@ -11,6 +11,10 @@
 #include "m_Do/m_Do_lib.h"
 #include <cstring>
 
+#if TARGET_PC
+#include "d/d_item_data.h"
+#endif
+
 const char* daShopItem_c::getShopArcname() {
     switch (m_itemNo) {
     case dItemNo_NONE_e:
@@ -88,7 +92,35 @@ const char* daShopItem_c::getShopArcname() {
         return NULL;
     }
 
-    return mData[mShopItemID].get_arcName();
+#if TARGET_PC
+    if (m_itemNo != dItemNo_NONE_e) {
+        // Shop item check (display side): rebuild this slot's writable row from the
+        // resolved item's dItem_data entry.
+        const u8 resolved = dusk::mods::item_check_shop(m_itemNo, this);
+        mItemOverridden = resolved != m_itemNo;
+        if (mItemOverridden) {
+            ResourceData& row = mOverrideData[mShopItemID];
+            row = mData[mShopItemID];
+            row.mArcName = dItem_data::getArcName(resolved);
+            row.mBmdName = dItem_data::getBmdName(resolved);
+            row.mBtkName = dItem_data::getBtkName(resolved);
+            row.mBckName = dItem_data::getBckName(resolved);
+            row.mBrkName = dItem_data::getBrkName(resolved);
+            row.mBtpName = dItem_data::getBtpName(resolved);
+            row.mTevFrm = dItem_data::getTevFrm(resolved);
+            row.mBtpFrm = -1;
+            row.mFlag = (u32)-1;
+            // Lift armor-pedestal overrides onto the pedestal, everything else to
+            // counter height.
+            row.mOffsetY = mShopItemID == SHOP_ITEMNO_ARMOR ? 60.0f : 15.0f;
+            row.mScale = 1.0f;
+        }
+    } else {
+        mItemOverridden = false;
+    }
+#endif
+
+    return M_SHOP_DATA[mShopItemID].get_arcName();
 }
 
 const f32 daShopItem_c::m_cullfar_max = 5000.0f;
@@ -119,11 +151,11 @@ void daShopItem_c::CreateInit() {
 
     if (strcmp("R_SP109", dComIfGp_getStartStageName()) == 0 && dComIfGp_getStartStageRoomNo() == 1)
     {
-        scale.set(mData[mShopItemID].get_scale() * 0.8f, mData[mShopItemID].get_scale() * 0.8f,
-                  mData[mShopItemID].get_scale() * 0.8f);
+        scale.set(M_SHOP_DATA[mShopItemID].get_scale() * 0.8f, M_SHOP_DATA[mShopItemID].get_scale() * 0.8f,
+                  M_SHOP_DATA[mShopItemID].get_scale() * 0.8f);
     } else {
-        scale.set(mData[mShopItemID].get_scale(), mData[mShopItemID].get_scale(),
-                  mData[mShopItemID].get_scale());
+        scale.set(M_SHOP_DATA[mShopItemID].get_scale(), M_SHOP_DATA[mShopItemID].get_scale(),
+                  M_SHOP_DATA[mShopItemID].get_scale());
     }
 
     home.pos = current.pos;
@@ -137,7 +169,7 @@ void daShopItem_c::set_mtx() {
     if (daShopItem_prm::getGroup(this) == 15) {
         mDoMtx_stack_c::transS(current.pos.x, current.pos.y, current.pos.z);
     } else {
-        mDoMtx_stack_c::transS(current.pos.x, current.pos.y + mData[mShopItemID].get_offsetY(),
+        mDoMtx_stack_c::transS(current.pos.x, current.pos.y + M_SHOP_DATA[mShopItemID].get_offsetY(),
                                current.pos.z);
     }
 
@@ -147,8 +179,8 @@ void daShopItem_c::set_mtx() {
     if (daShopItem_prm::getGroup(this) == 15) {
         mDoMtx_stack_c::ZXYrotM(-11300, 32700, 7300);
     } else {
-        mDoMtx_stack_c::ZXYrotM(mAngleX + mData[mShopItemID].get_angleX(),
-                                mData[mShopItemID].get_angleY(), mData[mShopItemID].get_angleZ());
+        mDoMtx_stack_c::ZXYrotM(mAngleX + M_SHOP_DATA[mShopItemID].get_angleX(),
+                                M_SHOP_DATA[mShopItemID].get_angleY(), M_SHOP_DATA[mShopItemID].get_angleZ());
     }
 
     mDoMtx_stack_c::ZXYrotM(current.angle.x, current.angle.y, current.angle.z);
@@ -156,7 +188,7 @@ void daShopItem_c::set_mtx() {
     if (daShopItem_prm::getGroup(this) == 15) {
         mDoMtx_stack_c::XrotM(0);
     } else {
-        mDoMtx_stack_c::XrotM(mData[mShopItemID].get_angleOffsetX());
+        mDoMtx_stack_c::XrotM(M_SHOP_DATA[mShopItemID].get_angleOffsetX());
     }
 
     mpModel->setBaseTRMtx(mDoMtx_stack_c::get());
@@ -190,27 +222,27 @@ void daShopItem_c::setShadow() {
 }
 
 BOOL daShopItem_c::chkFlag(int i_flag) {
-    return mData[mShopItemID].get_flag() & i_flag;
+    return M_SHOP_DATA[mShopItemID].get_flag() & i_flag;
 }
 
 s8 daShopItem_c::getTevFrm() {
-    return mData[mShopItemID].get_tevfrm();
+    return M_SHOP_DATA[mShopItemID].get_tevfrm();
 }
 
 s8 daShopItem_c::getBtpFrm() {
-    return mData[mShopItemID].get_btpfrm();
+    return M_SHOP_DATA[mShopItemID].get_btpfrm();
 }
 
 u8 daShopItem_c::getShadowSize() {
-    return mData[mShopItemID].get_shadowSize();
+    return M_SHOP_DATA[mShopItemID].get_shadowSize();
 }
 
 u8 daShopItem_c::getCollisionH() {
-    return mData[mShopItemID].get_collisionH();
+    return M_SHOP_DATA[mShopItemID].get_collisionH();
 }
 
 u8 daShopItem_c::getCollisionR() {
-    return mData[mShopItemID].get_collisionR();
+    return M_SHOP_DATA[mShopItemID].get_collisionR();
 }
 
 int daShopItem_c::_create() {

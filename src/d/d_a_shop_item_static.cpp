@@ -41,11 +41,27 @@ ResourceData const daShopItem_c::mData[23] = {
     {"O_mD_bott", 6, 12, -1, -1, -1, 9, 15, 0.0f, 1.0f, 0, {0, 0, 0}, 4, 0, 0, 0, 12, 0},
 };
 
+#if TARGET_PC
+ResourceData daShopItem_c::mOverrideData[23];
+#endif
+
 int CheckShopItemCreateHeap(fopAc_ac_c* i_this) {
     daShopItem_c* a_this1 = static_cast<daShopItem_c*>(i_this);
     daShopItem_c* a_this2 = static_cast<daShopItem_c*>(i_this);
 
     u8 a_ShopItemID = a_this2->getShopItemID();
+#if TARGET_PC
+    if (a_this2->mItemOverridden) {
+        return a_this1->CreateItemHeap(daShopItem_c::mOverrideData[a_ShopItemID].get_arcName(),
+                                      daShopItem_c::mOverrideData[a_ShopItemID].get_bmdName(),
+                                      daShopItem_c::mOverrideData[a_ShopItemID].get_btk1Name(),
+                                      daShopItem_c::mOverrideData[a_ShopItemID].get_bpk1Name(),
+                                      daShopItem_c::mOverrideData[a_ShopItemID].get_bck1Name(),
+                                      daShopItem_c::mOverrideData[a_ShopItemID].get_bxa1Name(),
+                                      daShopItem_c::mOverrideData[a_ShopItemID].get_brk1Name(),
+                                      daShopItem_c::mOverrideData[a_ShopItemID].get_btp1Name());
+    }
+#endif
     return a_this1->CreateItemHeap(daShopItem_c::mData[a_ShopItemID].get_arcName(),
                                   daShopItem_c::mData[a_ShopItemID].get_bmdName(),
                                   daShopItem_c::mData[a_ShopItemID].get_btk1Name(),

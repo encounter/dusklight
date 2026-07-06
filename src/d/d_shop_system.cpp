@@ -1204,8 +1204,12 @@ int dShopSystem_c::seq_decide_yes(fopAc_ac_c* actor, dMsgFlow_c* i_flow) {
     if (mFlow.getEventId(&itemNo) == 1) {
         if (i_flow->doFlow(actor, NULL, 0)) {
             if (mItemPartnerId == fpcM_ERROR_PROCESS_ID_e) {
-                mItemPartnerId =
-                    fopAcM_createItemForPresentDemo(&current.pos, itemNo, 0, -1, -1, NULL, NULL);
+#if TARGET_PC
+                const u32 itemGiveTag = dusk::mods::give_tag_shop(itemNo & 0xFF);
+                itemNo = dusk::mods::item_check_shop(itemNo & 0xFF, actor);
+#endif
+                mItemPartnerId = fopAcM_createItemForPresentDemo(
+                    &current.pos, itemNo, 0, -1, -1, NULL, NULL IF_DUSK_ARG(itemGiveTag));
             }
 
             if (fpcEx_IsExist(mItemPartnerId)) {

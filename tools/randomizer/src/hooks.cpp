@@ -3,12 +3,15 @@
 #include "mods/hook.hpp"
 
 #include "d/actor/d_a_alink.h"
+#include "d/actor/d_a_itembase.h"
+#include "d/d_a_itembase_static.h"
 #include "d/d_com_inf_game.h"
 #include "d/d_event.h"
 #include "d/d_item.h"
 #include "d/d_meter2_info.h"
 #include "d/d_msg_flow.h"
 #include "d/d_save.h"
+#include "d/d_shop_system.h"
 
 #include <cstring>
 
@@ -520,6 +523,49 @@ void post_read_item_texture(ModContext*, void* args, void*, void*) {
     std::memcpy(tex_buf1, bti.data, bti.size < 0xC00 ? bti.size : 0xC00);
 }
 
+// --- item funnels (in-tree derived-name checks) -----------------------------------------
+
+// dShopSystem_c::seq_decide_yes: an overridden purchase in Kakariko Malo Mart always
+// sells out its slot (branch: setSoldOutFlag inside the mShopOverrides block). The
+// pre-hook re-reads the same flow event the body reads; setSoldOutFlag is idempotent
+// across the frames the sequence takes.
+HookAction pre_shop_seq_decide_yes(ModContext*, void* args, void*, void*) {
+    if (!randomizer_IsActive()) {
+        return HOOK_CONTINUE;
+    }
+    auto* self = arg<dShopSystem_c*>(args, 0);
+    int item_no = 0;
+    if (self->mFlow.getEventId(&item_no) == 1 && playerIsInRoomStage(3, "R_SP109")) {
+        const u16 key = static_cast<u16>((getStageID() << 8) | (item_no & 0xFF));
+        if (randomizer_GetContext().mShopOverrides.contains(key)) {
+            self->setSoldOutFlag();
+        }
+    }
+    return HOOK_CONTINUE;
+}
+
+// CheckFieldItemCreateHeap: rando custom items that only have "get" models (bottles,
+// Link's savings, poe souls) must build their heap through CheckItemCreateHeap
+// (branch: the switch added to d_a_itembase_static.cpp).
+HookAction pre_check_field_item_create_heap(ModContext*, void* args, void* retval, void*) {
+    if (!randomizer_IsActive()) {
+        return HOOK_CONTINUE;
+    }
+    auto* actor = arg<fopAc_ac_c*>(args, 0);
+    switch (static_cast<daItemBase_c*>(actor)->getItemNo()) {
+    case dItemNo_Randomizer_EMPTY_BOTTLE_e:
+    case dItemNo_Randomizer_HALF_MILK_BOTTLE_e:
+    case dItemNo_Randomizer_OIL_BOTTLE3_e:
+    case dItemNo_Randomizer_DROP_BOTTLE_e:
+    case dItemNo_Randomizer_LINKS_SAVINGS_e:
+    case dItemNo_Randomizer_POU_SPIRIT_e:
+        *static_cast<int*>(retval) = CheckItemCreateHeap(actor);
+        return HOOK_SKIP_ORIGINAL;
+    default:
+        return HOOK_CONTINUE;
+    }
+}
+
 // --- d_event.cpp ----------------------------------------------------------------------
 
 void post_talk_end(ModContext*, void*, void*, void*) {
@@ -569,6 +615,9 @@ ModResult install(const HookService* hooks) {
 
     CHECK_HOOK(hook_add_pre<&execItemGet>(hooks, pre_exec_item_get));
     CHECK_HOOK(hook_add_pre<static_cast<int (*)(u8, int)>(&checkItemGet)>(hooks, pre_check_item_get));
+
+    CHECK_HOOK(hook_add_pre<&dShopSystem_c::seq_decide_yes>(hooks, pre_shop_seq_decide_yes));
+    CHECK_HOOK(hook_add_pre<&CheckFieldItemCreateHeap>(hooks, pre_check_field_item_create_heap));
 
     CHECK_HOOK(hook_add_post<&dEvt_control_c::talkEnd>(hooks, post_talk_end));
 

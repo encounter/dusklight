@@ -97,6 +97,12 @@ int daObjLife_c::Create() {
     field_0x94c = 0.7f;
     mRotateSpeed = 7000;
 
+#if TARGET_PC
+    if (mOverrideHover) {
+        fopAcM_SetGravity(this, 0.0f);
+        mRotateSpeed = 550;
+    }
+#endif
     setEffect();
     mSound.init(&current.pos, 1);
     return 1;
@@ -140,6 +146,25 @@ int daObjLife_c::create() {
         home.angle.x = home.angle.z = 0;
         current.angle.x = current.angle.z = 0;
         shape_angle.x = shape_angle.z = 0;
+#if TARGET_PC
+        {
+            // Freestanding item check: rewrite the low param byte so the vanilla
+            // model/collision/arc machinery follows the resolved item.
+            const u32 params = fopAcM_GetParam(this);
+            const u8 vanillaItem = params & 0xFF;
+            const u8 resolved =
+                dusk::mods::item_check_freestanding(getSaveBitNo(), vanillaItem, this);
+            if (resolved != vanillaItem) {
+                fopAcM_SetParam(this, (params & 0xFFFFFF00) | resolved);
+                mItemOverridden = true;
+                // Wall/air-mounted vanilla rewards must not fall once replaced.
+                mOverrideHover = vanillaItem == dItemNo_UTAWA_HEART_e ||
+                             (vanillaItem >= dItemNo_M_BEETLE_e &&
+                                 vanillaItem <= dItemNo_F_MAYFLY_e);
+                mItemGiveTag = dusk::mods::give_tag_freestanding(getSaveBitNo());
+            }
+        }
+#endif
         mIsPrmsInit = true;
     }
 
@@ -153,7 +178,7 @@ int daObjLife_c::create() {
         return cPhs_ERROR_e;
     }
 
-    if (m_itemNo == dItemNo_UTAWA_HEART_e && dComIfGs_isStageLife()) {
+    if (m_itemNo == dItemNo_UTAWA_HEART_e && dComIfGs_isStageLife() IF_DUSK(&& !mItemOverridden)) {
         return cPhs_ERROR_e;
     }
 
@@ -296,9 +321,20 @@ int daObjLife_c::initActionOrderGetDemo() {
     fopAcM_orderItemEvent(this, 0, 0);
     eventInfo.onCondition(dEvtCnd_CANGETITEM_e);
 
+#if TARGET_PC
+    // Re-resolve at pickup (progressive overrides); the loaded arc is deleted by the
+    // spawn-time m_itemNo, so restore it after the create.
+    const u8 oldItemNo = m_itemNo;
+    if (mItemOverridden) {
+        m_itemNo = dusk::mods::item_check_freestanding(getSaveBitNo(), m_itemNo, this);
+    }
+#endif
     mItemId = fopAcM_createItemForTrBoxDemo(&current.pos, m_itemNo, -1, fopAcM_GetRoomNo(this), NULL,
                                             NULL IF_DUSK_ARG(mItemGiveTag));
     JUT_ASSERT(699, mItemId != fpcM_ERROR_PROCESS_ID_e);
+#if TARGET_PC
+    m_itemNo = oldItemNo;
+#endif
 
     setStatus(STATUS_ORDER_GET_DEMO_e);
     return 1;

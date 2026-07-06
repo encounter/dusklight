@@ -12,6 +12,12 @@ below or listed as a gap.
 |---|---|
 | `randomizer_getItemAtLocation` named sites | ItemService catch-all resolver over `mItemLocations` (the in-tree `DUSK_ITEM_CHECK` callouts use the branch's exact location names) + observer for tracker temp flags |
 | Chests (`mTreasureChestOverrides`) | resolver for derived names `chest:<stage>:<boxNo>` → branch key `(stageID<<8)\|boxNo` |
+| Freestanding items (`mFreestandingItemOverrides`, `M_ITEMNO_MODEL_ITEM_ID`, `setRandomizerItem`) | in-tree `freestanding:<stage>:<bitNo>` funnel (daItem_c `_daItem_create` + daObjLife_c `create` param rewrite, pickup re-resolution, give tags, hover derived from vanilla HC/insect) + resolver; heap routing for get-model-only items via `CheckFieldItemCreateHeap` pre-hook; Gale Boomerang = `freestanding:<Ook>:*` → named location + 0x9D collect flag in the give observer |
+| Poes (`mPoeOverrides`, `handlePoeItem`) | in-tree `poe:<stage>:<bitSw>` funnel: e_po present demo carries the resolved item; e_hp (wolf form) enqueues via `item_check_enqueue_poe`; `addPohSpiritNum` + 20-poe bits gated on resolved==vanilla |
+| Shops (`mShopOverrides`, `M_SHOP_DATA`/`mRandoData`) | in-tree `shop:<stage>:<itemNo>` funnel in `seq_decide_yes` + display row: `daShopItem_c::mOverrideData` writable twin populated from `dItem_data` at `getShopArcname()` (+ `CheckShopItemCreateHeap`); Malo Mart sold-out = mod pre-hook on `seq_decide_yes` |
+| Bug rewards (`mBugRewardOverrides`, `mGivenInsectId`) | in-tree `bug:<insectItemId>` funnel: PC file-static capture in `waitPresent`, callout in `talk()` |
+| Sky characters (`mSkyCharacterOverrides`) | in-tree `sky:<stage>:<room>` funnel in `daTagStatue_c::demoProc`, resolved over the vanilla ladder output |
+| Arbiters (Stallord) dungeon reward | in-tree `item_check_enqueue("Arbiters Grounds Dungeon Reward", NONE)` in `daB_DS_c::executeBattle2Dead`; 0x9E collect flag in the give observer |
 | Custom items (portals/keys/maps/compasses/…) | branch item funcs + 256-entry dispatch tables compiled into the mod (`src/game/item_funcs.cpp`); `execItemGet`/`checkItemGet` pre-hooks dispatch while a seed is active; `dItem_data` rows applied by in-place table mutation (`src/game/item_data.cpp`) |
 | Flow node patches (`mFlowPatches`) | FlowService `override_flow_node`; branch extension indices (query 53, events 43/44) re-registered per session and remapped in the node bytes |
 | Vanilla flow tweaks (query001/022/025/049, event035) | pre/post hooks (`src/hooks.cpp`) |
@@ -37,12 +43,13 @@ documented-offset reads (`Z2SceneMgr::loadedSeWave_1/2` @0x0E/0x10,
 
 Ordered roughly by player impact:
 
-1. **Freestanding items & boss heart containers** (`mFreestandingItemOverrides`, keyed
-   `(stageID<<8)|saveBitNo`): the branch's `M_ITEMNO_MODEL_ITEM_ID` macro +
-   `daItemBase_c::setRandomizerItem` + `d_a_obj_life_container.cpp` edits (incl. the
-   hovering-checks zero-gravity list). Needs an in-tree derived-name funnel
-   (`freestanding:<stage>:<flag>`, like chests) or replace hooks. The in-tree
-   `boss:<stage>` funnel exists but the seed data doesn't key by it.
+1. **Freestanding items & boss heart containers** — **PORTED July 6 2026** (in-tree
+   `freestanding:<stage>:<bitNo>` funnel + mod resolver, see the table above). Remaining
+   slivers: the branch's per-item display polish (daItem/daObjLife `calcScale` targets,
+   `current.pos.y` nudges, rupee-sparkle suppression) and the foolish-item
+   `home.angle.z` model hack (deliberately NOT ported — trap items become claimed slots
+   with fixed `dItem_data` rows); master/light-sword scale fixups skipped in the shop
+   row too (mod item ids aren't known in-tree).
 2. **Modified-in-place vanilla item funcs**: the extraction pass captured branch-*added*
    functions; functions the branch *edited* (e.g. the sky-letter func at branch
    `d_item.cpp:2235` calling `dComIfGs_setAncientDocumentNum`) still point at vanilla in
@@ -52,20 +59,21 @@ Ordered roughly by player impact:
    the branch's `dMsgFlow_c::setNormalMsg` mid-function hijack (swap msg to the item
    text, give on textbox close). "Ilia Memory Reward" class. Needs a Flow/Text seam
    (message-id override at flow time) or a replace hook on `setNormalMsg`.
-4. **Poes**: `e_po_dead` mid-function edits (suppress `addPohSpiritNum`, spawn override
-   item from `mPoeOverrides`, `handlePoeItem`, and the 60-poe cap = audit soft break #6).
-   Replace hook requires checking the static-callee closure of `e_po_dead`; an in-tree
-   poe funnel callout is likely cleaner.
-5. **Shops** (`mShopOverrides`): `M_SHOP_DATA` macro, const `daShopItem_c::mData[23]`,
-   funnels `CheckShopItemCreateHeap` / `seq_start` / `seq_decide_yes`; hook/callout
-   territory per the audit.
-6. **Bug rewards** (Agitha, `mBugRewardOverrides` + `daNpcIns_c::mGivenInsectId`) and
-   **sky characters** (`mSkyCharacterOverrides`) and **golden wolves**
-   (`mGoldenWolfOverrides`; `flags.cpp:getCurrentGoldenWolfFlags` is already in the mod):
-   game-side dispatch unported (branch NPC-actor edits).
-7. **Sacred Grove pedestals + Arbiters (Stallord) reward**: by design replace hooks on
-   `daObjMasterSword_c::executeWait/execute` and `daB_DS_c::executeBattle2Dead` plus the
-   mod's give queue (`RandomizerState::addItemToEventQueue` is ported and ready);
+4. **Poes** — **PORTED July 6 2026** (in-tree `poe:<stage>:<bitSw>` funnel; the 60-poe
+   cap already lived at the `addPohNum` writer). `RandomizerState::handlePoeItem` is now
+   unused (the host give queue replaces it).
+5. **Shops** — **PORTED July 6 2026** (give callout + `mOverrideData` display row + Malo
+   Mart sold-out pre-hook; `seq_start`'s Ordon Cat case was already a named check).
+6. **Bug rewards** and **sky characters** — **PORTED July 6 2026** (`bug:<insectItemId>`
+   / `sky:<stage>:<room>` funnels). **Golden wolves** remain: no item funnel by design —
+   needs the StageService gated-additions minor (`should_spawn` predicate) so the mod
+   can place reward `daObjLife` actors (flag triples from `flags.cpp:
+   getCurrentGoldenWolfFlags`), plus a collect-side post-hook on
+   `daObjLife_c::actionGetDemo`.
+7. **Sacred Grove pedestals + Arbiters (Stallord) reward**: Arbiters half **PORTED
+   July 6 2026** (in-tree resolve-and-enqueue callout in `executeBattle2Dead` + 0x9E
+   collect flag in the give observer). Sacred Grove pedestals still need mod replace
+   hooks on `daObjMasterSword_c::executeWait/execute` for the behavior suppression;
    `randomizer_checkTempleOfTimeRequirement` is compiled but its caller isn't hooked yet.
 8. **Cutscene auto-skip** (`dEvt_control_c::skipper`, SKIP_MAJOR_CUTSCENES): mid-function
    condition; replace hook or a small in-tree seam.
@@ -176,7 +184,10 @@ funnels → TextService 1.1 → SaveService → StageService 1.2 → minors as c
   Covers gaps 7 (the Arbiters/Stallord trigger becomes an in-tree resolve-and-enqueue
   callout; Sacred Grove keeps replace hooks only for behavior suppression), 3 (give
   half), 4 (give half), and unlocks 14/AP.
-- **Five new derived-name funnels** (gaps 1, 4, 5, 6) — in-tree callouts on the
+- **Five new derived-name funnels** (gaps 1, 4, 5, 6) — **BUILT July 6 2026** (in-tree
+  callouts + mod resolver/observer/hooks; see the ported table and the per-gap notes
+  above; golden wolves excluded pending StageService gated additions). Original design
+  notes kept below: in-tree callouts on the
   existing check API, keys matching the branch: `freestanding:<stage>:<bitNo>`
   (`daItem_c::_daItem_create` + `daObjLife_c::create` param-init blocks; resolution
   applied by rewriting the low param byte so vanilla model machinery follows; hover/

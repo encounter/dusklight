@@ -75,6 +75,13 @@ public:
     void setAngleY(s16 angle) { mAngleY = angle;}
 
     static ResourceData const mData[23];
+#if TARGET_PC
+    static ResourceData mOverrideData[23];
+    bool mItemOverridden;
+    #define M_SHOP_DATA (mItemOverridden ? daShopItem_c::mOverrideData : daShopItem_c::mData)
+#else
+    #define M_SHOP_DATA mData
+#endif
     static f32 const m_cullfar_max;
 
     enum {

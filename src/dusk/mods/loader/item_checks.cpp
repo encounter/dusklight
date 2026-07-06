@@ -141,6 +141,91 @@ uint8_t item_check_boss(uint8_t itemNo) {
     return item_check(name.c_str(), itemNo, nullptr);
 }
 
+namespace {
+
+// Derived-name builders; formats are the documented contract in item_checks.hpp.
+std::string check_name_freestanding(uint8_t bitNo) {
+    return fmt::format("freestanding:{}:{}", dComIfGp_getStartStageName(), bitNo);
+}
+
+std::string check_name_poe(uint8_t bitSw) {
+    return fmt::format("poe:{}:{}", dComIfGp_getStartStageName(), bitSw);
+}
+
+std::string check_name_shop(uint8_t itemNo) {
+    return fmt::format("shop:{}:{}", dComIfGp_getStartStageName(), itemNo);
+}
+
+std::string check_name_bug(uint8_t insectId) {
+    return fmt::format("bug:{}", insectId);
+}
+
+std::string check_name_sky() {
+    return fmt::format(
+        "sky:{}:{}", dComIfGp_getStartStageName(), dStage_roomControl_c::getStayNo());
+}
+
+}  // namespace
+
+uint8_t item_check_freestanding(uint8_t bitNo, uint8_t itemNo, fopAc_ac_c* item) {
+    if (s_modChecks.empty()) {
+        return itemNo;
+    }
+    return item_check(check_name_freestanding(bitNo).c_str(), itemNo, item);
+}
+
+uint8_t item_check_poe(uint8_t bitSw, uint8_t itemNo, fopAc_ac_c* poe) {
+    if (s_modChecks.empty()) {
+        return itemNo;
+    }
+    return item_check(check_name_poe(bitSw).c_str(), itemNo, poe);
+}
+
+uint8_t item_check_shop(uint8_t itemNo, fopAc_ac_c* giver) {
+    if (s_modChecks.empty()) {
+        return itemNo;
+    }
+    return item_check(check_name_shop(itemNo).c_str(), itemNo, giver);
+}
+
+uint8_t item_check_bug(uint8_t insectId, uint8_t itemNo, fopAc_ac_c* agitha) {
+    if (s_modChecks.empty()) {
+        return itemNo;
+    }
+    return item_check(check_name_bug(insectId).c_str(), itemNo, agitha);
+}
+
+uint8_t item_check_sky(uint8_t itemNo, fopAc_ac_c* statue) {
+    if (s_modChecks.empty()) {
+        return itemNo;
+    }
+    return item_check(check_name_sky().c_str(), itemNo, statue);
+}
+
+uint32_t give_tag_freestanding(uint8_t bitNo) {
+    return give_tag(check_name_freestanding(bitNo).c_str());
+}
+
+uint32_t give_tag_poe(uint8_t bitSw) {
+    return give_tag(check_name_poe(bitSw).c_str());
+}
+
+uint32_t give_tag_shop(uint8_t itemNo) {
+    return give_tag(check_name_shop(itemNo).c_str());
+}
+
+uint32_t give_tag_bug(uint8_t insectId) {
+    return give_tag(check_name_bug(insectId).c_str());
+}
+
+uint32_t give_tag_sky() {
+    return give_tag(check_name_sky().c_str());
+}
+
+void item_check_enqueue_poe(uint8_t bitSw, uint8_t itemNo, fopAc_ac_c* poe) {
+    item_check_enqueue(check_name_poe(bitSw).c_str(), itemNo, poe);
+}
+
 ModResult item_check_set_override(LoadedMod& mod, const char* name, uint8_t itemNo) {
     auto& record = s_modChecks[&mod];
     for (auto& override_ : record.overrides) {

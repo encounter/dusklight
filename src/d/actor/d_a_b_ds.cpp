@@ -4084,6 +4084,12 @@ void daB_DS_c::executeBattle2Dead() {
             camera->mCamera.SetTrimSize(0);
             dComIfGp_event_reset();
             dComIfGs_onStageBossEnemy(0x13);
+#if TARGET_PC
+            // Vanilla grants nothing here (the heart container flows through the boss
+            // funnel); an override is granted through the give queue after the cutscene.
+            dusk::mods::item_check_enqueue(
+                "Arbiters Grounds Dungeon Reward", dItemNo_NONE_e, this);
+#endif
             /* dSv_event_flag_c::F_0265 - Arbiter's Grounds - Arbiter's Grounds clear */
             dComIfGs_onEventBit(0x2010);
             fopAcM_delete(this);
