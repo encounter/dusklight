@@ -1215,6 +1215,13 @@ s32 dSv_memBit_c::isDungeonItem(int i_no) const {
     return mDungeonItem & (u8)(1 << i_no) ? TRUE : FALSE;
 }
 
+#if TARGET_PC
+void dSv_memBit_c::onStageBossEnemy() {
+    onDungeonItem(STAGE_BOSS_ENEMY);
+    onDungeonItem(OOCCOO_NOTE);
+}
+#endif
+
 void dSv_event_c::init() {
     int i;
     for (i = 0; i < MAX_EVENTS; i++) {

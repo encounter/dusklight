@@ -664,10 +664,15 @@ public:
     void onDungeonItemBossKey() { onDungeonItem(BOSS_KEY); }
     void offDungeonItemBossKey() { offDungeonItem(BOSS_KEY); }
     s32 isDungeonItemBossKey() const { return isDungeonItem(BOSS_KEY); }
+#if TARGET_PC
+    // Out of line so mods can hook the boss-defeat flag write (see MODS.md).
+    void onStageBossEnemy();
+#else
         void onStageBossEnemy() {
         onDungeonItem(STAGE_BOSS_ENEMY);
         onDungeonItem(OOCCOO_NOTE);
     }
+#endif
     void offStageBossEnemy() { offDungeonItem(STAGE_BOSS_ENEMY); }
     s32 isStageBossEnemy() const { return isDungeonItem(STAGE_BOSS_ENEMY); }
     void onStageLife() { onDungeonItem(STAGE_LIFE); }

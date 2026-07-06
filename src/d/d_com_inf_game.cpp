@@ -1507,7 +1507,12 @@ static void dummy1() {
 }
 
 BOOL dComIfGs_isStageTbox(int i_stageNo, int i_no) {
+#if TARGET_PC
+    // Avoid dereferencing stag info when it is NULL (e.g. queried from file select)
+    if (dComIfGp_getStageStagInfo() && i_stageNo == dStage_stagInfo_GetSaveTbl(dComIfGp_getStageStagInfo())) {
+#else
     if (i_stageNo == dStage_stagInfo_GetSaveTbl(dComIfGp_getStageStagInfo())) {
+#endif
         return dComIfGs_isTbox(i_no);
     } else {
         return dComIfGs_isSaveTbox(i_stageNo, i_no);
@@ -1515,7 +1520,12 @@ BOOL dComIfGs_isStageTbox(int i_stageNo, int i_no) {
 }
 
 void dComIfGs_onStageSwitch(int i_stageNo, int i_no) {
+#if TARGET_PC
+    // Avoid dereferencing stag info when it is NULL (e.g. queried from file select)
+    if (dComIfGp_getStageStagInfo() && i_stageNo == dStage_stagInfo_GetSaveTbl(dComIfGp_getStageStagInfo())) {
+#else
     if (i_stageNo == dStage_stagInfo_GetSaveTbl(dComIfGp_getStageStagInfo())) {
+#endif
         dComIfGs_onSwitch(i_no, -1);
     }
 
@@ -1531,7 +1541,12 @@ void dComIfGs_offStageSwitch(int i_stageNo, int i_no) {
 }
 
 BOOL dComIfGs_isStageSwitch(int i_stageNo, int i_no) {
+#if TARGET_PC
+    // Avoid dereferencing stag info when it is NULL (e.g. queried from file select)
+    if (dComIfGp_getStageStagInfo() && i_stageNo == dStage_stagInfo_GetSaveTbl(dComIfGp_getStageStagInfo())) {
+#else
     if (i_stageNo == dStage_stagInfo_GetSaveTbl(dComIfGp_getStageStagInfo())) {
+#endif
         return dComIfGs_isSwitch(i_no, -1);
     } else {
         return dComIfGs_isSaveSwitch(i_stageNo, i_no);
@@ -1539,7 +1554,12 @@ BOOL dComIfGs_isStageSwitch(int i_stageNo, int i_no) {
 }
 
 void dComIfGs_onDungeonItemMap(int i_stageNo) {
+#if TARGET_PC
+    // Avoid dereferencing stag info when it is NULL (e.g. queried from file select)
+    if (dComIfGp_getStageStagInfo() && i_stageNo == dStage_stagInfo_GetSaveTbl(dComIfGp_getStageStagInfo())) {
+#else
     if (i_stageNo == dStage_stagInfo_GetSaveTbl(dComIfGp_getStageStagInfo())) {
+#endif
         dComIfGs_onDungeonItemMap();
     }
 
@@ -1555,7 +1575,12 @@ void dComIfGs_offDungeonItemMap(int i_stageNo) {
 }
 
 s32 dComIfGs_isDungeonItemMap(int i_stageNo) {
+#if TARGET_PC
+    // Avoid dereferencing stag info when it is NULL (e.g. queried from file select)
+    if (dComIfGp_getStageStagInfo() && i_stageNo == dStage_stagInfo_GetSaveTbl(dComIfGp_getStageStagInfo())) {
+#else
     if (i_stageNo == dStage_stagInfo_GetSaveTbl(dComIfGp_getStageStagInfo())) {
+#endif
         return dComIfGs_isDungeonItemMap();
     }
 
@@ -1563,7 +1588,12 @@ s32 dComIfGs_isDungeonItemMap(int i_stageNo) {
 }
 
 void dComIfGs_onDungeonItemCompass(int i_stageNo) {
+#if TARGET_PC
+    // Avoid dereferencing stag info when it is NULL (e.g. queried from file select)
+    if (dComIfGp_getStageStagInfo() && i_stageNo == dStage_stagInfo_GetSaveTbl(dComIfGp_getStageStagInfo())) {
+#else
     if (i_stageNo == dStage_stagInfo_GetSaveTbl(dComIfGp_getStageStagInfo())) {
+#endif
         dComIfGs_onDungeonItemCompass();
     }
 
@@ -1579,7 +1609,12 @@ void dComIfGs_offDungeonItemCompass(int i_stageNo) {
 }
 
 s32 dComIfGs_isDungeonItemCompass(int i_stageNo) {
+#if TARGET_PC
+    // Avoid dereferencing stag info when it is NULL (e.g. queried from file select)
+    if (dComIfGp_getStageStagInfo() && i_stageNo == dStage_stagInfo_GetSaveTbl(dComIfGp_getStageStagInfo())) {
+#else
     if (i_stageNo == dStage_stagInfo_GetSaveTbl(dComIfGp_getStageStagInfo())) {
+#endif
         return dComIfGs_isDungeonItemCompass();
     }
 
@@ -1587,7 +1622,12 @@ s32 dComIfGs_isDungeonItemCompass(int i_stageNo) {
 }
 
 void dComIfGs_onDungeonItemBossKey(int i_stageNo) {
+#if TARGET_PC
+    // Avoid dereferencing stag info when it is NULL (e.g. queried from file select)
+    if (dComIfGp_getStageStagInfo() && i_stageNo == dStage_stagInfo_GetSaveTbl(dComIfGp_getStageStagInfo())) {
+#else
     if (i_stageNo == dStage_stagInfo_GetSaveTbl(dComIfGp_getStageStagInfo())) {
+#endif
         dComIfGs_onDungeonItemBossKey();
     }
 
@@ -1603,7 +1643,12 @@ void dComIfGs_offDungeonItemBossKey(int i_stageNo) {
 }
 
 s32 dComIfGs_isDungeonItemBossKey(int i_stageNo) {
+#if TARGET_PC
+    // Avoid dereferencing stag info when it is NULL (e.g. queried from file select)
+    if (dComIfGp_getStageStagInfo() && i_stageNo == dStage_stagInfo_GetSaveTbl(dComIfGp_getStageStagInfo())) {
+#else
     if (i_stageNo == dStage_stagInfo_GetSaveTbl(dComIfGp_getStageStagInfo())) {
+#endif
         return dComIfGs_isDungeonItemBossKey();
     }
 
