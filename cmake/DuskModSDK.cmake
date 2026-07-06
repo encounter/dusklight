@@ -1,7 +1,7 @@
 # add_dusk_mod(<target> SOURCES <file>... MOD_JSON <mod.json> [RES_DIR <res>] [OVERLAY_DIR <overlay>]
 #              [TEXTURES_DIR <textures>] [OUTPUT_DIR <dir>])
 set(DUSK_MODS_OUTPUT_DIR "${CMAKE_SOURCE_DIR}/mods" CACHE PATH "Directory to write .dusk packages into")
-set(_DUSK_MOD_SDK_DIR "${CMAKE_CURRENT_LIST_DIR}")
+set(_DUSK_MOD_SDK_DIR "${CMAKE_CURRENT_SOURCE_DIR}/sdk")
 
 # The loader matches libraries by platform extension + architecture suffix (_arm64/_x64/_x86)
 function(_dusk_mod_arch_suffix out_var)
@@ -113,7 +113,7 @@ function(add_dusk_mod target_name)
         target_compile_definitions(${target_name} PRIVATE _ITERATOR_DEBUG_LEVEL=0)
         if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
             target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:C,CXX>:/clang:-mcmodel=large>")
-            target_sources(${target_name} PRIVATE "${_DUSK_MOD_SDK_DIR}/mod_sdk/pseudo_reloc.cpp")
+            target_sources(${target_name} PRIVATE "${_DUSK_MOD_SDK_DIR}/pseudo_reloc.cpp")
             # lld mingw mode rewrites /DEFAULTLIB directives to -l style and skips %LIB%, so
             # the CRT libraries and search paths are spelled out explicitly.
             target_link_options(${target_name} PRIVATE -lldmingw /nodefaultlib /INCREMENTAL:NO)

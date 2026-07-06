@@ -48,11 +48,6 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/../cmake/DuskGameABI.cmake")
 dusk_add_game_headers_target("${CMAKE_CURRENT_BINARY_DIR}")
 
 if (WIN32)
-    # The import library from the matching game build (regular win32 CI/release
-    # artifact: sdk/dusklight.lib). It binds by symbol name against
-    # dusklight.exe, so any build of the same tag's sources is valid. Left
-    # empty, header-only consumers still configure; add_dusk_mod fails with
-    # remedies when a mod target is actually created.
     set(DUSK_GAME_IMPLIB "" CACHE FILEPATH "Path to the dusklight import library (sdk/dusklight.lib)")
     if (DUSK_GAME_IMPLIB AND NOT EXISTS "${DUSK_GAME_IMPLIB}")
         message(FATAL_ERROR "Mod SDK: DUSK_GAME_IMPLIB does not exist: ${DUSK_GAME_IMPLIB}")
