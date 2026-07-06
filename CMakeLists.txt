@@ -498,18 +498,18 @@ target_precompile_headers(${DUSK_MAIN_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CXX>
 
 # Hook reliability: guaranteed patchable entries on the game ABI surface, and no identical-code folding.
 if (MSVC)
-    if (CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_SYSTEM_PROCESSOR MATCHES "ARM64|arm64")
+    if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
         set(DUSK_PATCHABLE_ENTRY_FLAG $<$<COMPILE_LANGUAGE:C,CXX>:/hotpatch>)
     endif ()
-    target_link_options(${DUSK_MAIN_TARGET} PRIVATE /FUNCTIONPADMIN /OPT:NOICF)
-elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    if (CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64" OR CMAKE_OSX_ARCHITECTURES MATCHES "arm64")
-        # One pre-entry nop (future short-branch pad) + one entry nop: a `b` reaches
-        # +-128 MiB and funchook allocates its trampoline nearby, so relocating the
-        # entry instruction is always a plain nop copy.
+    if (CMAKE_SYSTEM_PROCESSOR STREQUAL "ARM64")
+        target_link_options(${DUSK_MAIN_TARGET} PRIVATE /FUNCTIONPADMIN:16 /OPT:NOICF)
+    else ()
+        target_link_options(${DUSK_MAIN_TARGET} PRIVATE /FUNCTIONPADMIN /OPT:NOICF)
+    endif ()
+elseif (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    if (CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64" OR CMAKE_OSX_ARCHITECTURES MATCHES "arm64")
         set(DUSK_PATCHABLE_ENTRY_FLAG $<$<COMPILE_LANGUAGE:C,CXX>:-fpatchable-function-entry=2,1>)
     else ()
-        # x86-64: 5 entry nop bytes (a full jmp rel32 relocates as pure nops) + 5 before.
         set(DUSK_PATCHABLE_ENTRY_FLAG $<$<COMPILE_LANGUAGE:C,CXX>:-fpatchable-function-entry=10,5>)
     endif ()
 endif ()
