@@ -82,6 +82,8 @@ add_dusk_mod(randomizer
         src/mod.cpp
         src/paths.cpp
         src/seed_session.cpp
+        src/ui/config_store.cpp
+        src/ui/ui.cpp
         ${RANDOMIZER_GENERATOR_SOURCES}
         MOD_JSON mod.json
 )

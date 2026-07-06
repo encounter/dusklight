@@ -8,9 +8,11 @@
 #include "mods/svc/save.h"
 #include "mods/svc/stage.h"
 #include "mods/svc/text.h"
+#include "mods/svc/ui.h"
 
 #include "hooks.hpp"
 #include "seed_session.hpp"
+#include "ui/ui.hpp"
 
 DEFINE_MOD();
 IMPORT_SERVICE(LogService, svc_log);
@@ -23,6 +25,7 @@ IMPORT_SERVICE(TextService, svc_text);
 IMPORT_SERVICE_VERSION(StageService, svc_stage, 1);
 IMPORT_SERVICE(SaveService, svc_save);
 IMPORT_SERVICE(ConfigService, svc_config);
+IMPORT_SERVICE_VERSION(UiService, svc_ui, 3);
 
 extern "C" {
 
@@ -44,12 +47,18 @@ MOD_EXPORT ModResult mod_initialize(ModError* out_error) {
         return dusk::mods::set_error(out_error, res, "failed to initialize seed session");
     }
 
+    res = randomizer::ui::initialize(svc_ui, randomizer::session::pending_seed_var());
+    if (res != MOD_OK) {
+        return dusk::mods::set_error(out_error, res, "failed to register randomizer UI");
+    }
+
     svc_log->info(mod_ctx, "randomizer initialized");
     return MOD_OK;
 }
 
 MOD_EXPORT ModResult mod_update(ModError*) {
     randomizer::session::update();
+    randomizer::ui::update();
     return MOD_OK;
 }
 

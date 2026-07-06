@@ -33,6 +33,9 @@ bool activate_seed(const char* hash);
 // Unregister all seed-derived service state and reset the context.
 void deactivate_seed();
 
+// ConfigService handle of the pending-seed var ("seed"), for UI binding.
+ConfigVarHandle pending_seed_var();
+
 // Sky-character letter counter, persisted as a SaveService blob on the current slot
 // (replaces the branch's save-file padding byte mAncientDocumentNum).
 uint8_t sky_characters();

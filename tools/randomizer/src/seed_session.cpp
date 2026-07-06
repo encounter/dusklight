@@ -397,6 +397,10 @@ ModResult initialize(const Services& services) {
         mod_ctx, on_new_save, on_save_loaded, nullptr, nullptr, &s_save_observer);
 }
 
+ConfigVarHandle pending_seed_var() {
+    return s_pending_seed_var;
+}
+
 uint8_t sky_characters() {
     return s_sky_characters;
 }
