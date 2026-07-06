@@ -90,8 +90,8 @@ option(DUSK_ENABLE_SENTRY_NATIVE "Enable sentry-native crash reporting support" 
 option(DUSK_PACKAGE_INSTALL "Install Dusklight with a Linux-native file structure" OFF)
 option(DUSK_GFX_DEBUG_GROUPS "Report debug groups to the native graphics API" ${DUSK_GFX_DEBUG_GROUPS_DEFAULT})
 
-# Edit & Continue (real MSVC only; clang-cl has no /ZI)
-if (MSVC AND CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+# Edit & Continue
+if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
     if ("${CMAKE_MSVC_DEBUG_INFORMATION_FORMAT}" STREQUAL "" AND CMAKE_BUILD_TYPE STREQUAL "Debug")
         set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "EditAndContinue")
     endif ()
@@ -415,7 +415,6 @@ if (DUSK_GFX_DEBUG_GROUPS)
     target_compile_definitions(aurora_gx PRIVATE AURORA_GFX_DEBUG_GROUPS)
 endif ()
 
-
 # game_debug is for game code files that we know work when compiled with DEBUG=1
 # Of course, if building a release build, this distinction is irrelevant
 set(GAME_DEBUG_FILES
@@ -715,22 +714,7 @@ set(EXTRA_TARGETS "")
 if (TARGET crashpad_handler)
     list(APPEND EXTRA_TARGETS crashpad_handler)
 endif ()
-if (WIN32)
-    # Install the launcher and game DLL, but skip the DLL import library.
-    if (DUSK_PACKAGE_INSTALL)
-        install(TARGETS ${BINARY_TARGETS} ${EXTRA_TARGETS}
-            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-            LIBRARY DESTINATION ${CMAKE_INSTALL_BINDIR}
-            BUNDLE DESTINATION ${CMAKE_INSTALL_BINDIR}
-        )
-    else ()
-        install(TARGETS ${BINARY_TARGETS} ${EXTRA_TARGETS}
-            RUNTIME DESTINATION ${CMAKE_INSTALL_PREFIX}
-            LIBRARY DESTINATION ${CMAKE_INSTALL_PREFIX}
-            BUNDLE DESTINATION ${CMAKE_INSTALL_PREFIX}
-        )
-    endif ()
-elseif (DUSK_PACKAGE_INSTALL)
+if (DUSK_PACKAGE_INSTALL)
     install(TARGETS ${BINARY_TARGETS} ${EXTRA_TARGETS} DESTINATION ${CMAKE_INSTALL_BINDIR})
 else ()
     install(TARGETS ${BINARY_TARGETS} ${EXTRA_TARGETS} DESTINATION ${CMAKE_INSTALL_PREFIX})
@@ -794,10 +778,6 @@ foreach (target IN LISTS BINARY_TARGETS)
 endforeach ()
 
 if (DUSK_ENABLE_CODE_MODS AND CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
-    # In-tree mods build on every toolchain, including plain MSVC: they only touch
-    # DUSK_GAME_DATA-annotated game data (MODS_LINKING.md §4). An unresolved data symbol
-    # (LNK2001) in one of these under a windows-msvc preset means a new game-data reference
-    # needs its declaration annotated.
     add_subdirectory(tools/mod_test)
     add_subdirectory(tools/mod_test_dep)
     add_subdirectory(tools/crt_mod)
