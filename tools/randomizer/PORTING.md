@@ -98,6 +98,44 @@ Ordered roughly by player impact:
     dispatch directly (single-mod safe, branch-equivalent). Migrate to
     `claim_item_slot`/override chains when the ItemService append group lands.
 
+## origin/randomizer catch-up (July 2026)
+
+The port was first cut against the local `randomizer` branch (June 8); the sources were
+then caught up to `origin/randomizer` (June 26, 61 rando commits) with a second
+pure-rename centralize + merge. `d_item.cpp`/`d_item_data.cpp`/`d_save.cpp`/`d_stage.cpp`
+were unchanged upstream, so the extracted item funcs/tables and save hooks stayed
+current. Newly ported from the delta:
+
+- **Entrance randomizer**: `randomizer_checkAndOverrideEntranceData` wired as a pre-hook
+  on the 11-arg `dComIfGp_setNextStage` (rewrites stage/room/point/layer in place).
+- **Mirror Chamber wall** (`daObj_Gb_Create`): raw-install hook via symbol resolve,
+  suppressing the spawn per `randomizer_mirrorChamberWallShouldExist`.
+- **Shadow-crystal item icon**: post-hook on `dMeter2Info_c::readItemTexture` overwrites
+  the texture buffer with the mod-embedded `assets/textures/shadow_crystal.bti`.
+- `setupRandomizerSave` state reset; the d_msg_flow refactor upstream was already
+  covered by the FlowService seam (all three dispatch sites).
+
+Additional gaps from the delta:
+
+18. **File-select "Play Type" flow** (the Vanilla/Randomizer dialog +
+    `FileSelectRandomizerWindow` on new save): origin adds a new file-select proc
+    (`selectDataPlayTypeMove`), a `mDusk` state member on `dFile_select_c`, and
+    menu-pointer integration — a structural game change (member add = ABI break) that
+    can't be hook-ported. Needs an in-tree seam design: either a generic "new-save
+    interstitial" extension point (host runs a mod-supplied UiService dialog/window
+    between file selection and name entry) or landing the origin proc in-tree behind
+    a mod-facing callout. Until then, the pending seed is chosen via the Randomizer
+    menu tab / `mod.dev_twilitrealm_randomizer.seed` config var.
+19. **File-select slot info ("Randomizer" + seed hash per file)**: origin stores per-file
+    seed hashes in host settings; the port keeps them in SaveService blobs, which only
+    expose the *current* slot — displaying other slots' seeds at file select needs a
+    SaveService peek API (or the host reading the sidecar) plus a d_file_sel_info seam.
+20. **Presets / permalink / seed-menu restyle UI**: generator support is ported
+    (`Config::SetPermalink` etc.); the origin `rando_config.cpp` UI for them (+765
+    lines) is not re-expressed in the UiService window yet.
+21. **UiService toast API**: origin toasts "Loaded Randomizer Seed" via the host UI;
+    the mod logs instead. A toast primitive would be a natural UiService minor.
+
 ## Behavioral deviations (deliberate)
 
 - Seed activation is per save slot (blob) instead of a global UI selection; loading a

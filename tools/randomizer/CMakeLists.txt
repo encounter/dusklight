@@ -68,6 +68,7 @@ set(RANDOMIZER_GENERATOR_SOURCES
 
 add_dusk_mod(randomizer
         SOURCES
+        src/game/assets.cpp
         src/game/flags.cpp
         src/game/item_data.cpp
         src/game/item_funcs.cpp
@@ -100,6 +101,7 @@ target_compile_definitions(randomizer PRIVATE
 # directory and must match the RANDO_DATA_PATH-based b::embed<> identifiers in code.
 file(GLOB_RECURSE RANDOMIZER_DATA RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
         "${CMAKE_CURRENT_SOURCE_DIR}/generator/data/*")
+b_embed(randomizer "assets/textures/shadow_crystal.bti")
 foreach (RANDOMIZER_FILE IN LISTS RANDOMIZER_DATA)
     if (RANDOMIZER_FILE MATCHES "^generator/data/tests")
         continue()

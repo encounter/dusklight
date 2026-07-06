@@ -6,9 +6,13 @@
 #include "d/d_com_inf_game.h"
 #include "d/d_event.h"
 #include "d/d_item.h"
+#include "d/d_meter2_info.h"
 #include "d/d_msg_flow.h"
 #include "d/d_save.h"
 
+#include <cstring>
+
+#include "game/assets.hpp"
 #include "game/flags.h"
 #include "game/item_funcs.hpp"
 #include "game/item_ids.hpp"
@@ -470,6 +474,48 @@ HookAction pre_check_item_get(ModContext*, void* args, void* retval, void*) {
     return HOOK_CONTINUE;
 }
 
+// --- origin/randomizer additions --------------------------------------------------------
+
+// dComIfGp_setNextStage (11-arg overload; the 4-arg one forwards to it): entrance
+// randomizer override, rewriting the destination in place.
+HookAction pre_set_next_stage(ModContext*, void* args, void*, void*) {
+    if (randomizer_IsActive()) {
+        randomizer_checkAndOverrideEntranceData(dusk::mods::arg_ref<char const*>(args, 0),
+            dusk::mods::arg_ref<s8>(args, 2), dusk::mods::arg_ref<s16>(args, 1),
+            dusk::mods::arg_ref<s8>(args, 3));
+    }
+    return HOOK_CONTINUE;
+}
+
+// daObj_Gb_Create (file-static; resolved via the symbol manifest): suppress the added
+// Mirror Chamber wall when the seed says it shouldn't exist.
+int (*s_orig_obj_gb_create)(fopAc_ac_c*) = nullptr;
+
+int obj_gb_create_trampoline(fopAc_ac_c* actor) {
+    if (randomizer_IsActive() && getStageID() == StageIDs::Mirror_Chamber &&
+        !randomizer_mirrorChamberWallShouldExist()) {
+        return 3; // cPhs_ERROR_e
+    }
+    return s_orig_obj_gb_create(actor);
+}
+
+// dMeter2Info_c::readItemTexture: swap in the shadow-crystal icon for the rando
+// MAGIC_LV1 item. The original loads the vanilla texture into i_texBuf1 and points the
+// picture at that buffer, so overwriting the buffer contents afterwards is equivalent
+// to the branch's in-body swap.
+void post_read_item_texture(ModContext*, void* args, void*, void*) {
+    if (!randomizer_IsActive()) {
+        return;
+    }
+    const u8 item_no = arg<u8>(args, 1);
+    void* tex_buf1 = arg<void*>(args, 2);
+    if (tex_buf1 == nullptr || item_no != dItemNo_Randomizer_MAGIC_LV1_e) {
+        return;
+    }
+    const auto bti = shadow_crystal_bti();
+    std::memcpy(tex_buf1, bti.data, bti.size < 0xC00 ? bti.size : 0xC00);
+}
+
 // --- d_event.cpp ----------------------------------------------------------------------
 
 void post_talk_end(ModContext*, void*, void*, void*) {
@@ -515,6 +561,20 @@ ModResult install(const HookService* hooks) {
     check(hook_add_pre<static_cast<int (*)(u8, int)>(&checkItemGet)>(hooks, pre_check_item_get));
 
     check(hook_add_post<&dEvt_control_c::talkEnd>(hooks, post_talk_end));
+
+    check(hook_add_pre<static_cast<void (*)(char const*, s16, s8, s8, f32, u32, int, s8, s16, int,
+            int)>(&dComIfGp_setNextStage)>(hooks, pre_set_next_stage));
+    check(hook_add_post<&dMeter2Info_c::readItemTexture>(hooks, post_read_item_texture));
+
+    void* obj_gb_create_addr = nullptr;
+    ModResult resolved = hooks->resolve(::mod_ctx, "daObj_Gb_Create", &obj_gb_create_addr, nullptr);
+    if (resolved == MOD_OK) {
+        check(hooks->install(::mod_ctx, obj_gb_create_addr,
+            reinterpret_cast<void*>(obj_gb_create_trampoline),
+            reinterpret_cast<void**>(&s_orig_obj_gb_create)));
+    } else {
+        check(resolved);
+    }
 
     return res;
 }

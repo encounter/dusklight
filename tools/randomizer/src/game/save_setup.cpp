@@ -80,6 +80,8 @@ void setup_new_save() {
         item_funcs::exec_item_get(itemId);
     }
 
+    g_randomizerState = RandomizerState{};
+
     DuskLog.debug("Created Rando Save");
     randoData.mCreatingSave = false;
 }

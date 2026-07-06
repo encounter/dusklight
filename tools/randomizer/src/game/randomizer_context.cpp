@@ -291,11 +291,9 @@ std::optional<std::string> RandomizerContext::LoadFromHash(const std::string& ha
         this->mEntranceOverrides[key] = override;
     }
 
-    dusk::ui::push_toast(dusk::ui::Toast{
-        .title = "Randomizer",
-        .content =  fmt::format("Loaded Randomizer Seed {}", this->mHash),
-        .duration = std::chrono::seconds(3),
-    });
+    // origin/randomizer showed a host toast here; the mod logs instead until the
+    // UiService grows a toast API (see PORTING.md).
+    DuskLog.info("Loaded Randomizer Seed {}", this->mHash);
     return std::nullopt;
 }
 
