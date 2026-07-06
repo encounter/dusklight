@@ -906,12 +906,16 @@ int dShopSystem_c::seq_start(fopAc_ac_c* actor, dMsgFlow_c* i_flow) {
                 if (mFlow.getEventId(&itemNo) == 1) {
                     if (mItemPartnerId == fpcM_ERROR_PROCESS_ID_e) {
 #if TARGET_PC
+                        const char* itemCheckName = nullptr;
                         if (itemNo == dItemNo_HALF_MILK_BOTTLE_e) {
-                            DUSK_ITEM_CHECK("Ordon Cat Rescue", itemNo, actor);
+                            itemCheckName = "Ordon Cat Rescue";
+                        }
+                        if (itemCheckName != nullptr) {
+                            DUSK_ITEM_CHECK(itemCheckName, itemNo, actor);
                         }
 #endif
-                        mItemPartnerId = fopAcM_createItemForPresentDemo(&current.pos, itemNo, 0, -1,
-                                                                      -1, NULL, NULL);
+                        mItemPartnerId = fopAcM_createItemForPresentDemo(&current.pos, itemNo, 0,
+                            -1, -1, NULL, NULL IF_DUSK_ARG(::dusk::mods::give_tag(itemCheckName)));
                     }
 
                     if (fpcEx_IsExist(mItemPartnerId)) {

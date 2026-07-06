@@ -241,8 +241,8 @@ int daItemShield_c::initActionOrderGetDemo() {
     daItemBase_c::hide();
     fopAcM_orderItemEvent(this, 0, 0);
     eventInfo.onCondition(dEvtCnd_CANGETITEM_e);
-    mItemId =
-        fopAcM_createItemForTrBoxDemo(&current.pos, m_itemNo, -1, fopAcM_GetRoomNo(this), 0, 0);
+    mItemId = fopAcM_createItemForTrBoxDemo(
+        &current.pos, m_itemNo, -1, fopAcM_GetRoomNo(this), 0, 0 DUSK_GIVE_TAG("Ordon Shield"));
     JUT_ASSERT(682, mItemId != fpcM_ERROR_PROCESS_ID_e)
     setStatus(STATUS_ORDERGETDEMO);
     return 1;

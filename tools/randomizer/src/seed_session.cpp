@@ -46,7 +46,7 @@ bool s_seed_active = false;
 
 // Live registration handles, released on deactivate.
 ItemCheckHandle s_check_resolver{};
-ItemCheckHandle s_check_observer{};
+ItemGiveHandle s_check_observer{};
 StageLayerHandle s_layer_resolver{};
 std::vector<FlowNodeHandle> s_flow_nodes{};
 std::vector<StageActorHandle> s_stage_edits{};
@@ -94,15 +94,13 @@ bool resolve_check(ModContext*, const ItemCheckInfo* info, uint8_t* out_item, vo
     return false;
 }
 
-void observe_check(ModContext*, const ItemCheckInfo* info, void*) {
-    if (!s_seed_active) {
+void observe_give(ModContext*, const ItemGiveInfo* info, void*) {
+    if (!s_seed_active || info->check_name == nullptr) {
         return;
     }
-    // Mirror the branch's randomizer_setTempFlagForLocation call at named give sites so
-    // the tracker/Archipelago can see the location was checked.
     auto& ctx = randomizer_GetContext();
-    if (ctx.mItemLocations.contains(info->name)) {
-        randomizer_setTempFlagForLocation(info->name);
+    if (ctx.mItemLocations.contains(info->check_name)) {
+        randomizer_setTempFlagForLocation(info->check_name);
     }
 }
 
@@ -294,7 +292,7 @@ bool activate_seed(const char* hash) {
     item_data::apply_tables();
 
     s_svc.item->set_check_resolver(mod_ctx, nullptr, resolve_check, nullptr, &s_check_resolver);
-    s_svc.item->observe_checks(mod_ctx, observe_check, nullptr, &s_check_observer);
+    s_svc.item->observe_gives(mod_ctx, observe_give, nullptr, &s_check_observer);
 
     // Flow: session-allocated extension ids, then the seed's node overrides (remapped).
     s_svc.flow->register_query(
@@ -343,7 +341,7 @@ void deactivate_seed() {
         s_check_resolver = 0;
     }
     if (s_check_observer != 0) {
-        s_svc.item->unobserve_checks(mod_ctx, s_check_observer);
+        s_svc.item->unobserve_gives(mod_ctx, s_check_observer);
         s_check_observer = 0;
     }
     for (auto handle : s_flow_nodes) {

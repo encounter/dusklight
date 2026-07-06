@@ -1682,7 +1682,8 @@ int daNpc_grO_c::talk(void* param_1) {
                 if (mType == TYPE_MINES) {
                     if (mFlow.getEventId(&itemId) == 1) {
                         DUSK_ITEM_CHECK("Goron Mines Gor Ebizo Key Shard", itemId, this);
-                        mItemID = fopAcM_createItemForPresentDemo(&current.pos, itemId, 0, -1, -1, NULL, NULL);
+                        mItemID = fopAcM_createItemForPresentDemo(&current.pos, itemId, 0, -1, -1,
+                            NULL, NULL DUSK_GIVE_TAG("Goron Mines Gor Ebizo Key Shard"));
                         if (mItemID != fpcM_ERROR_PROCESS_ID_e) {
                             s16 eventIdx = dComIfGp_getEventManager().getEventIdx(this, "DEFAULT_GETITEM", 0xFF);
                             dComIfGp_getEvent()->reset(this);

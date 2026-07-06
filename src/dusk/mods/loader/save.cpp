@@ -145,9 +145,8 @@ void load_sidecar() {
                 store.snapshotValid = true;
                 store.snapshotCrc = slotJson["snapshot_crc32"].get<uint32_t>();
             }
-            for (const auto& [modId, blobs] : slotJson.value("mods", nlohmann::json::object())
-                                                  .items())
-            {
+            const auto modsJson = slotJson.value("mods", nlohmann::json::object());
+            for (const auto& [modId, blobs] : modsJson.items()) {
                 for (const auto& [name, encoded] : blobs.items()) {
                     std::vector<uint8_t> bytes;
                     if (!base64_decode(encoded.get<std::string>(), bytes)) {
@@ -239,6 +238,7 @@ void save_slot_new(uint32_t slot) {
     store.mods.clear();
     store.snapshotValid = false;
     s_currentSlot = static_cast<int32_t>(slot);
+    item_gives_clear();
     Log.info("new save in slot {}; mod blob store cleared", slot);
     notify(slot, &SaveObserverRecord::onNewSave, "new-save");
 }
@@ -258,6 +258,7 @@ void save_slot_loaded(uint32_t slot, const void* slotData) {
         }
     }
     s_currentSlot = static_cast<int32_t>(slot);
+    item_gives_clear();
     notify(slot, &SaveObserverRecord::onLoaded, "save-loaded");
 }
 
@@ -297,6 +298,7 @@ void save_slot_erased(uint32_t slot) {
 
 void save_no_slot() {
     s_currentSlot = -1;
+    item_gives_clear();
 }
 
 // --- loader plumbing (service surface) ---

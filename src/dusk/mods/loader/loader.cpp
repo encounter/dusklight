@@ -603,6 +603,7 @@ void ModLoader::deactivate_mod(LoadedMod& mod) {
     textures_remove_mod(mod);
     config_remove_mod(mod);
     item_checks_remove_mod(mod);
+    item_gives_remove_mod(mod);
     flow_remove_mod(mod);
     text_remove_mod(mod);
     save_remove_mod(mod);
@@ -1015,6 +1016,7 @@ void ModLoader::tick() {
         }
     }
 
+    item_gives_tick();
     config_flush_if_dirty(false);
     ui_sync_menu_tabs();
 }

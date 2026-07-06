@@ -1805,14 +1805,18 @@ int daNpcChin_c::_Evt_GameSucceed_CutMain(const int& param_0) {
             }
 
 #if TARGET_PC
+            const char* itemCheckName = nullptr;
             if (itemId1 == dItemNo_ARROW_LV2_e) {
-                DUSK_ITEM_CHECK("STAR Prize 1", itemId1, this);
+                itemCheckName = "STAR Prize 1";
             } else if (itemId1 == dItemNo_ARROW_LV3_e) {
-                DUSK_ITEM_CHECK("STAR Prize 2", itemId1, this);
+                itemCheckName = "STAR Prize 2";
+            }
+            if (itemCheckName != nullptr) {
+                DUSK_ITEM_CHECK(itemCheckName, itemId1, this);
             }
 #endif
             fpc_ProcID itemId2 = fopAcM_createItemForPresentDemo(&current.pos, itemId1, 0, -1, -1,
-                                                                 0, 0);
+                0, 0 IF_DUSK_ARG(::dusk::mods::give_tag(itemCheckName)));
             if (itemId2 != -1) {
                 dComIfGp_event_setItemPartnerId(itemId2);
             }

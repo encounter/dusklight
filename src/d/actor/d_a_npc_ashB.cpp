@@ -1002,8 +1002,8 @@ BOOL daNpcAshB_c::EvCut_Appear(int i_staffID) {
             local_30[0] = 0;
             if (mFlow.getEventId(local_30) == 1) {
                 DUSK_ITEM_CHECK("Ashei Sketch", local_30[0], this);
-                mItemPartnerId =
-                    fopAcM_createItemForPresentDemo(&current.pos, local_30[0], 0, -1, -1, 0, 0);
+                mItemPartnerId = fopAcM_createItemForPresentDemo(
+                    &current.pos, local_30[0], 0, -1, -1, 0, 0 DUSK_GIVE_TAG("Ashei Sketch"));
                 dComIfGp_event_setItemPartnerId(mItemPartnerId);
                 mItemPartnerId = -1;
             }

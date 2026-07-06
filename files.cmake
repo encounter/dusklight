@@ -1557,6 +1557,7 @@ set(DUSK_FILES
         src/dusk/mods/loader/flow.cpp
         src/dusk/mods/loader/gfx.cpp
         src/dusk/mods/loader/item_checks.cpp
+        src/dusk/mods/loader/item_gives.cpp
         src/dusk/mods/loader/loader.cpp
         src/dusk/mods/loader/loader.hpp
         src/dusk/mods/loader/native_module.cpp

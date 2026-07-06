@@ -256,8 +256,8 @@ int daObjWStatue_c::initActionOrderGetDemo() {
     dComIfGp_getEvent()->reset(this);
     fopAcM_orderChangeEventId(this, eventIdx, 1, 0xffff);
     mItemId = fopAcM_createItemForTrBoxDemo(&current.pos,
-                                            DUSK_ITEM_CHECK_EXPR("Wooden Statue", m_itemNo, this),
-                                            0xffffffff, fopAcM_GetRoomNo(this), 0, 0);
+        DUSK_ITEM_CHECK_EXPR("Wooden Statue", m_itemNo, this), 0xffffffff, fopAcM_GetRoomNo(this),
+        0, 0 DUSK_GIVE_TAG("Wooden Statue"));
     JUT_ASSERT(544, mItemId != fpcM_ERROR_PROCESS_ID_e);
     setStatus(STATUS_ORDER_GET_DEMO);
     return 1;

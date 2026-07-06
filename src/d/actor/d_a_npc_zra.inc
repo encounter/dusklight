@@ -2610,14 +2610,18 @@ BOOL daNpc_zrA_c::ECut_thanksBlast(int i_staffID) {
             int item_id = 0;
             if (mFlow.getEventId(&item_id) == 1) {
 #if TARGET_PC
+                const char* itemCheckName = nullptr;
                 if (item_id == dItemNo_BOMB_IN_BAG_e) {
-                    DUSK_ITEM_CHECK("Iza Helping Hand", item_id, this);
+                    itemCheckName = "Iza Helping Hand";
                 } else if (item_id == dItemNo_BOMB_BAG_LV2_e) {
-                    DUSK_ITEM_CHECK("Iza Raging Rapids Minigame", item_id, this);
+                    itemCheckName = "Iza Raging Rapids Minigame";
+                }
+                if (itemCheckName != nullptr) {
+                    DUSK_ITEM_CHECK(itemCheckName, item_id, this);
                 }
 #endif
-                mItemID = fopAcM_createItemForPresentDemo(&current.pos, item_id,
-                                                          0, -1, -1, NULL, NULL);
+                mItemID = fopAcM_createItemForPresentDemo(&current.pos, item_id, 0, -1, -1, NULL,
+                    NULL IF_DUSK_ARG(::dusk::mods::give_tag(itemCheckName)));
             }
             field_0x9eb = true;
             break;

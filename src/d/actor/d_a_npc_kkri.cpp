@@ -1182,11 +1182,16 @@ int daNpc_Kkri_c::talk(void*) {
                     case 1:
                         if (mItemPartnerId == fpcM_ERROR_PROCESS_ID_e) {
 #if TARGET_PC
+                            const char* itemCheckName = nullptr;
                             if (item_no == dItemNo_OIL_BOTTLE3_e) {
-                                DUSK_ITEM_CHECK("Coro Bottle", item_no, this);
+                                itemCheckName = "Coro Bottle";
+                            }
+                            if (itemCheckName != nullptr) {
+                                DUSK_ITEM_CHECK(itemCheckName, item_no, this);
                             }
 #endif
-                            mItemPartnerId = fopAcM_createItemForPresentDemo(&current.pos, item_no, 0, -1, -1, NULL, NULL);
+                            mItemPartnerId = fopAcM_createItemForPresentDemo(&current.pos, item_no, 0, -1, -1, NULL, NULL
+                                                                             IF_DUSK_ARG(::dusk::mods::give_tag(itemCheckName)));
                         }
 
                         if (fopAcM_IsExecuting(mItemPartnerId)) {

@@ -120,10 +120,20 @@ ModResult item_check_clear_override(LoadedMod& mod, const char* name);
 ModResult item_check_add_resolver(
     LoadedMod& mod, const char* name, ItemCheckResolveFn fn, void* userData, uint64_t& outHandle);
 ModResult item_check_remove_resolver(LoadedMod& mod, uint64_t handle);
-ModResult item_check_add_observer(
-    LoadedMod& mod, ItemCheckObserveFn fn, void* userData, uint64_t& outHandle);
-ModResult item_check_remove_observer(LoadedMod& mod, uint64_t handle);
 void item_checks_remove_mod(LoadedMod& mod);
+
+// Item-give plumbing (loader/item_gives.cpp): the give queue and grant observers. Game thread
+// only; the game-code entry points (item_granted seam, give_tag* interning, item_check_enqueue)
+// are declared in dusk/mods/item_checks.hpp. Queue mechanics documented in mods/svc/item.h.
+ModResult item_give_enqueue(LoadedMod* mod, const char* checkName, uint8_t itemNo, uint32_t flags);
+ModResult item_give_add_observer(
+    LoadedMod& mod, ItemGiveObserveFn fn, void* userData, uint64_t& outHandle);
+ModResult item_give_remove_observer(LoadedMod& mod, uint64_t handle);
+// Dispatches queued gives at safe moments; called once per frame from ModLoader::tick.
+void item_gives_tick();
+// Drops all queued/in-flight gives (slot change, return to title).
+void item_gives_clear();
+void item_gives_remove_mod(LoadedMod& mod);
 
 // Flow-service plumbing (loader/flow.cpp). Game thread only, like config; the game-code entry
 // points (extension dispatch + node-override lookup) are declared in dusk/mods/flow.hpp.

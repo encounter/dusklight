@@ -1334,7 +1334,8 @@ void daNpc_Fairy_c::PresentDemoCall() {
     }
 
     DUSK_ITEM_CHECK("Cave of Ordeals Great Fairy Reward", item_no, this);
-    fpc_ProcID id = fopAcM_createItemForPresentDemo(&current.pos, item_no, 0, -1, -1, NULL, NULL);
+    fpc_ProcID id = fopAcM_createItemForPresentDemo(&current.pos, item_no, 0, -1, -1, NULL,
+        NULL DUSK_GIVE_TAG("Cave of Ordeals Great Fairy Reward"));
     if (id != fpcM_ERROR_PROCESS_ID_e) {
         dComIfGp_event_setItemPartnerId(id);
     }

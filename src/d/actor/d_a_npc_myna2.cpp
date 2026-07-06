@@ -1192,11 +1192,16 @@ int daNpc_myna2_c::ECut_gameGoalSuccess(int i_staffId) {
             int itemNo = 0;
             if (mFlow.getEventId(&itemNo) == 1) {
 #if TARGET_PC
+                const char* itemCheckName = nullptr;
                 if (itemNo == dItemNo_KAKERA_HEART_e) {
-                    DUSK_ITEM_CHECK("Plumm Fruit Balloon Minigame", itemNo, this);
+                    itemCheckName = "Plumm Fruit Balloon Minigame";
+                }
+                if (itemCheckName != nullptr) {
+                    DUSK_ITEM_CHECK(itemCheckName, itemNo, this);
                 }
 #endif
-                mItemPid = fopAcM_createItemForPresentDemo(&current.pos, itemNo, 0, -1, -1, NULL, NULL);
+                mItemPid = fopAcM_createItemForPresentDemo(&current.pos, itemNo, 0, -1, -1, NULL,
+                    NULL IF_DUSK_ARG(::dusk::mods::give_tag(itemCheckName)));
             }
             break;
         }

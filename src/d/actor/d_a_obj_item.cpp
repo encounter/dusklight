@@ -508,7 +508,7 @@ void daItem_c::procInitGetDemoEvent() {
     eventInfo.onCondition(dEvtCnd_CANGETITEM_e);
 
     m_item_id = fopAcM_createItemForTrBoxDemo(&current.pos, m_itemNo, -1, fopAcM_GetRoomNo(this),
-                                              NULL, NULL);
+                                              NULL, NULL IF_DUSK_ARG(mItemGiveTag));
     JUT_ASSERT(0, m_item_id != fpcM_ERROR_PROCESS_ID_e);
 
     setStatus(STATUS_WAIT_GET_DEMO_EVENT_e);
@@ -880,35 +880,35 @@ void daItem_c::itemGet() {
     switch (m_itemNo) {
     case dItemNo_HEART_e:
         mDoAud_seStart(Z2SE_HEART_PIECE_GET, NULL, 0, 0);
-        execItemGet(m_itemNo);
+        execItemGet(m_itemNo IF_DUSK_ARG(mItemGiveTag) IF_DUSK_ARG(this));
         break;
     case dItemNo_GREEN_RUPEE_e:
         mDoAud_seStart(Z2SE_GREEN_LUPY_GET, NULL, 0, 0);
-        execItemGet(m_itemNo);
+        execItemGet(m_itemNo IF_DUSK_ARG(mItemGiveTag) IF_DUSK_ARG(this));
         break;
     case dItemNo_BLUE_RUPEE_e:
         mDoAud_seStart(Z2SE_BLUE_LUPY_GET, NULL, 0, 0);
-        execItemGet(m_itemNo);
+        execItemGet(m_itemNo IF_DUSK_ARG(mItemGiveTag) IF_DUSK_ARG(this));
         break;
     case dItemNo_YELLOW_RUPEE_e:
         mDoAud_seStart(Z2SE_BLUE_LUPY_GET, NULL, 0, 0);
-        execItemGet(m_itemNo);
+        execItemGet(m_itemNo IF_DUSK_ARG(mItemGiveTag) IF_DUSK_ARG(this));
         break;
     case dItemNo_RED_RUPEE_e:
         mDoAud_seStart(Z2SE_RED_LUPY_GET, NULL, 0, 0);
-        execItemGet(m_itemNo);
+        execItemGet(m_itemNo IF_DUSK_ARG(mItemGiveTag) IF_DUSK_ARG(this));
         break;
     case dItemNo_PURPLE_RUPEE_e:
         mDoAud_seStart(Z2SE_RED_LUPY_GET, NULL, 0, 0);
-        execItemGet(m_itemNo);
+        execItemGet(m_itemNo IF_DUSK_ARG(mItemGiveTag) IF_DUSK_ARG(this));
         break;
     case dItemNo_ORANGE_RUPEE_e:
         mDoAud_seStart(Z2SE_RED_LUPY_GET, NULL, 0, 0);
-        execItemGet(m_itemNo);
+        execItemGet(m_itemNo IF_DUSK_ARG(mItemGiveTag) IF_DUSK_ARG(this));
         break;
     case dItemNo_SILVER_RUPEE_e:
         mDoAud_seStart(Z2SE_RED_LUPY_GET, NULL, 0, 0);
-        execItemGet(m_itemNo);
+        execItemGet(m_itemNo IF_DUSK_ARG(mItemGiveTag) IF_DUSK_ARG(this));
         break;
     case dItemNo_BOOMERANG_e:
         break;
@@ -918,7 +918,7 @@ void daItem_c::itemGet() {
     case dItemNo_ARROW_1_e:
     case dItemNo_PACHINKO_SHOT_e:
         mDoAud_seStart(Z2SE_CONSUMP_ITEM_GET, NULL, 0, 0);
-        execItemGet(m_itemNo);
+        execItemGet(m_itemNo IF_DUSK_ARG(mItemGiveTag) IF_DUSK_ARG(this));
     default:
         // "[daItem_c] Get process not defined[%d]\n"
         OS_REPORT_ERROR("[daItem_c]ゲット処理が定義されていません[%d]\n", m_itemNo);

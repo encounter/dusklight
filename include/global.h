@@ -266,9 +266,11 @@ using std::isnan;
 #define DUSK_ITEM_CHECK(name, item_no, giver) \
     (item_no) = ::dusk::mods::item_check(name, (item_no), giver)
 #define DUSK_ITEM_CHECK_EXPR(name, item_no, giver) (::dusk::mods::item_check(name, (item_no), giver))
+#define DUSK_GIVE_TAG(name) IF_DUSK_ARG(::dusk::mods::give_tag(name))
 #else
 #define DUSK_ITEM_CHECK(name, item_no, giver)
 #define DUSK_ITEM_CHECK_EXPR(name, item_no, giver) (item_no)
+#define DUSK_GIVE_TAG(name)
 #endif
 
 #endif

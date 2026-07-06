@@ -1339,7 +1339,8 @@ int daNpc_grR_c::talk(void* param_1) {
                 if (mType == TYPE_0) {
                     if (mFlow.getEventId(&i_itemNo) == 1) {
                         DUSK_ITEM_CHECK("Goron Mines Gor Liggs Key Shard", i_itemNo, this);
-                        mItemID = fopAcM_createItemForPresentDemo(&current.pos, i_itemNo, 0, -1, -1, NULL, NULL);
+                        mItemID = fopAcM_createItemForPresentDemo(&current.pos, i_itemNo, 0, -1, -1,
+                            NULL, NULL DUSK_GIVE_TAG("Goron Mines Gor Liggs Key Shard"));
 
                         if (mItemID != fpcM_ERROR_PROCESS_ID_e) {
                             s16 i_eventID = dComIfGp_getEventManager().getEventIdx(this, "DEFAULT_GETITEM", 0xFF);

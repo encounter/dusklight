@@ -81,8 +81,13 @@ Ordered roughly by player impact:
     undecided (replace hooks vs tiny seams).
 12. **BGM/scene tweaks** (`Z2SceneMgr::setSceneName`, 5 sites): deferred by design —
     vanilla BGM quirks accepted until a scene/BGM resolver seam exists.
-13. **`dStage_changeScene4Event` / `dStage_playerInit` branch hunks**: not yet reviewed
-    in detail (the actor patch/reload hunks are covered by StageService).
+13. **`dStage_changeScene4Event` / `dStage_playerInit` branch hunks**: reviewed July 6.
+    The actor patch/reload hunks are covered by StageService. Two real remainders:
+    (a) `dStage_playerInit` rewrites player-spawn entrance-type bytes (wolf form can't
+    use door entrances 0x80/0xA0/0xB0; Lake Hylia 0xD0 pre-meteor has no water) →
+    StageService spawn-record rewriter, see plan below; (b) `dStage_changeScene4Event`
+    overrides `timeH` with `mStartHour` on the first spawn (F_SP103 room 1 start 1) —
+    needs no seam: mod post-hook re-calling `dKy_set_nexttime`.
 14. **ImGui debug menu + tracker** (`src/imgui/ImGuiMenuRandomizer.*`, archived,
     not built): no ImGui service by design; tracker state (`mShowTracker`,
     `mUpdateTracker`, tools.cpp tracker helpers) compiles but has no surface.
@@ -135,6 +140,165 @@ Additional gaps from the delta:
     lines) is not re-expressed in the UiService window yet.
 21. **UiService toast API**: origin toasts "Loaded Randomizer Seed" via the host UI;
     the mod logs instead. A toast primitive would be a natural UiService minor.
+
+## Extension-point plan (decided July 6 2026)
+
+Gap-fill design, decided with Luke. The mod API is unshipped, so breaking changes to
+existing services and game ABI are in scope. Landing order: ItemService 2.0 → derived
+funnels → TextService 1.1 → SaveService → StageService 1.2 → minors as convenient.
+
+- **ItemService 2.0** (BUILT July 6, gameplay-verified: headless resolve/negative tests,
+  silent + demo queue dispatch, and chest tag attribution end-to-end — `give observed: item 3
+  origin 0 ('chest:D_MN05:7')`; boss-funnel tag still awaits a boss kill, expected identical
+  since it shares the life-container→TrBoxDemo path). Demo-path gotcha found live: a queued give has no item event partner, so
+  `daAlink_c::procCoGetItemInit` must force `mDemo.setParam0(0x100)` and spawn the item from
+  the event's GtItm — a branch alink edit that was really queue machinery, now an in-tree
+  seam (`give_queue_dispatching`/`give_queue_take_tag`; the spawned demo item carries the
+  give's tag, and re-dispatch is bounded at 5 before dropping loudly). **Named-site give
+  tags DONE (July 6)**: 32/35 sites tagged via `DUSK_GIVE_TAG` on their give funnels (shared
+  gives use a PC-gated `duskCheckName` local); skipped: obj_zcloth (display-only twin of the
+  tagged npc_zrz give), King Bulblin Key (gives via `changeDemoMode`, reports NULL name until
+  that path is threaded), Charlo (flows through the tagged `boss:<stage>` funnel by design).
+  The service: checks split into a pure/idempotent `resolve`
+  (no observers — fixes chest observers firing at room load, allows display peeks and
+  progressive re-resolution at pickup) and a give pipeline: `give_item(name|NULL,
+  itemNo, mode)` host queue (FIFO, one demo-give in flight; `GIVE_DEMO` vs
+  `GIVE_SILENT` modes — silent drains multiple per frame for Archipelago bulk
+  receives; safe-moment gating lifted from the branch's proven
+  `RandomizerState::addItemToEventQueue`/`execute`; volatile, cleared on slot change —
+  AP resyncs from its server), `observe_gives` firing at the actual grant and seeing
+  **all** gives (name=NULL for untagged), provenance carried on the item actor
+  (`daItemBase_c` PC-only interned-name id threaded through the `createItemFor*`
+  funnels), and `dItemNo_NONE_e` = "don't give" in both directions (vanilla-nothing
+  sites resolve-and-enqueue in-tree; a real item resolving to NONE suppresses its
+  give — the AP "item belongs to another world" case). This retires the
+  notification-sentinel rejection honestly: sites can now always honor the resolution.
+  Covers gaps 7 (the Arbiters/Stallord trigger becomes an in-tree resolve-and-enqueue
+  callout; Sacred Grove keeps replace hooks only for behavior suppression), 3 (give
+  half), 4 (give half), and unlocks 14/AP.
+- **Five new derived-name funnels** (gaps 1, 4, 5, 6) — in-tree callouts on the
+  existing check API, keys matching the branch: `freestanding:<stage>:<bitNo>`
+  (`daItem_c::_daItem_create` + `daObjLife_c::create` param-init blocks; resolution
+  applied by rewriting the low param byte so vanilla model machinery follows; hover/
+  zero-G derived from the vanilla item type instead of a key list),
+  `poe:<stage>:<bitSw>` (`e_po_dead` + `daE_HP_c::executeDead`; `addPohSpiritNum` +
+  the 20-poe bit gated on resolved==vanilla; wolf-form give via the queue),
+  `shop:<stage>:<itemNo>` (`dShopSystem_c::seq_decide_yes`; display side peeks the
+  same name via `resolve` and builds a writable row from `dItem_data` getters —
+  composes with future slot claims), `bug:<insectId>` (`daNpcIns_c::talk` + a
+  PC-gated file-static insect capture in `waitPresent` — no header change),
+  `sky:<stage>:<room>` (`daTagStatue_c::demoProc`; the vanilla letter-count ladder
+  stays dormant under rando so its F_0796 side effect is harmless).
+- **TextService 1.1** (gap 3): message-id resolver chain (key `(group<<16)|msg_no`,
+  <5000 group-0 collapse) with callouts at `dMsgFlow_c::setNormalMsg` and the
+  `dMsgObject_c::getRevoMessageIndex` path (Ilia); the give half enqueues via
+  `give_item` at textbox close (`dMsgObject_c::waitProc` seam, `mpScrnDraw == NULL`).
+- **SaveService** (gaps 18, 19): the save-creation lifecycle is redesigned as one
+  flow: interactive **new-save gate chain** (host generalization of origin's
+  `SELECT_DATA_PLAY_MOVE` proc — gates push UiService documents, complete
+  proceed/cancel, host polls `is_any_document_visible`, any cancel backs out to file
+  select) → name entry → `on_new_save`. Plus `peek_blob(slot, name, ...)` (the
+  sidecar already keeps all three slots resident; warn-only staleness) and a
+  **slot-info provider** (first non-pass wins) writing the `f_s_t_02`/`f_p_t_02`
+  textboxes via a callout in `dFile_info_c::setSaveData` — replaces origin's
+  host-settings `seedHashes` coupling.
+- **StageService 1.2** (gaps 13a, 6-wolves): player-spawn record rewriter (visit
+  callback over the raw spawn records in `dStage_playerInit`, mod mutates
+  entrance-type bytes); **gated additions** (`should_spawn(stage, room, layer)`
+  predicate evaluated at visit time) so golden-wolf rewards spawn post-howl/
+  pre-obtained — the mod bakes final item ids into its ACTR records at seed load;
+  collect-side flag bookkeeping is a mod post-hook on `daObjLife_c::actionGetDemo`.
+- **Minors**: UiService toast wrapping `dusk::ui::push_toast` (gap 21); auto-skip
+  resolver callout OR-ed onto the Start trigger in `dEvt_control_c::skipper`, passing
+  `canSkip` (`mSkipFunc != NULL`) + `mSkipEventName` (gap 8); land
+  `dMenu_Ring_c::updateSlotImage(u8)` in-tree as an additive member — the mod owns
+  the D-pad `J2DPicture` and drives cycling via hooks (gap 9); out-of-line
+  `dComIfGs_getCollectSmell` like `onStageBossEnemy` (gap 10); per-item get-demo
+  params (face/SE type/doStatus) as ItemService data + three `alink_demo.inc`
+  callouts (gap 11).
+- **No service needed**: gap 2 (mod-side item-func diff pass), gap 12 (deferred until
+  an AudioService exists), gaps 15/16/20 (mod-side UI/build work), gap 17 (slot
+  claims — next ItemService unit after 2.0).
+
+### Funnel implementation notes (July 6 branch exploration)
+
+Branch = `origin/randomizer`, merge-base `34e1e740ab`. All override maps live in the mod
+(`src/game/randomizer_context.hpp`): `mFreestandingItemOverrides`/`mPoeOverrides`
+(`u16 (stageID<<8)|bitNo → u8 item`), `mShopOverrides` (`(stageID<<8)|originalItemNo`),
+`mBugRewardOverrides` (`u8 bugItemId`), `mSkyCharacterOverrides` (`(stageID<<8)|roomNo`),
+`mGoldenWolfOverrides` (`u16 obtainedItemFlag`). `getStageID()` is the mod's stage index
+(`src/game/tools.cpp`), so in-tree callouts pass *derived names* and the mod's resolver
+parses them (see the existing `chest:` parsing in `seed_session.cpp:resolve_check`).
+
+- **Freestanding (`freestanding:<stage>:<bitNo>`)**: two callout sites, both in the one-time
+  param-init blocks — `daItem_c::_daItem_create` (after `field_0x95d = true`, before
+  `m_itemNo = daItem_prm::getItemNo(this)`; bitNo = `(fopAcM_GetParam(this)>>8)&0xFF`) and
+  `daObjLife_c::create` (after `mIsPrmsInit = true`; bitNo = `getSaveBitNo()` =
+  `fopAcM_GetParamBit(this,8,8)`). Apply resolution the branch's way: `params =
+  (params & 0xFFFFFF00) | resolved; fopAcM_SetParam(...)` then re-read `m_itemNo` — all
+  vanilla model/collision/arc machinery follows the param. Branch re-resolved at pickup
+  (`procInitGetDemoEvent` + `itemGet`, saving/restoring the old `m_itemNo` around the
+  TrBoxDemo create because the game deletes the loaded arc by old itemNo) — resolution is
+  pure now, so re-resolve is legal and gives progressive correctness; tag gives with
+  `give_tag("freestanding:...")`. Boss HCs (Zant/Stallord) and wall-mounted bug rewards
+  need zero gravity + `mRotateSpeed = 550` when overridden — derive from the *vanilla* item
+  being a heart container/insect instead of the branch's hardcoded key list. The branch's
+  per-item `current.pos.y` nudges and `calcScale` targets are display polish, port last.
+  The `M_ITEMNO_MODEL_ITEM_ID`/foolish-item `home.angle.z` model hack should NOT be ported —
+  claimed trap-item slots with fixed `dItem_data` rows replace it. The golden-wolf sentinel
+  and Ook/Gale-Boomerang blocks inside the branch's `daObjLife_c::create` belong to their
+  own mechanisms (below), not this funnel.
+- **Poes (`poe:<stage>:<bitSw>`)**: two sites. `e_po_dead` (file-static,
+  `d_a_e_po.cpp`) — vanilla spawns `0xE0` via `createItemForPresentDemo` into
+  `i_this->field_0x75C` at `a_this->current.pos`; bit = `i_this->BitSW`. `daE_HP_c::
+  executeDead` (`d_a_e_hp.cpp`) — bit = local `bitSw`. At both: resolve over `0xE0`
+  (POU_SPIRIT); gate `dComIfGs_addPohSpiritNum()` AND the 20-poe event bits
+  (`saveBitLabels[457]` in e_po, `[0x1c9]` in e_hp) on `resolved == vanilla`. e_hp is
+  collected in wolf form — the branch bypassed the present demo and queued
+  (`handlePoeItem` → event queue + `procWolfAtnActorMoveInit`); prefer in-tree
+  resolve-and-enqueue (`item_check_enqueue`) there if the present demo misbehaves in wolf
+  form. The 60-poe cap already lives at the `addPohNum` writer.
+- **Shops (`shop:<stage>:<itemNo>`)**: give side is one callout on `itemNo` in
+  `dShopSystem_c::seq_decide_yes` before its `createItemForPresentDemo` (branch key uses
+  the *original* event item id, not the 0-22 slot; `seq_start`'s Ordon Cat case is already
+  a named check). Malo Mart sold-out (`setSoldOutFlag` when `playerIsInRoomStage(3,
+  "R_SP109")`) is mod observer policy. Display side: `daShopItem_c` needs a writable row —
+  the branch's `mRandoData[23]` twin of const `mData[23]` selected by an `isRandomized()`
+  predicate via the `M_SHOP_DATA` macro; port that generically: peek `resolve()` at
+  `getShopArcname()` time and populate the row from `dItem_data::getArcName/getBmdName/
+  getBtkName/getBckName/getBrkName/getBtpName/getTevFrm(resolved)` (+ branch fixups:
+  armor-slot offsetY/scale, master/light sword scale 0.35f). `CheckShopItemCreateHeap`
+  (exported free fn, `d_a_shop_item_static.cpp`) must build the heap from the same row.
+- **Bugs (`bug:<insectItemId>`)**: capture the handed-in insect in `daNpcIns_c::
+  waitPresent` case 2 (`u8 type = dMeter2Info_getInsectSelectType()`) into a PC-gated
+  file-static in `d_a_npc_ins.cpp` (do NOT port the branch's `static u8 mGivenInsectId`
+  class member), then one callout on `itemNo` in `talk()` at `eventID == 1` before
+  `createItemForPresentDemo`, name keyed by the captured insect id; reset the static after.
+- **Sky (`sky:<stage>:<room>`)**: one callout in `daTagStatue_c::demoProc`
+  `DEMO_ACTION_AWARD_ITEM` on `item` before `createItemForTrBoxDemo`; room =
+  `dStage_roomControl_c::mStayNo`. Resolve over the vanilla ladder's output — under rando
+  the vanilla letter count never advances (the mod's item funcs own accounting via the
+  `sky_characters` blob), so the ladder's `getLetterCount()==5` → `F_0796` side effect
+  stays dormant; no suppression needed.
+- **Golden wolves**: no item funnel. The mod places the reward `daObjLife` actors via
+  StageService `add_actor` with the final item id baked into the ACTR record at seed load;
+  needs the StageService **gated-additions minor** (`should_spawn` predicate at visit
+  time: `howledAtStoneFlag` set && `obtainedItemFlag` unset — flag triples from the mod's
+  `getCurrentGoldenWolfFlags`, already compiled in `src/game/flags.cpp`). Collect-side
+  bookkeeping (`dComIfGs_offSwitch(mapMarkerFlag)` + `onEventBit(obtainedItemFlag)`) = mod
+  post-hook on `daObjLife_c::actionGetDemo` (member, hookable).
+- **FLW gives (TextService 1.1)**: `dMsgFlow_c::setNormalMsg` rewrites `msg_no` →
+  `getItemMessageID(item)` keyed `(dMsgObject_getGroupID()<<16)|msg_no` with the `<5000`
+  group-0 collapse (same convention as flow-node overrides); second producer
+  `dMsgObject_c::getRevoMessageIndex` (Ilia: `param_1 == 233 && R_SP109 room 0 && layer
+  9`). The give: branch latched `g_randomizerState.mFlowMessageItemId` and granted in
+  `dMsgObject_c::waitProc` when `mpScrnDraw == NULL` (textbox fully closed) — port as a
+  message-id resolver chain + an in-tree enqueue (`give_item`-style) at that waitProc seam.
+- **Sacred Grove / Arbiters**: Arbiters = one in-tree
+  `item_check_enqueue("Arbiters Grounds Dungeon Reward", dItemNo_NONE_e, giver)` callout in
+  `daB_DS_c::executeBattle2Dead` (the HC itself is the `boss:` funnel). Sacred Grove
+  pedestals keep mod replace hooks on `daObjMasterSword_c::executeWait/execute` for the
+  behavior suppression (map-tool event, auto-equip); their gives go through `give_item`.
 
 ## Behavioral deviations (deliberate)
 

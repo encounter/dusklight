@@ -81,8 +81,13 @@ bool g_config_change_ok = false;
 bool g_config_neg_ok = false;
 bool g_item_check_ok = false;
 bool g_item_check_neg_ok = false;
-int g_item_observed = -1;
-int g_item_observed_vanilla = -1;
+int g_give_observed_item = -1;
+int g_give_observed_origin = -1;
+bool g_give_observed_name_ok = false;
+// Live give-queue probe: one silent rupee give queued once a save slot is active; the
+// persistent observer flips this when it comes back through the grant seam.
+bool g_give_queue_enqueued = false;
+bool g_give_queue_dispatched = false;
 bool g_flow_ok = false;
 bool g_flow_neg_ok = false;
 int g_flow_event_param = -1;
@@ -181,6 +186,7 @@ UiElementHandle g_el_cancel_count = 0;
 UiElementHandle g_el_post_count = 0;
 UiElementHandle g_el_link_angle = 0;
 UiElementHandle g_el_overlay_read_badge = 0;
+UiElementHandle g_el_give_queue_badge = 0;
 
 ModResult require_ok(const ModResult result, ModError* error, const char* message) {
     if (result != MOD_OK) {
@@ -309,6 +315,11 @@ void on_close_window_pressed(ModContext*, void*) {
 
 void on_close_top_pressed(ModContext*, void*) {
     svc_ui->close_top_document(mod_ctx);
+}
+
+// "Queue Demo Give": exercises the DEFAULT_GETITEM dispatch path (Link holds the item up).
+void on_queue_demo_give(ModContext*, void*) {
+    svc_item->give_item(mod_ctx, "mod_test.queued_demo", 2 /* blue rupee */, 0);
 }
 
 void add_control(UiElementHandle pane, const UiControlDesc& desc) {
@@ -769,9 +780,16 @@ ModResult build_panel(ModContext*, UiElementHandle panel, void*, ModError*) {
 
     svc_ui->pane_add_section(mod_ctx, panel, "Item checks");
     svc_ui->pane_add_badge_row(
-        mod_ctx, panel, "override + resolver + observer", g_item_check_ok, nullptr);
+        mod_ctx, panel, "resolve + give observers", g_item_check_ok, nullptr);
     svc_ui->pane_add_badge_row(
         mod_ctx, panel, "ItemService negative tests", g_item_check_neg_ok, nullptr);
+    svc_ui->pane_add_badge_row(mod_ctx, panel, "queued give dispatched", g_give_queue_dispatched,
+        &g_el_give_queue_badge);
+    UiControlDesc demoGive = UI_CONTROL_DESC_INIT;
+    demoGive.kind = UI_CONTROL_BUTTON;
+    demoGive.label = "Queue Demo Give";
+    demoGive.on_pressed = on_queue_demo_give;
+    add_control(panel, demoGive);
 
     svc_ui->pane_add_section(mod_ctx, panel, "Flow + Text");
     svc_ui->pane_add_badge_row(
@@ -837,6 +855,7 @@ ModResult update_panel(ModContext*, void*, ModError*) {
     svc_ui->elem_set_badge(mod_ctx, g_el_replace_badge, g_replace_fired);
     svc_ui->elem_set_badge(mod_ctx, g_el_argwrite_badge, g_arg_write_ok);
     svc_ui->elem_set_badge(mod_ctx, g_el_overlay_read_badge, g_overlay_read_ok);
+    svc_ui->elem_set_badge(mod_ctx, g_el_give_queue_badge, g_give_queue_dispatched);
 
     char buf[64];
     std::snprintf(buf, sizeof(buf), "pre cancels: %d", g_pre_cancel_count);
@@ -861,8 +880,9 @@ EXPORT_SERVICE(s_testMainService);
 
 extern "C" {
 
-// ItemService: value override + catch-all resolver chaining + observer + removal round trip,
-// plus negative tests. Drives the game-side seam directly via dusk::mods::item_check with
+// ItemService v2: value override + catch-all resolver chaining + removal round trip (pure
+// resolution), the give pipeline driven synthetically through the game-side seams
+// (give_tag/item_granted), plus negative tests. Drives dusk::mods::item_check directly with
 // synthetic names (real sites like "Herding Goats Reward" only fire in gameplay).
 bool item_check_test_resolver(
     ModContext*, const ItemCheckInfo* info, uint8_t* outItem, void*) {
@@ -874,12 +894,31 @@ bool item_check_test_resolver(
     return true;
 }
 
-void item_check_test_observer(ModContext*, const ItemCheckInfo* info, void*) {
-    if (std::strcmp(info->name, "mod_test.check") == 0) {
-        g_item_observed = info->current_item;
-        g_item_observed_vanilla = info->vanilla_item;
+void item_give_test_observer(ModContext*, const ItemGiveInfo* info, void*) {
+    if (info->check_name != nullptr && std::strcmp(info->check_name, "mod_test.give") == 0) {
+        g_give_observed_item = info->item;
+        g_give_observed_origin = info->origin;
+        g_give_observed_name_ok = true;
     }
 }
+
+// Persistent observer backing the live queue probe and the "Queue Demo Give" button. Logs
+// every attributed give (check-name carrying) — the live verification surface for site tags
+// (chests, boss funnels, named NPC sites); unattributed grants stay quiet to avoid spam.
+void item_give_queue_observer(ModContext*, const ItemGiveInfo* info, void*) {
+    if (info->check_name == nullptr) {
+        return;
+    }
+    char buf[128];
+    std::snprintf(buf, sizeof(buf), "give observed: item %u origin %u ('%s')", info->item,
+        info->origin, info->check_name);
+    svc_log->info(mod_ctx, buf);
+    if (std::strcmp(info->check_name, "mod_test.queued") == 0 &&
+        info->origin == ITEM_GIVE_ORIGIN_QUEUE_SILENT) {
+        g_give_queue_dispatched = true;
+    }
+}
+
 
 void test_item_checks() {
     using dusk::mods::item_check;
@@ -892,27 +931,36 @@ void test_item_checks() {
     ok = ok && svc_item->set_check_resolver(
                    mod_ctx, nullptr, item_check_test_resolver, nullptr, &resolver) == MOD_OK &&
          resolver != 0;
-    ItemCheckHandle observer = 0;
-    ok = ok && svc_item->observe_checks(
-                   mod_ctx, item_check_test_observer, nullptr, &observer) == MOD_OK &&
-         observer != 0;
 
-    // The catch-all resolver runs after the value override and sees it through current_item;
-    // the observer sees the final item and the vanilla one.
+    // The catch-all resolver runs after the value override and sees it through current_item.
     ok = ok && item_check("mod_test.check", 5, nullptr) == 43;
-    ok = ok && g_item_observed == 43 && g_item_observed_vanilla == 5;
+    // resolve_check runs the same chain as a service call (the display/peek entry point).
+    uint8_t resolved = 0;
+    ok = ok && svc_item->resolve_check(mod_ctx, "mod_test.check", 5, &resolved) == MOD_OK &&
+         resolved == 43;
     // The resolver passes on names it does not recognize.
     ok = ok && item_check("mod_test.other", 7, nullptr) == 7;
 
+    // Gives: observers fire at the grant seam, never at resolution.
+    ItemGiveHandle observer = 0;
+    ok = ok && svc_item->observe_gives(
+                   mod_ctx, item_give_test_observer, nullptr, &observer) == MOD_OK &&
+         observer != 0;
+    (void)item_check("mod_test.check", 5, nullptr);
+    ok = ok && g_give_observed_item == -1;  // resolution alone must not notify
+    dusk::mods::item_granted(200, dusk::mods::give_tag("mod_test.give"), nullptr);
+    ok = ok && g_give_observed_item == 200 && g_give_observed_name_ok &&
+         g_give_observed_origin == ITEM_GIVE_ORIGIN_GAME;
+
     ok = ok && svc_item->clear_check_resolver(mod_ctx, resolver) == MOD_OK;
     ok = ok && svc_item->clear_check_override(mod_ctx, "mod_test.check") == MOD_OK;
-    ok = ok && svc_item->unobserve_checks(mod_ctx, observer) == MOD_OK;
+    ok = ok && svc_item->unobserve_gives(mod_ctx, observer) == MOD_OK;
     ok = ok && item_check("mod_test.check", 5, nullptr) == 5;
     g_item_check_ok = ok;
     if (ok) {
-        svc_log->info(mod_ctx, "ItemService check override/resolver/observer OK");
+        svc_log->info(mod_ctx, "ItemService resolve/give pipeline OK");
     } else {
-        svc_log->error(mod_ctx, "ItemService check override/resolver/observer FAILED");
+        svc_log->error(mod_ctx, "ItemService resolve/give pipeline FAILED");
     }
 
     bool neg = svc_item->set_check_override(mod_ctx, "", 1) == MOD_INVALID_ARGUMENT;
@@ -921,7 +969,13 @@ void test_item_checks() {
                      MOD_INVALID_ARGUMENT;
     neg = neg && svc_item->clear_check_override(mod_ctx, "mod_test.never") == MOD_INVALID_ARGUMENT;
     neg = neg && svc_item->clear_check_resolver(mod_ctx, 0) == MOD_INVALID_ARGUMENT;
-    neg = neg && svc_item->unobserve_checks(mod_ctx, ~UINT64_C(0)) == MOD_INVALID_ARGUMENT;
+    neg = neg && svc_item->resolve_check(mod_ctx, nullptr, 1, &resolved) == MOD_INVALID_ARGUMENT;
+    neg = neg && svc_item->unobserve_gives(mod_ctx, ~UINT64_C(0)) == MOD_INVALID_ARGUMENT;
+    // give_item: NONE (0xFF) needs ITEM_GIVE_RESOLVE, RESOLVE needs a name, flags must be known.
+    neg = neg && svc_item->give_item(mod_ctx, nullptr, 0xFF, 0) == MOD_INVALID_ARGUMENT;
+    neg = neg && svc_item->give_item(mod_ctx, nullptr, 1, ITEM_GIVE_RESOLVE) ==
+                     MOD_INVALID_ARGUMENT;
+    neg = neg && svc_item->give_item(mod_ctx, "mod_test.give", 1, 0xFF00) == MOD_INVALID_ARGUMENT;
     g_item_check_neg_ok = neg;
     if (neg) {
         svc_log->info(mod_ctx, "ItemService negative tests OK");
@@ -1421,6 +1475,9 @@ MOD_EXPORT ModResult mod_initialize(ModError* error) {
     }
 
     test_item_checks();
+    // Persistent observer for the live give-queue probe (enqueued from mod_update once a save
+    // slot is active); released with the mod.
+    svc_item->observe_gives(mod_ctx, item_give_queue_observer, nullptr, nullptr);
     test_flow();
     test_text();
     test_save_stage();
@@ -1704,6 +1761,14 @@ MOD_EXPORT ModResult mod_initialize(ModError* error) {
 MOD_EXPORT ModResult mod_update(ModError*) {
     ++g_ticks;
 
+    // Live give-queue probe: once Link exists (a --stage boot never activates a save slot, so
+    // don't gate on blob availability), queue one silent green-rupee give;
+    // item_give_queue_observer flips the badge when the grant comes back through the seam.
+    if (!g_give_queue_enqueued && g_seen_link) {
+        g_give_queue_enqueued = true;
+        svc_item->give_item(mod_ctx, "mod_test.queued", 1, ITEM_GIVE_SILENT);
+    }
+
     // The gfx stage callback runs during the painter, the draw callbacks on the render worker;
     // report their (headless-checkable) results once from here.
     if (!g_gfx_logged_stage && g_gfx_stage_ran) {
@@ -1773,7 +1838,7 @@ MOD_EXPORT ModResult mod_shutdown(ModError*) {
 
     g_el_pre_badge = g_el_post_badge = g_el_replace_badge = 0;
     g_el_argwrite_badge = g_el_cancel_count = g_el_post_count = 0;
-    g_el_link_angle = g_el_overlay_read_badge = 0;
+    g_el_link_angle = g_el_overlay_read_badge = g_el_give_queue_badge = 0;
     g_cfg_flag = g_cfg_int = g_cfg_string = g_cfg_choice = g_cfg_pride = 0;
     g_style = g_test_window = g_el_win_counter = 0;
     g_gfx_draw_type = g_gfx_stage_hook = 0;

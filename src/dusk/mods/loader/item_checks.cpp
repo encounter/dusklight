@@ -29,16 +29,9 @@ struct CheckResolver {
     void* userData = nullptr;
 };
 
-struct CheckObserver {
-    uint64_t handle = 0;
-    ItemCheckObserveFn fn = nullptr;
-    void* userData = nullptr;
-};
-
 struct ModItemChecks {
     std::vector<CheckValueOverride> overrides;
     std::vector<CheckResolver> resolvers;
-    std::vector<CheckObserver> observers;
 };
 
 // Game thread only: all mutations happen in service calls made from mod code (init/update/hooks
@@ -60,12 +53,6 @@ struct PendingResolve {
     void* userData = nullptr;
 };
 
-struct PendingObserve {
-    LoadedMod* mod = nullptr;
-    ItemCheckObserveFn fn = nullptr;
-    void* userData = nullptr;
-};
-
 }  // namespace
 
 uint8_t item_check(const char* name, uint8_t itemNo, fopAc_ac_c* giver) {
@@ -76,7 +63,6 @@ uint8_t item_check(const char* name, uint8_t itemNo, fopAc_ac_c* giver) {
     // Collect in m_mods (load/dependency) order: the later-loaded mod's overrides apply last
     // and win, matching the texture-replacement priority rule.
     std::vector<PendingResolve> resolves;
-    std::vector<PendingObserve> observes;
     LoadedMod* previousValueOwner = nullptr;
     for (auto& mod : ModLoader::instance().mods()) {
         if (!mod.active) {
@@ -104,11 +90,8 @@ uint8_t item_check(const char* name, uint8_t itemNo, fopAc_ac_c* giver) {
                     {.mod = &mod, .fn = resolver.fn, .userData = resolver.userData});
             }
         }
-        for (const auto& observer : record.observers) {
-            observes.push_back({.mod = &mod, .fn = observer.fn, .userData = observer.userData});
-        }
     }
-    if (resolves.empty() && observes.empty()) {
+    if (resolves.empty()) {
         return itemNo;
     }
 
@@ -137,21 +120,6 @@ uint8_t item_check(const char* name, uint8_t itemNo, fopAc_ac_c* giver) {
         } catch (...) {
             fail_mod(*resolve.mod, MOD_ERROR,
                 fmt::format("unknown exception in item check resolver for '{}'", name));
-        }
-    }
-
-    for (const auto& observe : observes) {
-        if (!observe.mod->active) {
-            continue;
-        }
-        try {
-            observe.fn(observe.mod->context.get(), &info, observe.userData);
-        } catch (const std::exception& e) {
-            fail_mod(*observe.mod, MOD_ERROR,
-                fmt::format("exception in item check observer for '{}': {}", name, e.what()));
-        } catch (...) {
-            fail_mod(*observe.mod, MOD_ERROR,
-                fmt::format("unknown exception in item check observer for '{}'", name));
         }
     }
     return info.current_item;
@@ -214,27 +182,6 @@ ModResult item_check_remove_resolver(LoadedMod& mod, uint64_t handle) {
     }
     const auto removed = std::erase_if(recordIt->second.resolvers,
         [&](const auto& resolver) { return resolver.handle == handle; });
-    return removed != 0 ? MOD_OK : MOD_INVALID_ARGUMENT;
-}
-
-ModResult item_check_add_observer(
-    LoadedMod& mod, ItemCheckObserveFn fn, void* userData, uint64_t& outHandle) {
-    auto& record = s_modChecks[&mod];
-    auto& observer = record.observers.emplace_back();
-    observer.handle = s_nextCheckHandle++;
-    observer.fn = fn;
-    observer.userData = userData;
-    outHandle = observer.handle;
-    return MOD_OK;
-}
-
-ModResult item_check_remove_observer(LoadedMod& mod, uint64_t handle) {
-    const auto recordIt = s_modChecks.find(&mod);
-    if (recordIt == s_modChecks.end()) {
-        return MOD_INVALID_ARGUMENT;
-    }
-    const auto removed = std::erase_if(recordIt->second.observers,
-        [&](const auto& observer) { return observer.handle == handle; });
     return removed != 0 ? MOD_OK : MOD_INVALID_ARGUMENT;
 }
 

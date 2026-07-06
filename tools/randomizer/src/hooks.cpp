@@ -462,7 +462,9 @@ HookAction pre_event035(ModContext*, void* args, void* retval, void*) {
 
 HookAction pre_exec_item_get(ModContext*, void* args, void*, void*) {
     if (randomizer_IsActive()) {
-        item_funcs::exec_item_get(arg<u8>(args, 0));
+        const u8 item = arg<u8>(args, 0);
+        item_funcs::exec_item_get(item);
+        dusk::mods::item_granted(item, arg<u32>(args, 1), arg<fopAc_ac_c*>(args, 2));
         return HOOK_SKIP_ORIGINAL;
     }
     return HOOK_CONTINUE;

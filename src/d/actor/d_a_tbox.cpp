@@ -1398,10 +1398,13 @@ int daTbox_c::setGetDemoItem() {
     }
 
     fpc_ProcID item_id;
+    IF_DUSK(const u32 giveTag = dusk::mods::give_tag_chest(getTboxNo());)
     if (field_0x718) {
-        item_id = fopAcM_createItemForPresentDemo(&current.pos, item_no, 1, -1, -1, NULL, NULL);
+        item_id = fopAcM_createItemForPresentDemo(
+            &current.pos, item_no, 1, -1, -1, NULL, NULL IF_DUSK_ARG(giveTag));
     } else {
-        item_id = fopAcM_createItemForTrBoxDemo(&current.pos, item_no, -1, -1, NULL, NULL);
+        item_id = fopAcM_createItemForTrBoxDemo(
+            &current.pos, item_no, -1, -1, NULL, NULL IF_DUSK_ARG(giveTag));
     }
 
     if (item_id != fpcM_ERROR_PROCESS_ID_e) {

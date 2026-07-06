@@ -73,7 +73,7 @@ int daObjSword_c::initActionOrderGetDemo() {
     fopAcM_orderItemEvent(this, 0, 0);
     eventInfo.onCondition(8);
     mProcID = fopAcM_createItemForTrBoxDemo(&current.pos, m_itemNo, -1, fopAcM_GetRoomNo(this),
-                                            NULL, NULL);
+        NULL, NULL DUSK_GIVE_TAG("Ordon Sword"));
     setStatus(1);
     return 1;
 }
