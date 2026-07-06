@@ -11,11 +11,6 @@
 #include "f_op/f_op_actor_enemy.h"
 #include <cstring>
 
-#if TARGET_PC
-#include "dusk/randomizer/game/randomizer_context.hpp"
-#endif
-
-
 class daE_HP_HIO_c : public JORReflexible {
 public:
     daE_HP_HIO_c();
@@ -731,16 +726,11 @@ void daE_HP_c::executeDead() {
             fopAcM_onSwitch(this, bitSw);
         }
 
-#if TARGET_PC
-        if (randomizer_IsActive()) {
-            g_randomizerState.handlePoeItem(bitSw);
-        } else
-#endif
-            dComIfGs_addPohSpiritNum();
+        dComIfGs_addPohSpiritNum();
 
         field_0x784 = -1;
 
-        if (dComIfGs_getPohSpiritNum() == 20 IF_DUSK(&& !randomizer_IsActive())) {
+        if (dComIfGs_getPohSpiritNum() == 20) {
             dComIfGs_onEventBit(dSv_event_flag_c::saveBitLabels[0x1c9]);
         }
 
@@ -762,7 +752,7 @@ void daE_HP_c::executeDead() {
                     field_0x788 = 1;
                 }
             }
-        } else if (field_0x788 != 0 IF_DUSK(|| randomizer_IsActive())) {
+        } else if (field_0x788 != 0) {
             fopAcM_createDisappear(this, &current.pos, 8, 3, 0xff);
             fopAcM_delete(this);
         } else {

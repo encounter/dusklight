@@ -386,13 +386,7 @@ int dEvt_control_c::talkEnd() {
     if (item != NULL && fopAcM_GetName(item) == fpcNm_ITEM_e) {
         item->dead();
     }
-#if TARGET_PC
-    if (g_randomizerState.getHasPendingToDChange())
-    {
-        g_randomizerState.setHasPendingToDChange(false);
-        g_randomizerState.handleTimeOfDayChange();
-    }
-#endif
+
     return 1;
 }
 
@@ -886,10 +880,7 @@ bool dEvt_control_c::skipper() {
         }
 
         bool is_trig_skipbtn = mDoCPd_c::getTrigStart(PAD_1);
-        // Automatically skip cutscenes in rando if Skip Major Cutscenes is on
-        if (is_trig_skipbtn IF_DUSK(||
-            (randomizer_IsActive() && canSkip &&
-             randomizer_GetContext().mSettings[RandomizerContext::SKIP_MAJOR_CUTSCENES] == RandomizerContext::ON))) {
+        if (is_trig_skipbtn) {
             if (mSkipTimer > 0) {
                 mSkipTimer = -1;
 

@@ -1230,8 +1230,7 @@ void Z2SceneMgr::setSceneName(char* spot, s32 room, s32 layer) {
             bgm_id = Z2BGM_DUNGEON_FOREST;
             bgm_wave1 = 0xa;
                    /* dSv_event_flag_c::M_022 - Forest Temple - Forest Temple clear (Midna creates warp hole) */
-                   // In rando, check for boss defeated instead
-        } else if (dComIfGs_isEventBit(dSv_event_flag_c::saveBitLabels[55]) IF_DUSK(&& (!randomizer_IsActive() || dComIfGs_isStageBossEnemy()))) {
+        } else if (dComIfGs_isEventBit(dSv_event_flag_c::saveBitLabels[55])) {
             bgm_id = 0x200005b;
         } else {
             bgm_wave1 = 0xc;
@@ -1291,13 +1290,11 @@ void Z2SceneMgr::setSceneName(char* spot, s32 room, s32 layer) {
         break;
     case Z2SCENE_LAKEBED_TEMPLE_BOSS:
         se_wave1 = 9;
-        // In rando, check for boss defeated instead
-        if (dComIfGs_isStageSwitch(4, 0xe) IF_DUSK(&& (!randomizer_IsActive() || dComIfGs_isStageBossEnemy()))) {
+        if (dComIfGs_isStageSwitch(4, 0xe)) {
             bgm_id = Z2BGM_DUNGEON_LV3;
             bgm_wave1 = 0x15;
                    /* dSv_event_flag_c::M_045 - Lakebed Temple - Lakebed Temple clear */
-                   // In rando, check for boss defeated instead
-        } else if (dComIfGs_isEventBit(dSv_event_flag_c::saveBitLabels[78]) IF_DUSK(&& (!randomizer_IsActive() || dComIfGs_isStageBossEnemy()))) {
+        } else if (dComIfGs_isEventBit(dSv_event_flag_c::saveBitLabels[78])) {
             bgm_id = 0x200005b;
         } else {
             bgm_wave1 = 0x1e;
@@ -1327,11 +1324,11 @@ void Z2SceneMgr::setSceneName(char* spot, s32 room, s32 layer) {
         break;
     case Z2SCENE_ARBITERS_GROUNDS_BOSS:
         se_wave1 = 0xd;
-        if (dComIfGs_isStageSwitch(0xa, 0xa) IF_DUSK(&& (!randomizer_IsActive() || dComIfGs_isStageBossEnemy()))) {
+        if (dComIfGs_isStageSwitch(0xa, 0xa)) {
             bgm_id = Z2BGM_DUNGEON_LV4;
             bgm_wave1 = 0x1a;
                    /* dSv_event_flag_c::F_0265 - Arbiter's Grounds - Arbiter's Grounds clear */
-        } else if (dComIfGs_isEventBit(dSv_event_flag_c::saveBitLabels[265]) IF_DUSK(&& (!randomizer_IsActive() || dComIfGs_isStageBossEnemy()))) {
+        } else if (dComIfGs_isEventBit(dSv_event_flag_c::saveBitLabels[265])) {
             bgm_id = 0x200005b;
         } else {
             bgm_wave1 = 0x4c;
@@ -1392,11 +1389,11 @@ void Z2SceneMgr::setSceneName(char* spot, s32 room, s32 layer) {
         break;
     case Z2SCENE_TEMPLE_OF_TIME_BOSS:
         se_wave1 = 0x15;
-        if (dComIfGs_isStageSwitch(7, 0x18) IF_DUSK(&& (!randomizer_IsActive() || dComIfGs_isStageBossEnemy()))) {
+        if (dComIfGs_isStageSwitch(7, 0x18)) {
             bgm_id = Z2BGM_DUNGEON_LV6;
             bgm_wave1 = 0x26;
                    /* dSv_event_flag_c::F_0267 - Temple of Time - Temple of Time clear */
-        } else if (dComIfGs_isEventBit(dSv_event_flag_c::saveBitLabels[267]) IF_DUSK(&& (!randomizer_IsActive() || dComIfGs_isStageBossEnemy()))) {
+        } else if (dComIfGs_isEventBit(dSv_event_flag_c::saveBitLabels[267])) {
             bgm_id = 0x200005b;
         } else {
             bgm_wave1 = 0x4e;

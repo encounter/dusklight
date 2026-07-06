@@ -204,12 +204,6 @@ UserSettings g_userSettings = {
             ActionBindConfigVar{"actionBindings.turboButton_port2", PAD_NATIVE_BUTTON_INVALID},
             ActionBindConfigVar{"actionBindings.turboButton_port3", PAD_NATIVE_BUTTON_INVALID},
         },
-    },
-
-    .randomizer = {
-        ConfigVar<std::string>{"randomizer.file1SeedHash", ""},
-         ConfigVar<std::string>{"randomizer.file2SeedHash", ""},
-        ConfigVar<std::string>{"randomizer.file3SeedHash", ""},
     }
 };
 
@@ -379,10 +373,6 @@ void registerSettings() {
     Register(g_userSettings.actionBindings.turboSpeedButton[1]);
     Register(g_userSettings.actionBindings.turboSpeedButton[2]);
     Register(g_userSettings.actionBindings.turboSpeedButton[3]);
-
-    Register(g_userSettings.randomizer.seedHashes[0]);
-    Register(g_userSettings.randomizer.seedHashes[1]);
-    Register(g_userSettings.randomizer.seedHashes[2]);
 }
 
 // Transient settings

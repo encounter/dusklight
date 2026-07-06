@@ -232,9 +232,3 @@ bool mDoAud_resetRecover() {
     }
     return 1;
 }
-
-#if TARGET_PC
-mDoAud_zelAudio_c& mDoAud_getZelAudio() {
-    return g_mDoAud_zelAudio;
-}
-#endif

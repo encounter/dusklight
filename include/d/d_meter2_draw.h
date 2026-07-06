@@ -129,9 +129,7 @@ public:
     bool getPlayerSubject();
     bool isBButtonShow(bool);
     s16 getButtonTimer();
-#if TARGET_PC
-    f32 getZButtonAlpha() { return mButtonZAlpha;}
-#endif
+
     virtual ~dMeter2Draw_c();
 
     J2DScreen* getMainScreenPtr() { return mpScreen; }

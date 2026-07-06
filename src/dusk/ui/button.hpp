@@ -16,7 +16,6 @@ public:
     Button(Rml::Element* parent, Rml::String text, const Rml::String& tagName = "button")
         : Button(parent, Props{std::move(text)}, tagName) {}
 
-    Rml::String get_text();
     void set_text(const Rml::String& text);
     Button& on_pressed(ButtonCallback callback);
 
