@@ -12,6 +12,8 @@
 
 #include <cstring>
 
+#include "dusk/logging.h"
+
 #include "game/assets.hpp"
 #include "game/flags.h"
 #include "game/item_funcs.hpp"
@@ -530,53 +532,73 @@ void post_talk_end(ModContext*, void*, void*, void*) {
 ModResult install(const HookService* hooks) {
     using namespace dusk::mods;
     ModResult res = MOD_OK;
-    auto check = [&res](ModResult r) {
-        if (r != MOD_OK && res == MOD_OK) {
-            res = r;
-        }
-    };
+#define CHECK_HOOK(expr)                                                                           \
+    do {                                                                                           \
+        const ModResult check_result = (expr);                                                     \
+        if (check_result != MOD_OK) {                                                              \
+            DuskLog.error("randomizer: hook install failed at hooks.cpp:{} ({})", __LINE__,        \
+                static_cast<int>(check_result));                                                   \
+            if (res == MOD_OK) {                                                                   \
+                res = check_result;                                                                \
+            }                                                                                      \
+        }                                                                                          \
+    } while (0)
 
-    check(hook_add_pre<&dSv_event_c::isEventBit>(hooks, pre_is_event_bit));
-    check(hook_add_pre<&dSv_event_c::onEventBit>(hooks, pre_on_event_bit));
-    check(hook_add_pre<&dSv_memBit_c::isSwitch>(hooks, pre_membit_is_switch));
-    check(hook_add_pre<&dSv_memBit_c::onSwitch>(hooks, pre_membit_on_switch));
-    check(hook_add_pre<&dSv_memBit_c::onDungeonItem>(hooks, pre_on_dungeon_item));
-    check(hook_add_pre<&dSv_memBit_c::offDungeonItem>(hooks, pre_off_dungeon_item));
-    check(hook_add_pre<&dSv_memBit_c::isDungeonItem>(hooks, pre_is_dungeon_item));
-    check(hook_add_pre<&dSv_memBit_c::onStageBossEnemy>(hooks, pre_on_stage_boss_enemy));
-    check(hook_add_pre<&dSv_player_status_b_c::isDarkClearLV>(hooks, pre_is_dark_clear_lv));
-    check(hook_add_pre<&dSv_player_item_c::checkEmptyBottle>(hooks, pre_check_empty_bottle));
-    check(hook_add_post<static_cast<void (dSv_player_item_c::*)()>(&dSv_player_item_c::setLineUpItem)>(
+    CHECK_HOOK(hook_add_pre<&dSv_event_c::isEventBit>(hooks, pre_is_event_bit));
+    CHECK_HOOK(hook_add_pre<&dSv_event_c::onEventBit>(hooks, pre_on_event_bit));
+    CHECK_HOOK(hook_add_pre<&dSv_memBit_c::isSwitch>(hooks, pre_membit_is_switch));
+    CHECK_HOOK(hook_add_pre<&dSv_memBit_c::onSwitch>(hooks, pre_membit_on_switch));
+    CHECK_HOOK(hook_add_pre<&dSv_memBit_c::onDungeonItem>(hooks, pre_on_dungeon_item));
+    CHECK_HOOK(hook_add_pre<&dSv_memBit_c::offDungeonItem>(hooks, pre_off_dungeon_item));
+    CHECK_HOOK(hook_add_pre<&dSv_memBit_c::isDungeonItem>(hooks, pre_is_dungeon_item));
+    CHECK_HOOK(hook_add_pre<&dSv_memBit_c::onStageBossEnemy>(hooks, pre_on_stage_boss_enemy));
+    CHECK_HOOK(hook_add_pre<&dSv_player_status_b_c::isDarkClearLV>(hooks, pre_is_dark_clear_lv));
+    CHECK_HOOK(hook_add_pre<&dSv_player_item_c::checkEmptyBottle>(hooks, pre_check_empty_bottle));
+    CHECK_HOOK(hook_add_post<static_cast<void (dSv_player_item_c::*)()>(&dSv_player_item_c::setLineUpItem)>(
         hooks, post_set_line_up_item));
-    check(hook_add_pre<static_cast<void (dSv_info_c::*)(int, int)>(&dSv_info_c::onSwitch)>(
+    CHECK_HOOK(hook_add_pre<static_cast<void (dSv_info_c::*)(int, int)>(&dSv_info_c::onSwitch)>(
         hooks, pre_info_on_switch));
 
-    check(hook_add_pre<&dMsgFlow_c::query001>(hooks, pre_query001));
-    check(hook_add_pre<&dMsgFlow_c::query022>(hooks, pre_query022));
-    check(hook_add_pre<&dMsgFlow_c::query025>(hooks, pre_query025));
-    check(hook_add_post<&dMsgFlow_c::query049>(hooks, post_query049));
-    check(hook_add_pre<&dMsgFlow_c::event035>(hooks, pre_event035));
+    CHECK_HOOK(hook_add_pre<&dMsgFlow_c::query001>(hooks, pre_query001));
+    CHECK_HOOK(hook_add_pre<&dMsgFlow_c::query022>(hooks, pre_query022));
+    CHECK_HOOK(hook_add_pre<&dMsgFlow_c::query025>(hooks, pre_query025));
+    CHECK_HOOK(hook_add_post<&dMsgFlow_c::query049>(hooks, post_query049));
+    CHECK_HOOK(hook_add_pre<&dMsgFlow_c::event035>(hooks, pre_event035));
 
-    check(hook_add_pre<&execItemGet>(hooks, pre_exec_item_get));
-    check(hook_add_pre<static_cast<int (*)(u8, int)>(&checkItemGet)>(hooks, pre_check_item_get));
+    CHECK_HOOK(hook_add_pre<&execItemGet>(hooks, pre_exec_item_get));
+    CHECK_HOOK(hook_add_pre<static_cast<int (*)(u8, int)>(&checkItemGet)>(hooks, pre_check_item_get));
 
-    check(hook_add_post<&dEvt_control_c::talkEnd>(hooks, post_talk_end));
+    CHECK_HOOK(hook_add_post<&dEvt_control_c::talkEnd>(hooks, post_talk_end));
 
-    check(hook_add_pre<static_cast<void (*)(char const*, s16, s8, s8, f32, u32, int, s8, s16, int,
+    CHECK_HOOK(hook_add_pre<static_cast<void (*)(char const*, s16, s8, s8, f32, u32, int, s8, s16, int,
             int)>(&dComIfGp_setNextStage)>(hooks, pre_set_next_stage));
-    check(hook_add_post<&dMeter2Info_c::readItemTexture>(hooks, post_read_item_texture));
+    CHECK_HOOK(hook_add_post<&dMeter2Info_c::readItemTexture>(hooks, post_read_item_texture));
 
+    // File-statics live in the symbol manifest under their decorated names on
+    // Itanium-ABI platforms; the undecorated display name only resolves on Windows.
+    static const char* const obj_gb_create_names[] = {
+        "_ZL15daObj_Gb_CreateP10fopAc_ac_c", // clang/gcc (macOS, Linux, Android)
+        "daObj_Gb_Create",                   // MSVC display name
+    };
     void* obj_gb_create_addr = nullptr;
-    ModResult resolved = hooks->resolve(::mod_ctx, "daObj_Gb_Create", &obj_gb_create_addr, nullptr);
-    if (resolved == MOD_OK) {
-        check(hooks->install(::mod_ctx, obj_gb_create_addr,
+    for (const char* name : obj_gb_create_names) {
+        if (hooks->resolve(::mod_ctx, name, &obj_gb_create_addr, nullptr) == MOD_OK) {
+            break;
+        }
+        obj_gb_create_addr = nullptr;
+    }
+    if (obj_gb_create_addr != nullptr) {
+        CHECK_HOOK(hooks->install(::mod_ctx, obj_gb_create_addr,
             reinterpret_cast<void*>(obj_gb_create_trampoline),
             reinterpret_cast<void**>(&s_orig_obj_gb_create)));
     } else {
-        check(resolved);
+        // Degrade: the Mirror Chamber wall keeps its vanilla behavior (see PORTING.md).
+        DuskLog.warn("randomizer: could not resolve daObj_Gb_Create; "
+                        "Mirror Chamber wall setting will not apply");
     }
 
     return res;
+#undef CHECK_HOOK
 }
 
 }  // namespace randomizer::hooks

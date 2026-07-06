@@ -7,7 +7,7 @@
 #include <unordered_map>
 
 #include "m_Do/m_Do_ext.h"
-
+#include "JSystem/JUtility/JUTFont.h"
 
 namespace randomizer {
 
