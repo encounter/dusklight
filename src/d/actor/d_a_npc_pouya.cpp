@@ -958,6 +958,13 @@ int daNpc_Pouya_c::cutHaveFavorToAsk(int param_0) {
                 switch (evt_id) {
                 case 1:
                     if (mItemPartnerId == fpcM_ERROR_PROCESS_ID_e) {
+#if TARGET_PC
+                        if (local_64 == dItemNo_DROP_BOTTLE_e) {
+                            DUSK_ITEM_CHECK("Jovani 20 Poe Soul Reward", local_64, this);
+                        } else if (local_64 == dItemNo_SILVER_RUPEE_e) {
+                            DUSK_ITEM_CHECK("Jovani 60 Poe Soul Reward", local_64, this);
+                        }
+#endif
                         mItemPartnerId = fopAcM_createItemForPresentDemo(&current.pos, local_64, 0,
                                                                          -1, -1, 0, 0);
                     }

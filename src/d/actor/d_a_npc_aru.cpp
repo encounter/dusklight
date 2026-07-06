@@ -1744,6 +1744,7 @@ int daNpc_Aru_c::cutSpeakTo(int i_staffID) {
                 switch (eventId) {
                     case 1:
                         if (mItemPartnerId == fpcM_ERROR_PROCESS_ID_e) {
+                            DUSK_ITEM_CHECK("Herding Goats Reward", itemNo, this);
                             mItemPartnerId = fopAcM_createItemForPresentDemo(&current.pos, itemNo, 0, -1, -1, NULL, NULL);
                         }
 

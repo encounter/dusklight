@@ -1785,6 +1785,14 @@ void daTbox_c::mode_exec() {
 cPhs_Step daTbox_c::create1st() {
     if (!mParamsInit) {
         field_0x980 = home.angle.x;
+#if TARGET_PC
+        {
+            // The upper 8 bits of home.angle.z hold the itemId.
+            const u8 vanillaItem = (home.angle.z >> 8) & 0xFF;
+            const u8 item = dusk::mods::item_check_chest(getTboxNo(), vanillaItem, this);
+            home.angle.z = static_cast<s16>((home.angle.z & ~0xFF00) | (item << 8));
+        }
+#endif
         field_0x982 = home.angle.z;
         home.angle.z = 0;
         home.angle.x = 0;

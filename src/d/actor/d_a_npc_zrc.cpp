@@ -1681,6 +1681,7 @@ BOOL daNpc_zrC_c::ECut_earringGet(int i_staffID) {
         case 40: {
             int item_no = 0;
             if (mFlow.getEventId(&item_no) == 1) {
+                DUSK_ITEM_CHECK("Gift From Ralis", item_no, this);
                 mItemID = fopAcM_createItemForPresentDemo(&current.pos, item_no,
                                                           0, -1, -1, NULL, NULL);
             }

@@ -7,6 +7,7 @@
 #include "mods/svc/gfx.h"
 #include "mods/svc/hook.h"
 #include "mods/svc/host.h"
+#include "mods/svc/item.h"
 #include "mods/svc/log.h"
 #include "mods/svc/overlay.h"
 #include "mods/svc/resource.h"
@@ -50,5 +51,6 @@ const ConfigService& config_service();
 const GameService& game_service();
 const GfxService& gfx_service();
 const CameraService& camera_service();
+const ItemService& item_service();
 
 }  // namespace dusk::mods::svc

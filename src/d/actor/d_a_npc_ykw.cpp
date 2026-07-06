@@ -2213,6 +2213,7 @@ int daNpc_ykW_c::cutEndSnowboardRace(int param_0) {
             switch (eventId) {
             case 1:
                 if (mItemPartnerId == fpcM_ERROR_PROCESS_ID_e) {
+                    DUSK_ITEM_CHECK("Snowboard Racing Prize", itemId, this);
                     mItemPartnerId = fopAcM_createItemForPresentDemo(&current.pos, itemId, 0,
                                                             -1, -1, 0, 0);
                 }
@@ -2911,6 +2912,7 @@ int daNpc_ykW_c::talk(void* param_0) {
                     switch (eventId) {
                     case 1:
                         if (mItemPartnerId == fpcM_ERROR_PROCESS_ID_e) {
+                            DUSK_ITEM_CHECK("Snowpeak Ruins Mansion Map", itemNo, this);
                             mItemPartnerId =
                                 fopAcM_createItemForPresentDemo(&current.pos, itemNo, 0, -1, -1, 0, 0);
                         }

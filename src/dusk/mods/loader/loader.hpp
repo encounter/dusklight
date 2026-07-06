@@ -10,6 +10,7 @@
 #include "dusk/mod_loader.hpp"
 #include "mods/svc/config.h"
 #include "mods/svc/gfx.h"
+#include "mods/svc/item.h"
 #include "mods/svc/ui.h"
 
 namespace dusk::ui {
@@ -107,6 +108,18 @@ ModResult config_unsubscribe(LoadedMod& mod, uint64_t handle);
 void config_remove_mod(LoadedMod& mod);
 void config_mark_dirty();
 void config_flush_if_dirty(bool force);
+
+// Item-check plumbing (loader/item_checks.cpp). Game thread only, like config; the game-code
+// entry points (item_check + derived-name helpers) are declared in dusk/mods/item_checks.hpp.
+ModResult item_check_set_override(LoadedMod& mod, const char* name, uint8_t itemNo);
+ModResult item_check_clear_override(LoadedMod& mod, const char* name);
+ModResult item_check_add_resolver(
+    LoadedMod& mod, const char* name, ItemCheckResolveFn fn, void* userData, uint64_t& outHandle);
+ModResult item_check_remove_resolver(LoadedMod& mod, uint64_t handle);
+ModResult item_check_add_observer(
+    LoadedMod& mod, ItemCheckObserveFn fn, void* userData, uint64_t& outHandle);
+ModResult item_check_remove_observer(LoadedMod& mod, uint64_t handle);
+void item_checks_remove_mod(LoadedMod& mod);
 
 // UI service plumbing (loader/ui.cpp). Game thread only, like config.
 ModResult ui_register_mods_panel(LoadedMod& mod, const UiModsPanelDesc& desc);

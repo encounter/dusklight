@@ -1584,6 +1584,9 @@ fpc_ProcID fopAcM_createItemForBoss(const cXyz* i_pos, int i_itemNo, int i_roomN
                                     const csXyz* i_angle, const cXyz* i_scale, f32 i_speedF,
                                     f32 i_speedY, int param_8) {
     int _ = -1;
+#if TARGET_PC
+    i_itemNo = dusk::mods::item_check_boss(i_itemNo & 0xFF);
+#endif
     u32 params = 0xFFFF0000 | param_8 << 8 | (i_itemNo & 0xFF);
 
     fopAc_ac_c* actor = fopAcM_fastCreate(fpcNm_Obj_LifeContainer_e, params, i_pos, i_roomNo, i_angle,

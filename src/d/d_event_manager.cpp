@@ -335,6 +335,14 @@ bool dEvent_manager_c::setObjectArchive(DUSK_CONST char* arcname) {
 
     if (arcname != NULL) {
         rt = dComIfG_getObjectRes(arcname, DataFileName);
+#if TARGET_PC
+        // Mod item-check callout: the Prayer event archive bakes the donation reward item id
+        // (byte 0x927); resolve it through the same check as the spawned item so they agree.
+        if (rt != nullptr && strcmp(arcname, "Prayer") == 0) {
+            u8* itemByte = static_cast<u8*>(rt) + 0x927;
+            *itemByte = dusk::mods::item_check("Charlo Donation Blessing", *itemByte, NULL);
+        }
+#endif
         int base_status = mEventList[BASE_ACTOR].init((char*)rt, -1);
 
         #if DEBUG

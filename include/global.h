@@ -260,4 +260,15 @@ using std::isnan;
 #define DUSK_CONST IF_DUSK(const)
 #define DUSK_CONSTEXPR IF_DUSK(constexpr)
 
+// Lets mods override or observe the item granted at a named check site.
+#if TARGET_PC
+#include "dusk/mods/item_checks.hpp"
+#define DUSK_ITEM_CHECK(name, item_no, giver) \
+    (item_no) = ::dusk::mods::item_check(name, (item_no), giver)
+#define DUSK_ITEM_CHECK_EXPR(name, item_no, giver) (::dusk::mods::item_check(name, (item_no), giver))
+#else
+#define DUSK_ITEM_CHECK(name, item_no, giver)
+#define DUSK_ITEM_CHECK_EXPR(name, item_no, giver) (item_no)
+#endif
+
 #endif

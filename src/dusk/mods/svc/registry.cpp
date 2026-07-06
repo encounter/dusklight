@@ -160,6 +160,8 @@ void ModLoader::init_services() {
         &svc::camera_service(), nullptr, false);
     svc::register_service(GAME_SERVICE_ID, GAME_SERVICE_MAJOR, GAME_SERVICE_MINOR,
         &svc::game_service(), nullptr, false);
+    svc::register_service(ITEM_SERVICE_ID, ITEM_SERVICE_MAJOR, ITEM_SERVICE_MINOR,
+        &svc::item_service(), nullptr, false);
 }
 
 bool ModLoader::register_static_service_exports(LoadedMod& mod) {

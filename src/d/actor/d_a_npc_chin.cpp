@@ -1804,6 +1804,13 @@ int daNpcChin_c::_Evt_GameSucceed_CutMain(const int& param_0) {
                 itemId1 = 0;
             }
 
+#if TARGET_PC
+            if (itemId1 == dItemNo_ARROW_LV2_e) {
+                DUSK_ITEM_CHECK("STAR Prize 1", itemId1, this);
+            } else if (itemId1 == dItemNo_ARROW_LV3_e) {
+                DUSK_ITEM_CHECK("STAR Prize 2", itemId1, this);
+            }
+#endif
             fpc_ProcID itemId2 = fopAcM_createItemForPresentDemo(&current.pos, itemId1, 0, -1, -1,
                                                                  0, 0);
             if (itemId2 != -1) {

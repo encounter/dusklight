@@ -720,7 +720,9 @@ fpc_ProcID daNpcPray_c::createHeart() {
     mDoMtx_stack_c::ZXYrotS(rot);
     mDoMtx_stack_c::multVec(&offset, &offset);
     pos += offset;
-    return fopAcM_createItemForBoss(&pos, dItemNo_KAKERA_HEART_e, fopAcM_GetRoomNo(this), &rot, &size, 0.0f, 0.0f, 0);
+    return fopAcM_createItemForBoss(&pos,
+                                    DUSK_ITEM_CHECK_EXPR("Charlo Donation Blessing", dItemNo_KAKERA_HEART_e, this),
+                                    fopAcM_GetRoomNo(this), &rot, &size, 0.0f, 0.0f, 0);
 }
 
 BOOL daNpcPray_c::_Evt_GetHeart(int i_staffID) {

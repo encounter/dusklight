@@ -1181,6 +1181,11 @@ int daNpc_Kkri_c::talk(void*) {
                     switch (eventId) {
                     case 1:
                         if (mItemPartnerId == fpcM_ERROR_PROCESS_ID_e) {
+#if TARGET_PC
+                            if (item_no == dItemNo_OIL_BOTTLE3_e) {
+                                DUSK_ITEM_CHECK("Coro Bottle", item_no, this);
+                            }
+#endif
                             mItemPartnerId = fopAcM_createItemForPresentDemo(&current.pos, item_no, 0, -1, -1, NULL, NULL);
                         }
 

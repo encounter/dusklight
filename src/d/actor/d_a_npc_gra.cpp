@@ -4018,6 +4018,11 @@ BOOL daNpc_grA_c::talk(void*) {
         }
         if (r26 && talkProc(NULL, TRUE, NULL)) {
             if (mFlow.getEventId(&sp8) == 1) {
+#if TARGET_PC
+                if (sp8 == dItemNo_BOMB_IN_BAG_e) {
+                    DUSK_ITEM_CHECK("Zoras Domain Underwater Goron", sp8, this);
+                }
+#endif
                 field_0x1480 =
                     fopAcM_createItemForPresentDemo(&current.pos, sp8, 0, -1, -1, NULL, NULL);
                 if (field_0x1480 != fpcM_ERROR_PROCESS_ID_e) {

@@ -971,6 +971,7 @@ BOOL daNpcImpal_c::EvCut_ImpalAppear1(int i_cut_index) {
         if (talkProc(NULL, 1, NULL)) {
             int evt_id = 0;
             if (mFlow.getEventId(&evt_id) == 1) {
+                DUSK_ITEM_CHECK("Ilia Charm", evt_id, this);
                 mItemPartnerId =
                     fopAcM_createItemForPresentDemo(&current.pos, evt_id, 0, -1, -1, 0, 0);
                 if (mItemPartnerId != 0xffffffff) {
@@ -1060,6 +1061,7 @@ BOOL daNpcImpal_c::EvCut_CopyRod(int i_cut_index) {
         case '0003':
             int evt_id = 0;
             if (mFlow.getEventId(&evt_id) == 1) {
+                DUSK_ITEM_CHECK("Skybook From Impaz", evt_id, this);
                 mItemPartnerId =
                     fopAcM_createItemForPresentDemo(&current.pos, evt_id, 0, -1, -1, 0, 0);
                 dComIfGp_event_setItemPartnerId(mItemPartnerId);

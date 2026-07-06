@@ -1250,7 +1250,8 @@ static void demo_camera(e_rdb_class* i_this) {
             }
 
             if (iVar1 != 0) {
-                daPy_getPlayerActorClass()->changeDemoMode(11, 32, 0, 0);
+                daPy_getPlayerActorClass()->changeDemoMode(
+                    11, DUSK_ITEM_CHECK_EXPR("Hyrule Castle King Bulblin Key", 32, &i_this->enemy), 0, 0);
                 i_this->mDemoMode = 12;
                 i_this->field_0x10aa = 0;
                 i_this->field_0xfe5 = 1;

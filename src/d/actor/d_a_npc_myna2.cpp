@@ -1191,6 +1191,11 @@ int daNpc_myna2_c::ECut_gameGoalSuccess(int i_staffId) {
         case 20: {
             int itemNo = 0;
             if (mFlow.getEventId(&itemNo) == 1) {
+#if TARGET_PC
+                if (itemNo == dItemNo_KAKERA_HEART_e) {
+                    DUSK_ITEM_CHECK("Plumm Fruit Balloon Minigame", itemNo, this);
+                }
+#endif
                 mItemPid = fopAcM_createItemForPresentDemo(&current.pos, itemNo, 0, -1, -1, NULL, NULL);
             }
             break;

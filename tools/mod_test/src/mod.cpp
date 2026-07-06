@@ -3,6 +3,7 @@
 #include "d/actor/d_a_alink.h"
 #include "dolphin/dvd.h"
 #include "dolphin/mtx.h"
+#include "dusk/mods/item_checks.hpp"
 #include "f_ap/f_ap_game.h"
 #include "m_Do/m_Do_controller_pad.h"
 #include "mods/hook.hpp"
@@ -13,6 +14,7 @@
 #include "mods/svc/gfx.h"
 #include "mods/svc/hook.h"
 #include "mods/svc/host.h"
+#include "mods/svc/item.h"
 #include "mods/svc/log.h"
 #include "mods/svc/overlay.h"
 #include "mods/svc/resource.h"
@@ -22,6 +24,7 @@
 
 #include <atomic>
 #include <cmath>
+#include <cstring>
 
 DEFINE_MOD();
 IMPORT_SERVICE(HostService, svc_host);
@@ -35,6 +38,7 @@ IMPORT_SERVICE(ConfigService, svc_config);
 IMPORT_SERVICE_VERSION(GfxService, svc_gfx, 1);
 IMPORT_SERVICE(CameraService, svc_camera);
 IMPORT_SERVICE(GameService, svc_game);
+IMPORT_SERVICE(ItemService, svc_item);
 // Both provided by mod_test_dep, which sorts *after* mod_test.dusk in the mods directory;
 // dependency ordering must initialize it first regardless. The deferred service only
 // resolves if mod_test_dep published it during its initialization.
@@ -65,6 +69,10 @@ bool g_asset_neg_ok = false;
 bool g_config_ok = false;
 bool g_config_change_ok = false;
 bool g_config_neg_ok = false;
+bool g_item_check_ok = false;
+bool g_item_check_neg_ok = false;
+int g_item_observed = -1;
+int g_item_observed_vanilla = -1;
 int g_config_change_count = 0;
 int64_t g_config_prev_value = -1;
 int64_t g_config_curr_value = -1;
@@ -714,6 +722,12 @@ ModResult build_panel(ModContext*, UiElementHandle panel, void*, ModError*) {
     svc_ui->pane_add_badge_row(
         mod_ctx, panel, "ConfigService negative tests", g_config_neg_ok, nullptr);
 
+    svc_ui->pane_add_section(mod_ctx, panel, "Item checks");
+    svc_ui->pane_add_badge_row(
+        mod_ctx, panel, "override + resolver + observer", g_item_check_ok, nullptr);
+    svc_ui->pane_add_badge_row(
+        mod_ctx, panel, "ItemService negative tests", g_item_check_neg_ok, nullptr);
+
     svc_ui->pane_add_section(mod_ctx, panel, "UI");
     svc_ui->pane_add_badge_row(mod_ctx, panel, "stack queries", g_ui_stack_ok, nullptr);
     svc_ui->pane_add_badge_row(mod_ctx, panel, "scoped RCSS registered", g_ui_rcss_ok, nullptr);
@@ -780,6 +794,75 @@ ModResult update_panel(ModContext*, void*, ModError*) {
 EXPORT_SERVICE(s_testMainService);
 
 extern "C" {
+
+// ItemService: value override + catch-all resolver chaining + observer + removal round trip,
+// plus negative tests. Drives the game-side seam directly via dusk::mods::item_check with
+// synthetic names (real sites like "Herding Goats Reward" only fire in gameplay).
+bool item_check_test_resolver(
+    ModContext*, const ItemCheckInfo* info, uint8_t* outItem, void*) {
+    if (std::strcmp(info->name, "mod_test.check") != 0) {
+        return false;
+    }
+    // Prove the chain: the value override applied before us is visible in current_item.
+    *outItem = info->current_item + 1;
+    return true;
+}
+
+void item_check_test_observer(ModContext*, const ItemCheckInfo* info, void*) {
+    if (std::strcmp(info->name, "mod_test.check") == 0) {
+        g_item_observed = info->current_item;
+        g_item_observed_vanilla = info->vanilla_item;
+    }
+}
+
+void test_item_checks() {
+    using dusk::mods::item_check;
+    bool ok = item_check("mod_test.check", 5, nullptr) == 5;  // nothing registered yet
+
+    ok = ok && svc_item->set_check_override(mod_ctx, "mod_test.check", 42) == MOD_OK;
+    ok = ok && item_check("mod_test.check", 5, nullptr) == 42;
+
+    ItemCheckHandle resolver = 0;
+    ok = ok && svc_item->set_check_resolver(
+                   mod_ctx, nullptr, item_check_test_resolver, nullptr, &resolver) == MOD_OK &&
+         resolver != 0;
+    ItemCheckHandle observer = 0;
+    ok = ok && svc_item->observe_checks(
+                   mod_ctx, item_check_test_observer, nullptr, &observer) == MOD_OK &&
+         observer != 0;
+
+    // The catch-all resolver runs after the value override and sees it through current_item;
+    // the observer sees the final item and the vanilla one.
+    ok = ok && item_check("mod_test.check", 5, nullptr) == 43;
+    ok = ok && g_item_observed == 43 && g_item_observed_vanilla == 5;
+    // The resolver passes on names it does not recognize.
+    ok = ok && item_check("mod_test.other", 7, nullptr) == 7;
+
+    ok = ok && svc_item->clear_check_resolver(mod_ctx, resolver) == MOD_OK;
+    ok = ok && svc_item->clear_check_override(mod_ctx, "mod_test.check") == MOD_OK;
+    ok = ok && svc_item->unobserve_checks(mod_ctx, observer) == MOD_OK;
+    ok = ok && item_check("mod_test.check", 5, nullptr) == 5;
+    g_item_check_ok = ok;
+    if (ok) {
+        svc_log->info(mod_ctx, "ItemService check override/resolver/observer OK");
+    } else {
+        svc_log->error(mod_ctx, "ItemService check override/resolver/observer FAILED");
+    }
+
+    bool neg = svc_item->set_check_override(mod_ctx, "", 1) == MOD_INVALID_ARGUMENT;
+    neg = neg && svc_item->set_check_override(mod_ctx, nullptr, 1) == MOD_INVALID_ARGUMENT;
+    neg = neg && svc_item->set_check_resolver(mod_ctx, "x", nullptr, nullptr, nullptr) ==
+                     MOD_INVALID_ARGUMENT;
+    neg = neg && svc_item->clear_check_override(mod_ctx, "mod_test.never") == MOD_INVALID_ARGUMENT;
+    neg = neg && svc_item->clear_check_resolver(mod_ctx, 0) == MOD_INVALID_ARGUMENT;
+    neg = neg && svc_item->unobserve_checks(mod_ctx, ~UINT64_C(0)) == MOD_INVALID_ARGUMENT;
+    g_item_check_neg_ok = neg;
+    if (neg) {
+        svc_log->info(mod_ctx, "ItemService negative tests OK");
+    } else {
+        svc_log->error(mod_ctx, "ItemService negative tests FAILED");
+    }
+}
 
 MOD_EXPORT ModResult mod_initialize(ModError* error) {
     svc_log->info(mod_ctx, "mod_test initializing");
@@ -1039,6 +1122,8 @@ MOD_EXPORT ModResult mod_initialize(ModError* error) {
     } else {
         svc_log->error(mod_ctx, "ConfigService negative tests FAILED");
     }
+
+    test_item_checks();
 
     ModResult result = dusk::mods::hook_add_pre<&daAlink_c::posMove>(svc_hook, on_pos_move_pre);
     if (result != MOD_OK) {

@@ -905,6 +905,11 @@ int dShopSystem_c::seq_start(fopAc_ac_c* actor, dMsgFlow_c* i_flow) {
                 int itemNo;
                 if (mFlow.getEventId(&itemNo) == 1) {
                     if (mItemPartnerId == fpcM_ERROR_PROCESS_ID_e) {
+#if TARGET_PC
+                        if (itemNo == dItemNo_HALF_MILK_BOTTLE_e) {
+                            DUSK_ITEM_CHECK("Ordon Cat Rescue", itemNo, actor);
+                        }
+#endif
                         mItemPartnerId = fopAcM_createItemForPresentDemo(&current.pos, itemNo, 0, -1,
                                                                       -1, NULL, NULL);
                     }

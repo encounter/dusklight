@@ -109,6 +109,7 @@ int daItemShield_c::__CreateHeap() {
 int daItemShield_c::create() {
     fopAcM_ct(this, daItemShield_c);
     m_itemNo = dItemNo_WOOD_SHIELD_e;
+    DUSK_ITEM_CHECK("Ordon Shield", m_itemNo, this);
     if (fopAcM_isSwitch(this, getSwBit2())) {
         OS_REPORT("木の盾：もう取ったので出ません\n");
         return cPhs_ERROR_e;
