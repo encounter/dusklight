@@ -15,7 +15,7 @@ Rml::Element* createRoot(Rml::Element* parent) {
 
 }  // namespace
 
-Pane::Pane(Rml::Element* parent, Type type, bool bottomSpacer) : FluentComponent(createRoot(parent)), mType(type), mBottomSpacer(bottomSpacer) {
+Pane::Pane(Rml::Element* parent, Type type) : FluentComponent(createRoot(parent)), mType(type) {
     listen(Rml::EventId::Keydown, [this](Rml::Event& event) {
         const auto cmd = map_nav_event(event);
 
@@ -192,9 +192,7 @@ void Pane::finalize() {
     // padding-bottom or margin-bottom on a scrollable flex container, so
     // we need to create a fake spacer with an actual layout height to get
     // padding at the bottom of a scrollable container.
-    if (mBottomSpacer) {
-        append(mRoot, "spacer");
-    }
+    append(mRoot, "spacer");
 }
 
 void Pane::clear() {

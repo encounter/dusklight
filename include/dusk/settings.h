@@ -263,8 +263,6 @@ struct UserSettings {
         ConfigVar<bool> liveSplitEnabled;
         ConfigVar<bool> showSpeedrunRTATimer;
         ConfigVar<bool> recordingMode;
-
-        // Misc
         ConfigVar<bool> removeQuestMapMarkers;
         ConfigVar<bool> showInputViewer;
         ConfigVar<bool> showInputViewerGyro;

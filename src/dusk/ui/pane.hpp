@@ -13,7 +13,8 @@ public:
         Uncontrolled,
     };
 
-    explicit Pane(Rml::Element* parent, Type type, bool bottomSpacer = true);
+    explicit Pane(Rml::Element* parent, Type type);
+
     bool focus() override;
     void update() override;
 
@@ -36,7 +37,6 @@ public:
 
 private:
     Type mType;
-    bool mBottomSpacer = true;
     bool finalized = false;
 };
 

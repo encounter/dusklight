@@ -88,17 +88,8 @@ static int daKytag08_Execute(kytag08_class* i_this) {
         }
     }
 
-#if TARGET_PC
-    bool doFogWipe = false;
-    if (randomizer_IsActive()) {
-        doFogWipe = ((i_this->mSizeTimer < 100) || dComIfGs_BossLife_public_Get() == 1);
-    }else {
-        doFogWipe = (daPy_getPlayerActorClass()->checkKandelaarSwing(TRUE) && i_this->mSizeTimer < 100) || dComIfGs_BossLife_public_Get() == 1;
-    }
-    if (doFogWipe)
-#else
-    if ((daPy_getPlayerActorClass()->checkKandelaarSwing(TRUE) && i_this->mSizeTimer < 100) || dComIfGs_BossLife_public_Get() == 1)
-#endif
+    if ((daPy_getPlayerActorClass()->checkKandelaarSwing(TRUE) && i_this->mSizeTimer < 100) ||
+        dComIfGs_BossLife_public_Get() == 1)
     {
         dComIfGs_BossLife_public_Set(0);
         i_this->mTargetAvoidPos = i_this->current.pos;

@@ -74,9 +74,6 @@ public:
     void clacEllipsePlotAverage(int, f32, f32);
     bool dpdMove();
     u8 openExplain(u8);
-#if TARGET_PC
-    void updateSlotImage(u8 slot);
-#endif
 
     virtual void draw() { _draw(); }
     virtual ~dMenu_Ring_c();
@@ -218,7 +215,6 @@ private:
     bool mCursorInterpPrevAngular;
     bool mCursorInterpCurrAngular;
     bool mCursorInterpInit;
-    J2DPicture* mDpadIcon;
 #endif
 };
 

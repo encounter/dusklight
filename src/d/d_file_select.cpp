@@ -1533,12 +1533,6 @@ void dFile_select_c::nameInput2() {
     case 2:
         dComIfGs_setHorseName(mpName->getInputStrPtr());
         mIsSelectEnd = true;
-#if TARGET_PC
-        // Create a randomizer save if one is selected
-        if (!randomizer_GetContext().mHash.empty()) {
-            dComIfGs_setupRandomizerSave();
-        }
-#endif
         mDataSelProc = DATASELPROC_NEXT_MODE_WAIT;
     }
 }

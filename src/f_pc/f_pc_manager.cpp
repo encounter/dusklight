@@ -23,11 +23,6 @@
 
 #include "tracy/Tracy.hpp"
 
-#if TARGET_PC
-#include "dusk/randomizer/game/randomizer_context.hpp"
-#endif
-
-
 void fpcM_Draw(void* i_proc) {
     fpcDw_Execute((base_process_class*)i_proc);
 }
@@ -94,16 +89,6 @@ void fpcM_Management(fpcM_ManagementFunc i_preExecuteFn, fpcM_ManagementFunc i_p
                 i_preExecuteFn();
             }
 
-#if TARGET_PC
-            if (randomizer_IsActive()) {
-                if (!g_randomizerState.mInitialized) {
-                    g_randomizerState._create();
-                }
-                g_randomizerState.execute();
-            } else if (g_randomizerState.mInitialized) {
-                g_randomizerState = RandomizerState{};
-            }
-#endif
             if (!fapGm_HIO_c::isCaptureScreen()) {
                 fpcEx_Handler((fpcLnIt_QueueFunc)fpcM_Execute);
             }
@@ -111,12 +96,6 @@ void fpcM_Management(fpcM_ManagementFunc i_preExecuteFn, fpcM_ManagementFunc i_p
             if (!fapGm_HIO_c::isCaptureScreen() || fapGm_HIO_c::getCaptureScreenDivH() != 1) {
                 fpcDw_Handler((fpcDw_HandlerFuncFunc)fpcM_DrawIterater, (fpcDw_HandlerFunc)fpcM_Draw);
             }
-
-#if TARGET_PC
-            if (randomizer_IsActive()) {
-                g_randomizerState.draw();
-            }
-#endif
 
             if (i_postExecuteFn != NULL) {
                 i_postExecuteFn();
