@@ -86,12 +86,39 @@ ModResult stage_remove_actor_edit_(ModContext* context, StageActorHandle handle)
     return stage_remove_actor_edit(*mod, handle);
 }
 
+ModResult stage_register_layer_resolver_(ModContext* context, StageLayerResolveFn fn,
+    void* userData, StageLayerHandle* outHandle) {
+    if (outHandle != nullptr) {
+        *outHandle = 0;
+    }
+    auto* mod = mod_from_context(context);
+    if (mod == nullptr || fn == nullptr) {
+        return MOD_INVALID_ARGUMENT;
+    }
+    uint64_t handle = 0;
+    const auto result = stage_register_layer_resolver(*mod, fn, userData, handle);
+    if (outHandle != nullptr) {
+        *outHandle = handle;
+    }
+    return result;
+}
+
+ModResult stage_unregister_layer_resolver_(ModContext* context, StageLayerHandle handle) {
+    auto* mod = mod_from_context(context);
+    if (mod == nullptr || handle == 0) {
+        return MOD_INVALID_ARGUMENT;
+    }
+    return stage_unregister_layer_resolver(*mod, handle);
+}
+
 constexpr StageService s_stageService{
     .header = SERVICE_HEADER(StageService, STAGE_SERVICE_MAJOR, STAGE_SERVICE_MINOR),
     .patch_actor = stage_patch_actor_,
     .delete_actor = stage_delete_actor_,
     .add_actor = stage_add_actor_,
     .remove_actor_edit = stage_remove_actor_edit_,
+    .register_layer_resolver = stage_register_layer_resolver_,
+    .unregister_layer_resolver = stage_unregister_layer_resolver_,
 };
 
 }  // namespace

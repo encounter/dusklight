@@ -1,10 +1,13 @@
+#include "dusk/mods/stage.hpp"
 #include "aurora/lib/logging.hpp"
 #include "dusk/mod_loader.hpp"
-#include "dusk/mods/stage.hpp"
 #include "loader.hpp"
 
 #include "d/d_com_inf_game.h"
 
+#include <fmt/format.h>
+
+#include <algorithm>
 #include <array>
 #include <cstring>
 #include <string>
@@ -31,15 +34,26 @@ struct ActorEditRecord {
     uint8_t room = 0;
     uint8_t layer = kLayerAny;
     EditKind kind = EditKind::Patch;
-    uint32_t crc = 0;                 // Patch/Delete
-    std::vector<uint8_t> record;      // Patch/Add
+    uint32_t crc = 0;             // Patch/Delete
+    std::vector<uint8_t> record;  // Patch/Add
+};
+
+struct LayerResolverRecord {
+    uint64_t handle = 0;
+    LoadedMod* mod = nullptr;
+    uint64_t seq = 0;
+    StageLayerResolveFn fn = nullptr;
+    void* userData = nullptr;
 };
 
 // Game thread only. Keyed by stage name; the per-stage lists stay small.
-std::unordered_map<std::string, std::vector<ActorEditRecord>> s_edits;
+std::unordered_map<std::string, std::vector<ActorEditRecord> > s_edits;
+std::vector<LayerResolverRecord> s_layerResolvers;
 uint64_t s_nextHandle = 1;
 uint64_t s_nextSeq = 1;
 std::unordered_set<uint64_t> s_warnedRecords;  // (crc | seq-of-stage-hash) collision warnings
+bool s_warnedLayerCollision = false;
+bool s_warnedLayerRange = false;
 
 // Position in m_mods (dependency-sorted load order) + 1; later-loaded mods win.
 int32_t compute_mod_priority(const LoadedMod& mod) {
@@ -123,9 +137,10 @@ bool stage_apply_actor_edits(void* actorData, void* actorPrm, int8_t roomNo) {
             continue;
         }
         // A patch's record size selects which CRC it targets; deletes match either.
-        const bool matches = record.kind == EditKind::Delete
-            ? record.crc == crcActor || record.crc == crcTgsc
-            : record.crc == (record.record.size() == kTgscRecordSize ? crcTgsc : crcActor);
+        const bool matches =
+            record.kind == EditKind::Delete ?
+                record.crc == crcActor || record.crc == crcTgsc :
+                record.crc == (record.record.size() == kTgscRecordSize ? crcTgsc : crcActor);
         if (!matches) {
             continue;
         }
@@ -156,6 +171,49 @@ bool stage_apply_actor_edits(void* actorData, void* actorPrm, int8_t roomNo) {
     return true;
 }
 
+bool stage_resolve_layer(const char* stageName, int roomNo, int* ioLayer) {
+    if (s_layerResolvers.empty() || stageName == nullptr) {
+        return false;
+    }
+    // Snapshot before any callback runs so resolvers can (un)register freely; first non-pass
+    // wins, later-loaded mods first (rule-3 priority; reverse registration within a mod).
+    auto chain = s_layerResolvers;
+    std::stable_sort(chain.begin(), chain.end(), [](const auto& a, const auto& b) {
+        const auto pa = compute_mod_priority(*a.mod);
+        const auto pb = compute_mod_priority(*b.mod);
+        return pa != pb ? pa > pb : a.seq > b.seq;
+    });
+    for (const auto& record : chain) {
+        if (!record.mod->active) {
+            continue;
+        }
+        int32_t resolved = *ioLayer;
+        try {
+            if (!record.fn(record.mod->context.get(), stageName, roomNo, *ioLayer, &resolved,
+                    record.userData))
+            {
+                continue;
+            }
+        } catch (const std::exception& e) {
+            fail_mod(*record.mod, MOD_ERROR,
+                fmt::format("exception in layer resolver for '{}': {}", stageName, e.what()));
+            continue;
+        } catch (...) {
+            fail_mod(*record.mod, MOD_ERROR,
+                fmt::format("unknown exception in layer resolver for '{}'", stageName));
+            continue;
+        }
+        if ((resolved < -1 || resolved > 14) && !s_warnedLayerRange) {
+            s_warnedLayerRange = true;
+            Log.warn("[{}] layer resolver returned {} for '{}' (expected -1..14)",
+                record.mod->metadata.id, resolved, stageName);
+        }
+        *ioLayer = resolved;
+        return true;
+    }
+    return false;
+}
+
 void stage_visit_additions(
     int8_t roomNo, void (*visit)(void* user, const void* record, size_t size), void* user) {
     const auto* edits = current_stage_edits();
@@ -174,8 +232,8 @@ void stage_visit_additions(
 
 namespace {
 
-ModResult register_edit(LoadedMod& mod, const char* stage, ActorEditRecord&& record,
-    uint64_t& outHandle) {
+ModResult register_edit(
+    LoadedMod& mod, const char* stage, ActorEditRecord&& record, uint64_t& outHandle) {
     record.handle = s_nextHandle++;
     record.mod = &mod;
     record.seq = s_nextSeq++;
@@ -216,11 +274,35 @@ ModResult stage_add_actor(LoadedMod& mod, const char* stage, uint8_t room, uint8
         outHandle);
 }
 
+ModResult stage_register_layer_resolver(
+    LoadedMod& mod, StageLayerResolveFn fn, void* userData, uint64_t& outHandle) {
+    if (!s_warnedLayerCollision && std::any_of(s_layerResolvers.begin(), s_layerResolvers.end(),
+                                       [&](const auto& record) { return record.mod != &mod; }))
+    {
+        s_warnedLayerCollision = true;
+        Log.warn("layer resolvers registered by multiple mods; the later-loaded one wins");
+    }
+    outHandle = s_nextHandle++;
+    s_layerResolvers.push_back({
+        .handle = outHandle,
+        .mod = &mod,
+        .seq = s_nextSeq++,
+        .fn = fn,
+        .userData = userData,
+    });
+    return MOD_OK;
+}
+
+ModResult stage_unregister_layer_resolver(LoadedMod& mod, uint64_t handle) {
+    const auto removed = std::erase_if(s_layerResolvers,
+        [&](const auto& record) { return record.handle == handle && record.mod == &mod; });
+    return removed != 0 ? MOD_OK : MOD_INVALID_ARGUMENT;
+}
+
 ModResult stage_remove_actor_edit(LoadedMod& mod, uint64_t handle) {
     for (auto it = s_edits.begin(); it != s_edits.end(); ++it) {
-        const auto removed = std::erase_if(it->second, [&](const auto& record) {
-            return record.handle == handle && record.mod == &mod;
-        });
+        const auto removed = std::erase_if(it->second,
+            [&](const auto& record) { return record.handle == handle && record.mod == &mod; });
         if (removed != 0) {
             if (it->second.empty()) {
                 s_edits.erase(it);
@@ -236,6 +318,7 @@ void stage_remove_mod(LoadedMod& mod) {
         std::erase_if(it->second, [&](const auto& record) { return record.mod == &mod; });
         it = it->second.empty() ? s_edits.erase(it) : std::next(it);
     }
+    std::erase_if(s_layerResolvers, [&](const auto& record) { return record.mod == &mod; });
 }
 
 }  // namespace dusk::mods

@@ -5,7 +5,7 @@
 
 #define UI_SERVICE_ID "dev.twilitrealm.dusklight.ui"
 #define UI_SERVICE_MAJOR 2u
-#define UI_SERVICE_MINOR 2u
+#define UI_SERVICE_MINOR 3u
 
 /*
  * UI primitives: a panel inside the host Mods window, mod-owned tabbed windows,
@@ -27,6 +27,7 @@ typedef uint64_t UiDialogHandle;
 /* Panes, text/badge/progress rows and controls all use UiElementHandle. */
 typedef uint64_t UiElementHandle;
 typedef uint64_t UiStyleHandle;
+typedef uint64_t UiMenuTabHandle;
 
 typedef enum UiStyleScope {
     UI_SCOPE_PRELAUNCH = 0,      /* the pre-launch menu */
@@ -202,6 +203,16 @@ typedef struct UiDialogDesc {
 
 #define UI_DIALOG_DESC_INIT {sizeof(UiDialogDesc), NULL, NULL, UI_DIALOG_NORMAL, NULL, NULL, 0u, NULL, NULL}
 
+/* A tab added to the in-game menu bar. */
+typedef struct UiMenuTabDesc {
+    uint32_t struct_size;
+    const char* label;       /* plain text; required */
+    UiPressedFn on_selected; /* fired when the user activates the tab; required */
+    void* user_data;
+} UiMenuTabDesc;
+
+#define UI_MENU_TAB_DESC_INIT {sizeof(UiMenuTabDesc), NULL, NULL, NULL}
+
 typedef struct UiService {
     ServiceHeader header;
 
@@ -266,6 +277,27 @@ typedef struct UiService {
     ModResult (*register_styles_file)(
         ModContext* ctx, UiStyleScope scope, const char* path, UiStyleHandle* out_style);
     ModResult (*unregister_styles)(ModContext* ctx, UiStyleHandle style);
+
+    /* --- minor 3: menu-bar tabs, dialog mutation --- */
+
+    /* Add a tab to the in-game menu bar, after the host tabs, in registration
+     * order (duplicate labels across mods are allowed and logged). The menu bar
+     * rebuilds on the next loader tick, so the tab appears/disappears one tick
+     * after (un)registration. on_selected runs with the menu open; pushing a
+     * window from it stacks the window over the menu like the host tabs do.
+     * The tab is removed when unregistered or the mod is torn down. */
+    ModResult (*register_menu_tab)(
+        ModContext* ctx, const UiMenuTabDesc* desc, UiMenuTabHandle* out_tab);
+    ModResult (*unregister_menu_tab)(ModContext* ctx, UiMenuTabHandle tab);
+
+    /* Mutate a live dialog. Handles come from dialog_push; a closed dialog's
+     * handle fails with MOD_INVALID_ARGUMENT. */
+    ModResult (*dialog_set_body)(ModContext* ctx, UiDialogHandle dialog, const char* body_rml);
+    /* Replace the dialog icon ("" removes it; names as in UiDialogDesc.icon). */
+    ModResult (*dialog_set_icon)(ModContext* ctx, UiDialogHandle dialog, const char* icon);
+    /* Append one action button (same callback rules as at push). */
+    ModResult (*dialog_add_action)(
+        ModContext* ctx, UiDialogHandle dialog, const UiDialogAction* action);
 } UiService;
 
 #ifdef __cplusplus

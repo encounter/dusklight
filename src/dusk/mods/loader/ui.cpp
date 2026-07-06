@@ -1,6 +1,7 @@
 #include "dusk/ui/ui.hpp"
 #include "aurora/lib/logging.hpp"
 #include "dusk/mod_loader.hpp"
+#include "dusk/ui/menu_bar.hpp"
 #include "dusk/ui/mod_window.hpp"
 #include "dusk/ui/modal.hpp"
 #include "loader.hpp"
@@ -30,6 +31,7 @@ enum class UiSlotKind : u8 {
     Progress,
     Control,
     Style,
+    MenuTab,
 };
 
 const char* slot_kind_name(UiSlotKind kind) {
@@ -50,6 +52,8 @@ const char* slot_kind_name(UiSlotKind kind) {
         return "control";
     case UiSlotKind::Style:
         return "style";
+    case UiSlotKind::MenuTab:
+        return "menu tab";
     default:
         return "free";
     }
@@ -85,6 +89,18 @@ struct ModUiPanel {
     void* userData = nullptr;
 };
 std::unordered_map<const LoadedMod*, std::vector<ModUiPanel> > s_modPanels;
+
+struct ModMenuTab {
+    uint64_t handle = 0;
+    std::string label;
+    UiPressedFn onSelected = nullptr;
+    void* userData = nullptr;
+};
+std::unordered_map<const LoadedMod*, std::vector<ModMenuTab> > s_modMenuTabs;
+// Registrations only mark the tab set dirty; the MenuBar swap is deferred to
+// ModLoader::tick (ui_sync_menu_tabs) so it never destroys a MenuBar while one
+// of its own tab callbacks is executing.
+bool s_menuTabsDirty = false;
 
 uint64_t handle_for(uint32_t index) {
     return (uint64_t{s_slots[index].generation} << 32) | index;
@@ -456,6 +472,31 @@ void push_stacked_document(std::unique_ptr<ui::Document> document) {
     }
 }
 
+// Shared by dialog_push and dialog_add_action; the guard handle keeps a
+// pressed callback from calling into a torn-down mod.
+ui::ModalAction make_dialog_action(LoadedMod& mod, uint64_t handle, const UiDialogAction& action) {
+    return {
+        .label = ui::escape(action.label),
+        .onPressed =
+            [modPtr = &mod, handle, fn = action.on_pressed, userData = action.user_data,
+                keepOpen = action.keep_open != 0](ui::Modal& modal) {
+                if (!slot_live(handle)) {
+                    return;  // already being torn down
+                }
+                if (fn != nullptr) {
+                    guarded_call(*modPtr, "dialog action callback", 0, [&] {
+                        fn(modPtr->context.get(), handle, userData);
+                        return 0;
+                    });
+                }
+                // The callback may have closed the dialog already
+                if (!keepOpen && slot_live(handle)) {
+                    static_cast<ModDialog&>(modal).close();
+                }
+            },
+    };
+}
+
 }  // namespace
 
 ModResult ui_register_mods_panel(LoadedMod& mod, const UiModsPanelDesc& desc) {
@@ -816,27 +857,7 @@ ModResult ui_dialog_push(LoadedMod& mod, const UiDialogDesc& desc, uint64_t& out
         static_cast<ModDialog&>(modal).close();
     };
     for (size_t i = 0; i < desc.action_count; ++i) {
-        const UiDialogAction& action = desc.actions[i];
-        props.actions.push_back({
-            .label = ui::escape(action.label),
-            .onPressed =
-                [modPtr = &mod, handle, fn = action.on_pressed, userData = action.user_data,
-                    keepOpen = action.keep_open != 0](ui::Modal& modal) {
-                    if (!slot_live(handle)) {
-                        return;  // already being torn down
-                    }
-                    if (fn != nullptr) {
-                        guarded_call(*modPtr, "dialog action callback", 0, [&] {
-                            fn(modPtr->context.get(), handle, userData);
-                            return 0;
-                        });
-                    }
-                    // The callback may have closed the dialog already
-                    if (!keepOpen && slot_live(handle)) {
-                        static_cast<ModDialog&>(modal).close();
-                    }
-                },
-        });
+        props.actions.push_back(make_dialog_action(mod, handle, desc.actions[i]));
     }
 
     auto* previousTop = ui::top_document();
@@ -859,6 +880,110 @@ ModResult ui_dialog_close(LoadedMod& mod, uint64_t handle) {
     // Programmatic close: no dismiss notification, no sound
     static_cast<ModDialog*>(slot->document)->close();
     return MOD_OK;
+}
+
+ModResult ui_dialog_set_body(LoadedMod& mod, uint64_t handle, const char* rml) {
+    auto* slot = resolve(mod, handle, UiSlotKind::Dialog, "dialog_set_body");
+    if (slot == nullptr || slot->document == nullptr) {
+        return MOD_INVALID_ARGUMENT;
+    }
+    static_cast<ModDialog*>(slot->document)->set_body(rml);
+    return MOD_OK;
+}
+
+ModResult ui_dialog_set_icon(LoadedMod& mod, uint64_t handle, const char* icon) {
+    auto* slot = resolve(mod, handle, UiSlotKind::Dialog, "dialog_set_icon");
+    if (slot == nullptr || slot->document == nullptr) {
+        return MOD_INVALID_ARGUMENT;
+    }
+    static_cast<ModDialog*>(slot->document)->set_icon(icon);
+    return MOD_OK;
+}
+
+ModResult ui_dialog_add_action(LoadedMod& mod, uint64_t handle, const UiDialogAction& action) {
+    auto* slot = resolve(mod, handle, UiSlotKind::Dialog, "dialog_add_action");
+    if (slot == nullptr || slot->document == nullptr) {
+        return MOD_INVALID_ARGUMENT;
+    }
+    static_cast<ModDialog*>(slot->document)->add_action(make_dialog_action(mod, handle, action));
+    return MOD_OK;
+}
+
+ModResult ui_register_menu_tab(LoadedMod& mod, const UiMenuTabDesc& desc, uint64_t& outHandle) {
+    outHandle = 0;
+    for (const auto& [owner, tabs] : s_modMenuTabs) {
+        for (const auto& tab : tabs) {
+            if (owner != &mod && tab.label == desc.label) {
+                Log.warn("[{}] register_menu_tab: label '{}' is already used by [{}]",
+                    mod.metadata.id, desc.label, owner->metadata.id);
+            }
+        }
+    }
+    uint64_t handle = 0;
+    alloc_slot(mod, UiSlotKind::MenuTab, handle);
+    s_modMenuTabs[&mod].push_back(
+        {.handle = handle, .label = desc.label, .onSelected = desc.on_selected,
+            .userData = desc.user_data});
+    s_menuTabsDirty = true;
+    outHandle = handle;
+    return MOD_OK;
+}
+
+ModResult ui_unregister_menu_tab(LoadedMod& mod, uint64_t handle) {
+    auto* slot = resolve(mod, handle, UiSlotKind::MenuTab, "unregister_menu_tab");
+    if (slot == nullptr) {
+        return MOD_INVALID_ARGUMENT;
+    }
+    const auto it = s_modMenuTabs.find(&mod);
+    if (it != s_modMenuTabs.end()) {
+        std::erase_if(it->second, [&](const auto& tab) { return tab.handle == handle; });
+        if (it->second.empty()) {
+            s_modMenuTabs.erase(it);
+        }
+    }
+    free_slot(*slot);
+    s_menuTabsDirty = true;
+    return MOD_OK;
+}
+
+std::vector<ModMenuTabEntry> ui_mod_menu_tabs() {
+    // The consumer (a MenuBar being constructed) now reflects the current tab
+    // set, so a pending rebuild for earlier mutations is moot.
+    s_menuTabsDirty = false;
+    std::vector<ModMenuTabEntry> entries;
+    for (auto& mod : ModLoader::instance().mods()) {
+        if (!mod.active) {
+            continue;
+        }
+        const auto it = s_modMenuTabs.find(&mod);
+        if (it == s_modMenuTabs.end()) {
+            continue;
+        }
+        for (const auto& tab : it->second) {
+            entries.push_back({.label = tab.label,
+                .onSelected = [modPtr = &mod, handle = tab.handle, fn = tab.onSelected,
+                                  userData = tab.userData] {
+                    if (!slot_live(handle) || !modPtr->active) {
+                        return;  // registered by a since-unloaded mod image
+                    }
+                    guarded_call(*modPtr, "menu tab on_selected callback", 0, [&] {
+                        fn(modPtr->context.get(), userData);
+                        return 0;
+                    });
+                }});
+        }
+    }
+    return entries;
+}
+
+void ui_sync_menu_tabs() {
+    if (!s_menuTabsDirty) {
+        return;
+    }
+    s_menuTabsDirty = false;
+    if (aurora::rmlui::is_initialized()) {
+        ui::MenuBar::rebuild();
+    }
 }
 
 bool ui_any_document_visible() {
@@ -950,6 +1075,9 @@ ModResult ui_unregister_styles(LoadedMod& mod, uint64_t handle) {
 
 void ui_remove_mod(LoadedMod& mod) {
     s_modPanels.erase(&mod);
+    if (s_modMenuTabs.erase(&mod) != 0) {
+        s_menuTabsDirty = true;
+    }
     for (auto& slot : s_slots) {
         if (slot.kind == UiSlotKind::Free || slot.owner != &mod) {
             continue;

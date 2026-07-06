@@ -168,6 +168,9 @@ ModResult stage_delete_actor(LoadedMod& mod, const char* stage, uint8_t room, ui
 ModResult stage_add_actor(LoadedMod& mod, const char* stage, uint8_t room, uint8_t layer,
     const void* record, size_t recordSize, uint64_t& outHandle);
 ModResult stage_remove_actor_edit(LoadedMod& mod, uint64_t handle);
+ModResult stage_register_layer_resolver(
+    LoadedMod& mod, StageLayerResolveFn fn, void* userData, uint64_t& outHandle);
+ModResult stage_unregister_layer_resolver(LoadedMod& mod, uint64_t handle);
 void stage_remove_mod(LoadedMod& mod);
 
 // CRC-32 (IEEE, reflected; defined in loader/stage.cpp) shared by stage-edit matching and the
@@ -202,6 +205,19 @@ ModResult ui_register_styles(LoadedMod& mod, uint32_t scope, const char* rcss, u
 ModResult ui_register_styles_file(
     LoadedMod& mod, uint32_t scope, const char* path, uint64_t& outHandle);
 ModResult ui_unregister_styles(LoadedMod& mod, uint64_t handle);
+ModResult ui_register_menu_tab(LoadedMod& mod, const UiMenuTabDesc& desc, uint64_t& outHandle);
+ModResult ui_unregister_menu_tab(LoadedMod& mod, uint64_t handle);
+ModResult ui_dialog_set_body(LoadedMod& mod, uint64_t handle, const char* rml);
+ModResult ui_dialog_set_icon(LoadedMod& mod, uint64_t handle, const char* icon);
+ModResult ui_dialog_add_action(LoadedMod& mod, uint64_t handle, const UiDialogAction& action);
+// Host MenuBar consumption: label + ready-to-use callback (mod-liveness guards baked in).
+struct ModMenuTabEntry {
+    std::string label;
+    std::function<void()> onSelected;
+};
+std::vector<ModMenuTabEntry> ui_mod_menu_tabs();
+// Consumes the menu-tabs dirty flag and rebuilds the MenuBar document (ModLoader::tick).
+void ui_sync_menu_tabs();
 void ui_remove_mod(LoadedMod& mod);
 
 // Gfx service plumbing (loader/gfx.cpp). Unlike the other loader records, the slot table is

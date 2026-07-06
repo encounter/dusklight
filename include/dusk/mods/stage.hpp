@@ -21,4 +21,12 @@ bool stage_apply_actor_edits(void* actorData, void* actorPrm, int8_t roomNo);
 void stage_visit_additions(
     int8_t roomNo, void (*visit)(void* user, const void* record, size_t size), void* user);
 
+// Layer-resolver seam for dComIfG_play_c::getLayerNo_common_common. Called only inside the
+// "derive the layer" branch (explicit layer < 0), after the Twilight check, gated on
+// layer < 13 like the vanilla ladder (*ioLayer is -1 at the call). Returns true when a mod
+// resolver supplied *ioLayer (skip the vanilla event-bit ladder), false to run it. FIXME: the
+// function's trailing R_SP107/D_MN08A special case still runs after a resolver fires and can
+// overwrite its answer for those stages.
+bool stage_resolve_layer(const char* stageName, int roomNo, int* ioLayer);
+
 }  // namespace dusk::mods

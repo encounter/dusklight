@@ -36,7 +36,7 @@ DEFINE_MOD();
 IMPORT_SERVICE(HostService, svc_host);
 IMPORT_SERVICE(LogService, svc_log);
 IMPORT_SERVICE(ResourceService, svc_resource);
-IMPORT_SERVICE_VERSION(UiService, svc_ui, 2);
+IMPORT_SERVICE_VERSION(UiService, svc_ui, 3);
 IMPORT_SERVICE_VERSION(HookService, svc_hook, 1);
 IMPORT_SERVICE(OverlayService, svc_overlay);
 IMPORT_SERVICE(TextureService, svc_texture);
@@ -48,7 +48,7 @@ IMPORT_SERVICE(ItemService, svc_item);
 IMPORT_SERVICE(FlowService, svc_flow);
 IMPORT_SERVICE(TextService, svc_text);
 IMPORT_SERVICE(SaveService, svc_save);
-IMPORT_SERVICE(StageService, svc_stage);
+IMPORT_SERVICE_VERSION(StageService, svc_stage, 1);
 // Both provided by mod_test_dep, which sorts *after* mod_test.dusk in the mods directory;
 // dependency ordering must initialize it first regardless. The deferred service only
 // resolves if mod_test_dep published it during its initialization.
@@ -90,12 +90,17 @@ bool g_text_ok = false;
 bool g_text_neg_ok = false;
 bool g_save_ok = false;
 bool g_stage_ok = false;
+bool g_stage_layer_ok = false;
+bool g_layer_resolver_called = false;  // flips on the first getLayerNo derivation (stage load)
 int g_config_change_count = 0;
 int64_t g_config_prev_value = -1;
 int64_t g_config_curr_value = -1;
 bool g_ui_stack_ok = false;
 bool g_ui_rcss_ok = false;
 bool g_ui_neg_ok = false;
+bool g_ui_menu_tab_ok = false;
+bool g_dialog_extra_added = false;
+int g_dialog_mutations = 0;
 bool g_gfx_device_ok = false;
 bool g_gfx_neg_ok = false;
 bool g_camera_neg_ok = false;
@@ -447,18 +452,41 @@ void on_dialog_dismissed(ModContext*, UiDialogHandle, void*) {
     svc_log->info(mod_ctx, "mod_test: dialog dismissed");
 }
 
+// Exercises dialog mutation on the live dialog: body text, the icon (the danger dialog starts
+// with the "error" icon, so this swaps an existing element), and a one-time appended action.
+void on_dialog_mutate(ModContext*, UiDialogHandle dialog, void*) {
+    ++g_dialog_mutations;
+    char body[96];
+    std::snprintf(body, sizeof(body), "Mutated <span class=\"tip\">%d</span> time(s).",
+        g_dialog_mutations);
+    bool ok = svc_ui->dialog_set_body(mod_ctx, dialog, body) == MOD_OK &&
+              svc_ui->dialog_set_icon(mod_ctx, dialog, "celebration") == MOD_OK;
+    if (!g_dialog_extra_added) {
+        UiDialogAction extra = {"Extra", on_dialog_proceed, nullptr, true};
+        ok = ok && svc_ui->dialog_add_action(mod_ctx, dialog, &extra) == MOD_OK;
+        g_dialog_extra_added = true;
+    }
+    if (ok) {
+        svc_log->info(mod_ctx, "mod_test: dialog mutation OK");
+    } else {
+        svc_log->error(mod_ctx, "mod_test: dialog mutation FAILED");
+    }
+}
+
 void on_open_dialog(ModContext*, void*) {
-    UiDialogAction actions[2] = {
+    UiDialogAction actions[3] = {
         {"Cancel", nullptr, nullptr, false},
         {"Proceed", on_dialog_proceed, nullptr, false},
+        {"Mutate", on_dialog_mutate, nullptr, true},
     };
     UiDialogDesc desc = UI_DIALOG_DESC_INIT;
     desc.title = "Test Dialog";
     desc.body_rml = "Danger variant with an <span class=\"tip\">RML body</span>. B dismisses.";
     desc.variant = UI_DIALOG_DANGER;
     desc.actions = actions;
-    desc.action_count = 2;
+    desc.action_count = 3;
     desc.on_dismiss = on_dialog_dismissed;
+    g_dialog_extra_added = false;
     svc_ui->dialog_push(mod_ctx, &desc, nullptr);
 }
 
@@ -756,6 +784,10 @@ ModResult build_panel(ModContext*, UiElementHandle panel, void*, ModError*) {
         mod_ctx, panel, "TextService negative tests", g_text_neg_ok, nullptr);
 
     svc_ui->pane_add_section(mod_ctx, panel, "Save + Stage");
+    svc_ui->pane_add_badge_row(mod_ctx, panel, "layer resolver registration + negatives",
+        g_stage_layer_ok, nullptr);
+    svc_ui->pane_add_badge_row(
+        mod_ctx, panel, "layer resolver dispatched", g_layer_resolver_called, nullptr);
     svc_ui->pane_add_badge_row(
         mod_ctx, panel, "SaveService registration + negatives", g_save_ok, nullptr);
     svc_ui->pane_add_badge_row(
@@ -765,6 +797,7 @@ ModResult build_panel(ModContext*, UiElementHandle panel, void*, ModError*) {
     svc_ui->pane_add_badge_row(mod_ctx, panel, "stack queries", g_ui_stack_ok, nullptr);
     svc_ui->pane_add_badge_row(mod_ctx, panel, "scoped RCSS registered", g_ui_rcss_ok, nullptr);
     svc_ui->pane_add_badge_row(mod_ctx, panel, "UI negative tests", g_ui_neg_ok, nullptr);
+    svc_ui->pane_add_badge_row(mod_ctx, panel, "menu tab registered", g_ui_menu_tab_ok, nullptr);
 
     svc_ui->pane_add_section(mod_ctx, panel, "Gfx");
     svc_ui->pane_add_badge_row(mod_ctx, panel, "device info", g_gfx_device_ok, nullptr);
@@ -1037,6 +1070,20 @@ void test_text() {
 // need an active save slot — those paths are verified in gameplay.
 void save_test_event(ModContext*, uint32_t, void*) {}
 
+// Persistent pass-through resolver: dispatch evidence for the getLayerNo_common_common seam
+// without changing which layer actually loads.
+bool layer_resolver_pass(
+    ModContext*, const char* stage, int32_t roomNo, int32_t, int32_t*, void*) {
+    if (!g_layer_resolver_called) {
+        g_layer_resolver_called = true;
+        char buf[64];
+        std::snprintf(buf, sizeof(buf), "layer resolver dispatched: %s room %d", stage,
+            static_cast<int>(roomNo));
+        svc_log->info(mod_ctx, buf);
+    }
+    return false;
+}
+
 void test_save_stage() {
     SaveObserverHandle observer = 0;
     bool ok = svc_save->observe_saves(
@@ -1090,6 +1137,27 @@ void test_save_stage() {
         svc_log->info(mod_ctx, "StageService registration + negatives OK");
     } else {
         svc_log->error(mod_ctx, "StageService registration + negatives FAILED");
+    }
+
+    // Layer resolver (StageService 1.1): round trip + negatives, then a persistent
+    // pass-through registration whose dispatch flips g_layer_resolver_called on stage load.
+    StageLayerHandle layerHandle = 0;
+    bool layerOk = svc_stage->register_layer_resolver(
+                       mod_ctx, layer_resolver_pass, nullptr, &layerHandle) == MOD_OK &&
+                   layerHandle != 0;
+    layerOk = layerOk && svc_stage->unregister_layer_resolver(mod_ctx, layerHandle) == MOD_OK;
+    // Negatives: double-unregister, null fn.
+    layerOk = layerOk &&
+              svc_stage->unregister_layer_resolver(mod_ctx, layerHandle) == MOD_INVALID_ARGUMENT;
+    layerOk = layerOk && svc_stage->register_layer_resolver(mod_ctx, nullptr, nullptr,
+                             &layerHandle) == MOD_INVALID_ARGUMENT;
+    layerOk = layerOk && svc_stage->register_layer_resolver(
+                             mod_ctx, layer_resolver_pass, nullptr, nullptr) == MOD_OK;
+    g_stage_layer_ok = layerOk;
+    if (layerOk) {
+        svc_log->info(mod_ctx, "StageService layer resolver registration + negatives OK");
+    } else {
+        svc_log->error(mod_ctx, "StageService layer resolver registration + negatives FAILED");
     }
 }
 
@@ -1417,6 +1485,19 @@ MOD_EXPORT ModResult mod_initialize(ModError* error) {
         return require_ok(result, error, "failed to register UI panel");
     }
 
+    // Menu-bar tab (UiService 2.3): opens the interactive test window like the panel button.
+    UiMenuTabDesc menuTabDesc = UI_MENU_TAB_DESC_INIT;
+    menuTabDesc.label = "Mod Test";
+    menuTabDesc.on_selected = on_open_window;
+    UiMenuTabHandle menuTab = 0;
+    g_ui_menu_tab_ok = svc_ui->register_menu_tab(mod_ctx, &menuTabDesc, &menuTab) == MOD_OK &&
+                       menuTab != 0;
+    if (g_ui_menu_tab_ok) {
+        svc_log->info(mod_ctx, "UiService menu tab registered OK");
+    } else {
+        svc_log->error(mod_ctx, "UiService menu tab FAILED");
+    }
+
     // Stack queries work at init (don't assert the visibility state itself: it depends on
     // which host documents are open when mods initialize).
     bool anyVisible = false;
@@ -1459,13 +1540,16 @@ MOD_EXPORT ModResult mod_initialize(ModError* error) {
 
     // Negative tests: fabricated/stale handles, out-of-range enums, malformed descs and
     // missing files must be rejected. Expected host error lines: stale text handle, stale
-    // dialog handle, stale style handle, missing styles file.
+    // dialog handles (close/set_body/set_icon/add_action), stale style handle, stale menu
+    // tab handle, missing styles file.
     UiControlDesc badSelect = UI_CONTROL_DESC_INIT;
     badSelect.kind = UI_CONTROL_SELECT;
     badSelect.label = "bad";
     badSelect.get = cb_number_get;
     badSelect.set = cb_number_set;                 // SELECT without options is invalid
     UiWindowDesc badWindow = UI_WINDOW_DESC_INIT;  // no tabs
+    UiMenuTabDesc badTab = UI_MENU_TAB_DESC_INIT;  // no label, no on_selected
+    UiDialogAction staleAction = {"x", nullptr, nullptr, false};
     const uint64_t bogus = (UINT64_C(1) << 32) | UINT64_C(0xdead);
     g_ui_neg_ok =
         svc_ui->elem_set_text(mod_ctx, bogus, "x") == MOD_INVALID_ARGUMENT &&
@@ -1476,7 +1560,13 @@ MOD_EXPORT ModResult mod_initialize(ModError* error) {
         svc_ui->register_styles_file(mod_ctx, UI_SCOPE_WINDOW, "does_not_exist.rcss", nullptr) ==
             MOD_UNAVAILABLE &&
         svc_ui->pane_add_control(mod_ctx, bogus, &badSelect, nullptr) == MOD_INVALID_ARGUMENT &&
-        svc_ui->window_push(mod_ctx, &badWindow, nullptr) == MOD_INVALID_ARGUMENT;
+        svc_ui->window_push(mod_ctx, &badWindow, nullptr) == MOD_INVALID_ARGUMENT &&
+        svc_ui->dialog_set_body(mod_ctx, bogus, "x") == MOD_INVALID_ARGUMENT &&
+        svc_ui->dialog_set_icon(mod_ctx, bogus, "warning") == MOD_INVALID_ARGUMENT &&
+        svc_ui->dialog_add_action(mod_ctx, bogus, &staleAction) == MOD_INVALID_ARGUMENT &&
+        svc_ui->dialog_add_action(mod_ctx, bogus, nullptr) == MOD_INVALID_ARGUMENT &&
+        svc_ui->register_menu_tab(mod_ctx, &badTab, nullptr) == MOD_INVALID_ARGUMENT &&
+        svc_ui->unregister_menu_tab(mod_ctx, bogus) == MOD_INVALID_ARGUMENT;
     if (g_ui_neg_ok) {
         svc_log->info(mod_ctx, "UiService negative tests OK");
     } else {

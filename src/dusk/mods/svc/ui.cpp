@@ -288,6 +288,58 @@ ModResult ui_unregister_styles(ModContext* context, UiStyleHandle style) {
     return mods::ui_unregister_styles(*mod, style);
 }
 
+ModResult ui_register_menu_tab(
+    ModContext* context, const UiMenuTabDesc* desc, UiMenuTabHandle* outTab) {
+    if (outTab != nullptr) {
+        *outTab = 0;
+    }
+    auto* mod = mod_from_context(context);
+    if (mod == nullptr || desc == nullptr || desc->struct_size < sizeof(UiMenuTabDesc) ||
+        desc->label == nullptr || desc->label[0] == '\0' || desc->on_selected == nullptr)
+    {
+        return MOD_INVALID_ARGUMENT;
+    }
+    uint64_t handle = 0;
+    const auto result = mods::ui_register_menu_tab(*mod, *desc, handle);
+    if (result == MOD_OK && outTab != nullptr) {
+        *outTab = handle;
+    }
+    return result;
+}
+
+ModResult ui_unregister_menu_tab(ModContext* context, UiMenuTabHandle tab) {
+    auto* mod = mod_from_context(context);
+    if (mod == nullptr || tab == 0) {
+        return MOD_INVALID_ARGUMENT;
+    }
+    return mods::ui_unregister_menu_tab(*mod, tab);
+}
+
+ModResult ui_dialog_set_body(ModContext* context, UiDialogHandle dialog, const char* bodyRml) {
+    auto* mod = mod_from_context(context);
+    if (mod == nullptr || dialog == 0 || bodyRml == nullptr) {
+        return MOD_INVALID_ARGUMENT;
+    }
+    return mods::ui_dialog_set_body(*mod, dialog, bodyRml);
+}
+
+ModResult ui_dialog_set_icon(ModContext* context, UiDialogHandle dialog, const char* icon) {
+    auto* mod = mod_from_context(context);
+    if (mod == nullptr || dialog == 0 || icon == nullptr) {
+        return MOD_INVALID_ARGUMENT;
+    }
+    return mods::ui_dialog_set_icon(*mod, dialog, icon);
+}
+
+ModResult ui_dialog_add_action(
+    ModContext* context, UiDialogHandle dialog, const UiDialogAction* action) {
+    auto* mod = mod_from_context(context);
+    if (mod == nullptr || dialog == 0 || action == nullptr || action->label == nullptr) {
+        return MOD_INVALID_ARGUMENT;
+    }
+    return mods::ui_dialog_add_action(*mod, dialog, *action);
+}
+
 constexpr UiService s_uiService{
     .header = SERVICE_HEADER(UiService, UI_SERVICE_MAJOR, UI_SERVICE_MINOR),
     .register_mods_panel = ui_register_mods_panel,
@@ -311,6 +363,11 @@ constexpr UiService s_uiService{
     .register_styles = ui_register_styles,
     .register_styles_file = ui_register_styles_file,
     .unregister_styles = ui_unregister_styles,
+    .register_menu_tab = ui_register_menu_tab,
+    .unregister_menu_tab = ui_unregister_menu_tab,
+    .dialog_set_body = ui_dialog_set_body,
+    .dialog_set_icon = ui_dialog_set_icon,
+    .dialog_add_action = ui_dialog_add_action,
 };
 
 }  // namespace

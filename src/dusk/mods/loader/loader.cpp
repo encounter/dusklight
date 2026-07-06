@@ -1016,6 +1016,7 @@ void ModLoader::tick() {
     }
 
     config_flush_if_dirty(false);
+    ui_sync_menu_tabs();
 }
 
 void ModLoader::shutdown() {

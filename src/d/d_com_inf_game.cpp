@@ -26,7 +26,10 @@
 #include <cstdio>
 #include <cstring>
 
+#if TARGET_PC
 #include "dusk/string.hpp"
+#include "dusk/mods/stage.hpp"
+#endif
 
 void dComIfG_play_c::ct() {
     mWindowNum = 0;
@@ -162,6 +165,11 @@ int dComIfG_play_c::getLayerNo_common_common(const char* i_stageName, int i_room
             layer = 14;
         }
 
+#if TARGET_PC
+        if (layer < 13 && dusk::mods::stage_resolve_layer(i_stageName, i_roomNo, &layer)) {
+            // resolver supplied the layer; skip the vanilla logic
+        } else
+#endif
         if (layer < 13) {
             // Stage is Snowpeak Ruins or Snowpeak
             if (!strcmp(i_stageName, "D_MN11") || !strcmp(i_stageName, "F_SP114")) {
