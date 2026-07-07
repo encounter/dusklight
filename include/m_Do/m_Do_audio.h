@@ -33,9 +33,9 @@ public:
     static void onBgmSet() { mBgmSet = true; }
     static void offBgmSet() { mBgmSet = false; }
 
-    static u8 mInitFlag;
-    static u8 mResetFlag;
-    static u8 mBgmSet;
+    static DUSK_GAME_DATA u8 mInitFlag;
+    static DUSK_GAME_DATA u8 mResetFlag;
+    static DUSK_GAME_DATA u8 mBgmSet;
 };
 
 extern JKRSolidHeap* g_mDoAud_audioHeap;

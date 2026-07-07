@@ -1,6 +1,7 @@
 # add_mod(<target> SOURCES <file>... MOD_JSON <mod.json> [RES_DIR <res>] [OVERLAY_DIR <overlay>]
 #         [TEXTURES_DIR <textures>] [OUTPUT_DIR <dir>] [BUNDLE])
 set(DUSK_MODS_OUTPUT_DIR "${CMAKE_BINARY_DIR}/mods" CACHE PATH "Directory to write mod packages into")
+get_filename_component(_mod_sdk_dir "${CMAKE_CURRENT_LIST_DIR}/../sdk" ABSOLUTE)
 
 function(_dusk_mod_lib_name out_var)
     set(_arch "${CMAKE_SYSTEM_PROCESSOR}")
@@ -82,6 +83,51 @@ function(add_mod target_name)
         string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" _mod_arch)
         if (_mod_arch MATCHES "^(arm|aarch64)" AND CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "GNU")
             target_compile_options(${target_name} PRIVATE -fsigned-char)
+        endif ()
+    endif ()
+
+    if (APPLE)
+        # Game symbols resolve against the host executable at dlopen time.
+        target_link_options(${target_name} PRIVATE -undefined dynamic_lookup)
+    elseif (ANDROID)
+        if (TARGET dusklight)
+            target_link_libraries(${target_name} PRIVATE dusklight)
+        elseif (DUSK_GAME_SOLIB)
+            target_link_libraries(${target_name} PRIVATE "${DUSK_GAME_SOLIB}")
+        else ()
+            message(FATAL_ERROR "add_mod: DUSK_GAME_SOLIB is not set (libmain.so)")
+        endif ()
+    elseif (UNIX)
+        target_link_options(${target_name} PRIVATE -Wl,--allow-shlib-undefined)
+    elseif (WIN32)
+        # Link against the generated import library (game ABI surface). Function calls
+        # resolve through import thunks. Data is toolchain dependent:
+        # - clang-cl: lld's mingw mode auto-imports data references, fixed up at load by
+        #   the mod SDK's pseudo-relocation runtime (pseudo_reloc.cpp).
+        # - cl (MSVC): only DUSK_GAME_DATA-annotated data is reachable. Un-annotated
+        #   references fail to link.
+        if (NOT DUSK_GAME_IMPLIB)
+            message(FATAL_ERROR "add_mod: DUSK_GAME_IMPLIB is not set.")
+        endif ()
+        target_link_libraries(${target_name} PRIVATE "${DUSK_GAME_IMPLIB}")
+        set_target_properties(${target_name} PROPERTIES MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
+        target_compile_definitions(${target_name} PRIVATE _ITERATOR_DEBUG_LEVEL=0)
+        if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+            target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:C,CXX>:/clang:-mcmodel=large>")
+            target_sources(${target_name} PRIVATE "${_mod_sdk_dir}/pseudo_reloc.cpp")
+            # lld mingw mode rewrites /DEFAULTLIB directives to -l style and skips %LIB%, so
+            # the CRT libraries and search paths are spelled out explicitly.
+            target_link_options(${target_name} PRIVATE -lldmingw /nodefaultlib /INCREMENTAL:NO)
+            target_link_libraries(${target_name} PRIVATE
+                    msvcrt.lib msvcprt.lib vcruntime.lib ucrt.lib
+                    oldnames.lib uuid.lib kernel32.lib user32.lib)
+            set(_lib_dirs "$ENV{LIB}")
+            if ("${_lib_dirs}" STREQUAL "")
+                message(FATAL_ERROR "add_mod: %LIB% is empty; configure from a VS dev shell")
+            endif ()
+            foreach (_libdir IN LISTS _lib_dirs)
+                target_link_options(${target_name} PRIVATE "/libpath:${_libdir}")
+            endforeach ()
         endif ()
     endif ()
 

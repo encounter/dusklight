@@ -9,6 +9,7 @@
 #include "d/d_kankyo_wether.h"
 #include "f_pc/f_pc_base.h"
 #include "m_Do/m_Do_ext.h"
+#include "global.h"
 
 class JPABaseEmitter;
 class cBgS_PolyInfo;
@@ -471,7 +472,7 @@ public:
     /* 0x130C */ u8 staffroll_next_timer;
 };  // Size: 0x1310
 
-extern dScnKy_env_light_c g_env_light;
+DUSK_GAME_EXTERN dScnKy_env_light_c g_env_light;
 
 STATIC_ASSERT(sizeof(dScnKy_env_light_c) == 4880);
 

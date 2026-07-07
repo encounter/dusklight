@@ -17,7 +17,7 @@
 #include "m_Do/m_Do_graphic.h"
 #include <cstring>
 
-#include "tracy/Tracy.hpp"
+#include "dusk/profiling.hpp"
 
 enum dComIfG_ButtonStatus {
     /* 0x00 */ BUTTON_STATUS_NONE,
@@ -875,6 +875,10 @@ public:
     void setCurrentWindow(dDlst_window_c* i_window) { mCurrentWindow = i_window; }
     void setCurrentView(view_class* i_view) { mCurrentView = i_view; }
     void setCurrentViewport(view_port_class* i_viewport) { mCurrentViewport = i_viewport; }
+#if TARGET_PC
+    view_class* getCurrentView() { return mCurrentView; }
+    view_port_class* getCurrentViewport() { return mCurrentViewport; }
+#endif
     J2DGrafContext* getCurrentGrafPort() { return (J2DGrafContext*)mCurrentGrafPort; }
     void setCurrentGrafPort(J2DOrthoGraph* i_graf) { mCurrentGrafPort = i_graf; }
     void* getItemTable() { return mItemTable; }
@@ -1049,11 +1053,11 @@ public:
 
 STATIC_ASSERT(122384 == sizeof(dComIfG_inf_c));
 
-extern dComIfG_inf_c g_dComIfG_gameInfo;
-extern GXColor g_blackColor;
-extern GXColor g_clearColor;
-extern GXColor g_whiteColor;
-extern GXColor g_saftyWhiteColor;
+DUSK_GAME_EXTERN dComIfG_inf_c g_dComIfG_gameInfo;
+DUSK_GAME_EXTERN GXColor g_blackColor;
+DUSK_GAME_EXTERN GXColor g_clearColor;
+DUSK_GAME_EXTERN GXColor g_whiteColor;
+DUSK_GAME_EXTERN GXColor g_saftyWhiteColor;
 
 int dComLbG_PhaseHandler(request_of_phase_process_class*, request_of_phase_process_fn*,
                          void*);
@@ -4309,6 +4313,16 @@ inline void dComIfGp_setCurrentView(view_class* i_view) {
 inline void dComIfGp_setCurrentViewport(view_port_class* i_viewport) {
     g_dComIfG_gameInfo.play.setCurrentViewport(i_viewport);
 }
+
+#if TARGET_PC
+inline view_class* dComIfGp_getCurrentView() {
+    return g_dComIfG_gameInfo.play.getCurrentView();
+}
+
+inline view_port_class* dComIfGp_getCurrentViewport() {
+    return g_dComIfG_gameInfo.play.getCurrentViewport();
+}
+#endif
 
 inline J2DGrafContext* dComIfGp_getCurrentGrafPort() {
     return g_dComIfG_gameInfo.play.getCurrentGrafPort();

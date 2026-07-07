@@ -1,17 +1,19 @@
 #ifndef J3DSHAPE_H
 #define J3DSHAPE_H
 
-#include "JSystem/J3DGraphBase/J3DShapeDraw.h"
+#include <mtx.h>
 #include "JSystem/J3DAssert.h"
 #include "JSystem/J3DGraphBase/J3DFifo.h"
-#include <mtx.h>
+#include "JSystem/J3DGraphBase/J3DShapeDraw.h"
+#include "JSystem/JMath/JMath.h"
 #include "dusk/endian_gx.hpp"
+#include "global.h"
 
 class J3DShapeMtx;
 
 /**
  * @ingroup jsystem-j3d
- * 
+ *
  */
 class J3DCurrentMtxInfo {
 public:
@@ -21,7 +23,7 @@ public:
 
 /**
  * @ingroup jsystem-j3d
- * 
+ *
  */
 class J3DCurrentMtx : public J3DCurrentMtxInfo {
 public:
@@ -58,7 +60,7 @@ typedef void (J3DShapeMtx::*J3DShapeMtx_LoadFunc)(int, u16) const;
 
 /**
  * @ingroup jsystem-j3d
- * 
+ *
  */
 class J3DShapeMtx {
 public:
@@ -114,7 +116,7 @@ enum J3DShpFlag {
 
 /**
  * @ingroup jsystem-j3d
- * 
+ *
  */
 class J3DShape {
 public:
@@ -202,8 +204,8 @@ public:
 
     static void resetVcdVatCache() { sOldVcdVatCmd = NULL; }
 
-    static void* sOldVcdVatCmd;
-    static bool sEnvelopeFlag;
+    static DUSK_GAME_DATA void* sOldVcdVatCmd;
+    static DUSK_GAME_DATA bool sEnvelopeFlag;
 
 private:
     friend struct J3DShapeFactory;

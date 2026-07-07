@@ -8,6 +8,7 @@
 #include "JSystem/JMath/JMath.h"
 #include "dusk/frame_interpolation.h"
 #include "dusk/endian.h"
+#include "global.h"
 
 enum J3DSysDrawBuf {
     /* 0x0 */ J3DSysDrawBuf_Opa,
@@ -207,7 +208,7 @@ struct J3DSys {
     static J3DTexCoordScaleInfo sTexCoordScaleTable[8];
 };
 
-extern u32 j3dDefaultViewNo;
-extern J3DSys j3dSys;
+DUSK_GAME_EXTERN u32 j3dDefaultViewNo;
+DUSK_GAME_EXTERN J3DSys j3dSys;
 
 #endif /* J3DSYS_H */
