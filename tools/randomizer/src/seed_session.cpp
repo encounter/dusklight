@@ -15,6 +15,7 @@
 
 #include "dusk/logging.h"
 
+#include "game/game_helpers.hpp"
 #include "game/item_data.hpp"
 #include "game/layer_resolver.hpp"
 #include "game/messages.hpp"
@@ -520,3 +521,11 @@ void update() {
 }
 
 }  // namespace randomizer::session
+
+u8 dComIfGs_getAncientDocumentNum() {
+    return randomizer::session::sky_characters();
+}
+
+void dComIfGs_setAncientDocumentNum(u8 i_num) {
+    randomizer::session::set_sky_characters(i_num);
+}

@@ -163,6 +163,19 @@ ModResult build_settings_tab(ModContext* ctx, UiWindowHandle, UiElementHandle le
 
 // --- seed tab -----------------------------------------------------------------------
 
+void seed_string_get(ModContext*, void*, UiControlValue* out_value) {
+    // The host copies the string right after the getter returns; static storage keeps it
+    // valid until then.
+    static std::string storage;
+    storage = GetRandomizerConfig().GetSeed();
+    out_value->string_value = storage.c_str();
+}
+
+void seed_string_set(ModContext*, void*, const UiControlValue* value) {
+    GetRandomizerConfig().SetSeed(value->string_value != nullptr ? value->string_value : "");
+    SaveRandomizerConfig();
+}
+
 ModResult build_seed_tab(ModContext* ctx, UiWindowHandle, UiElementHandle left_pane,
     UiElementHandle, void*, ModError*) {
     s_ui->pane_add_section(ctx, left_pane, "Seed");
@@ -181,6 +194,19 @@ ModResult build_seed_tab(ModContext* ctx, UiWindowHandle, UiElementHandle left_p
                         "Generated seeds live in the randomizer/seeds data directory.";
         desc.binding = UI_BINDING_CONFIG_VAR;
         desc.config_var = s_pending_seed_var;
+        s_ui->pane_add_control(ctx, left_pane, &desc, nullptr);
+    }
+
+    {
+        UiControlDesc desc = UI_CONTROL_DESC_INIT;
+        desc.kind = UI_CONTROL_STRING;
+        desc.label = "Seed String";
+        desc.help_rml = "Seed string for the next generation; the same string and settings "
+                        "always generate the same seed. Leave blank for a random one.";
+        desc.binding = UI_BINDING_CALLBACKS;
+        desc.get = seed_string_get;
+        desc.set = seed_string_set;
+        desc.max_length = 32;
         s_ui->pane_add_control(ctx, left_pane, &desc, nullptr);
     }
 
@@ -419,6 +445,10 @@ void update() {
     const auto status = s_gen_status.load();
     if (status != SeedGenerateStatus::Success && status != SeedGenerateStatus::Error) {
         return;
+    }
+    if (status == SeedGenerateStatus::Success) {
+        GetRandomizerConfig().SetSeed("");
+        SaveRandomizerConfig();
     }
     if (s_gen_dialog != 0) {
         s_ui->dialog_set_icon(mod_ctx, s_gen_dialog, status == SeedGenerateStatus::Success
