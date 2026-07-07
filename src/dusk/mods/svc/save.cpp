@@ -68,6 +68,63 @@ ModResult save_unobserve_saves_(ModContext* context, SaveObserverHandle handle) 
     return save_unobserve(*mod, handle);
 }
 
+ModResult save_peek_blob_(
+    ModContext* context, uint32_t slot, const char* name, void* buf, size_t* inoutSize) {
+    auto* mod = mod_from_context(context);
+    if (mod == nullptr || !is_valid_blob_name(name) || inoutSize == nullptr) {
+        return MOD_INVALID_ARGUMENT;
+    }
+    return save_peek_blob(*mod, slot, name, buf, *inoutSize);
+}
+
+ModResult save_register_new_save_gate_(
+    ModContext* context, SaveNewSaveGateFn gate, void* userData, SaveGateHandle* outHandle) {
+    if (outHandle != nullptr) {
+        *outHandle = 0;
+    }
+    auto* mod = mod_from_context(context);
+    if (mod == nullptr || gate == nullptr || outHandle == nullptr) {
+        return MOD_INVALID_ARGUMENT;
+    }
+    return save_register_gate(*mod, gate, userData, *outHandle);
+}
+
+ModResult save_unregister_new_save_gate_(ModContext* context, SaveGateHandle handle) {
+    auto* mod = mod_from_context(context);
+    if (mod == nullptr || handle == 0) {
+        return MOD_INVALID_ARGUMENT;
+    }
+    return save_unregister_gate(*mod, handle);
+}
+
+ModResult save_complete_new_save_gate_(ModContext* context, bool proceed) {
+    auto* mod = mod_from_context(context);
+    if (mod == nullptr) {
+        return MOD_INVALID_ARGUMENT;
+    }
+    return save_complete_gate(*mod, proceed);
+}
+
+ModResult save_register_slot_info_provider_(
+    ModContext* context, SaveSlotInfoFn provider, void* userData, SaveSlotInfoHandle* outHandle) {
+    if (outHandle != nullptr) {
+        *outHandle = 0;
+    }
+    auto* mod = mod_from_context(context);
+    if (mod == nullptr || provider == nullptr || outHandle == nullptr) {
+        return MOD_INVALID_ARGUMENT;
+    }
+    return save_register_slot_info(*mod, provider, userData, *outHandle);
+}
+
+ModResult save_unregister_slot_info_provider_(ModContext* context, SaveSlotInfoHandle handle) {
+    auto* mod = mod_from_context(context);
+    if (mod == nullptr || handle == 0) {
+        return MOD_INVALID_ARGUMENT;
+    }
+    return save_unregister_slot_info(*mod, handle);
+}
+
 constexpr SaveService s_saveService{
     .header = SERVICE_HEADER(SaveService, SAVE_SERVICE_MAJOR, SAVE_SERVICE_MINOR),
     .set_blob = save_set_blob_,
@@ -75,6 +132,12 @@ constexpr SaveService s_saveService{
     .delete_blob = save_delete_blob_,
     .observe_saves = save_observe_saves_,
     .unobserve_saves = save_unobserve_saves_,
+    .peek_blob = save_peek_blob_,
+    .register_new_save_gate = save_register_new_save_gate_,
+    .unregister_new_save_gate = save_unregister_new_save_gate_,
+    .complete_new_save_gate = save_complete_new_save_gate_,
+    .register_slot_info_provider = save_register_slot_info_provider_,
+    .unregister_slot_info_provider = save_unregister_slot_info_provider_,
 };
 
 }  // namespace

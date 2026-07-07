@@ -47,7 +47,7 @@ IMPORT_SERVICE(GameService, svc_game);
 IMPORT_SERVICE(ItemService, svc_item);
 IMPORT_SERVICE(FlowService, svc_flow);
 IMPORT_SERVICE(TextService, svc_text);
-IMPORT_SERVICE(SaveService, svc_save);
+IMPORT_SERVICE_VERSION(SaveService, svc_save, 1);
 IMPORT_SERVICE_VERSION(StageService, svc_stage, 1);
 // Both provided by mod_test_dep, which sorts *after* mod_test.dusk in the mods directory;
 // dependency ordering must initialize it first regardless. The deferred service only
@@ -1124,6 +1124,12 @@ void test_text() {
 // need an active save slot — those paths are verified in gameplay.
 void save_test_event(ModContext*, uint32_t, void*) {}
 
+void save_test_gate(ModContext*, uint32_t, void*) {}
+
+bool save_test_slot_info(ModContext*, uint32_t, SaveSlotInfoText*, void*) {
+    return false;
+}
+
 // Persistent pass-through resolver: dispatch evidence for the getLayerNo_common_common seam
 // without changing which layer actually loads.
 bool layer_resolver_pass(
@@ -1155,6 +1161,32 @@ void test_save_stage() {
     ok = ok && svc_save->set_blob(mod_ctx, "", "x", 1) == MOD_INVALID_ARGUMENT;
     ok = ok && svc_save->get_blob(mod_ctx, "probe", nullptr, nullptr) == MOD_INVALID_ARGUMENT;
     ok = ok && svc_save->unobserve_saves(mod_ctx, ~UINT64_C(0)) == MOD_INVALID_ARGUMENT;
+    // Minor 1: peek works without an active slot (this mod has no sidecar blobs, so the
+    // probe reports MOD_UNAVAILABLE); out-of-range slots are rejected.
+    ok = ok && svc_save->peek_blob(mod_ctx, 0, "probe", nullptr, &size) == MOD_UNAVAILABLE;
+    ok = ok && svc_save->peek_blob(mod_ctx, 3, "probe", nullptr, &size) == MOD_INVALID_ARGUMENT;
+    ok = ok && svc_save->peek_blob(mod_ctx, 0, "probe", nullptr, nullptr) ==
+                   MOD_INVALID_ARGUMENT;
+    // Minor 1: gate + slot-info registration round trips and negatives. No gate chain
+    // runs at startup, so completing is MOD_UNAVAILABLE.
+    SaveGateHandle gate = 0;
+    ok = ok &&
+         svc_save->register_new_save_gate(mod_ctx, save_test_gate, nullptr, &gate) == MOD_OK &&
+         gate != 0;
+    ok = ok && svc_save->complete_new_save_gate(mod_ctx, true) == MOD_UNAVAILABLE;
+    ok = ok && svc_save->unregister_new_save_gate(mod_ctx, gate) == MOD_OK;
+    ok = ok && svc_save->unregister_new_save_gate(mod_ctx, gate) == MOD_INVALID_ARGUMENT;
+    ok = ok && svc_save->register_new_save_gate(mod_ctx, nullptr, nullptr, &gate) ==
+                   MOD_INVALID_ARGUMENT;
+    SaveSlotInfoHandle slotInfo = 0;
+    ok = ok && svc_save->register_slot_info_provider(
+                   mod_ctx, save_test_slot_info, nullptr, &slotInfo) == MOD_OK &&
+         slotInfo != 0;
+    ok = ok && svc_save->unregister_slot_info_provider(mod_ctx, slotInfo) == MOD_OK;
+    ok = ok && svc_save->unregister_slot_info_provider(mod_ctx, slotInfo) ==
+                   MOD_INVALID_ARGUMENT;
+    ok = ok && svc_save->register_slot_info_provider(mod_ctx, nullptr, nullptr, &slotInfo) ==
+                   MOD_INVALID_ARGUMENT;
     g_save_ok = ok;
     if (ok) {
         svc_log->info(mod_ctx, "SaveService registration + negatives OK");

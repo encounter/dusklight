@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 // Save-lifecycle seam entry points for the mod save service, called from the slot-aware save
@@ -22,5 +23,22 @@ void save_slot_copied(uint32_t fromSlot, uint32_t toSlot);
 void save_slot_erased(uint32_t slot);
 // File select opened: no slot is current until load/new fires again.
 void save_no_slot();
+
+// New-save gate chain (interactive mod flows between opening an empty file and name entry).
+// File select begins the chain when the player opens an empty slot and polls update() every
+// frame of its gate proc; the result is sticky until the next begin.
+enum class SaveGateResult {
+    Pending,  // a gate is still running (or its documents are still closing)
+    Proceed,  // every gate proceeded (or none are registered) — continue to name entry
+    Cancel,   // a gate canceled — back out to file select
+};
+bool save_new_save_gates_registered();
+void save_new_save_gates_begin(uint32_t slot);
+SaveGateResult save_new_save_gates_update();
+
+// First non-pass slot-info text for the file-select info panel; false leaves the vanilla
+// "Save time" / "Total play time" labels.
+bool save_slot_info_text(
+    uint32_t slot, char* saveTime, size_t saveTimeSize, char* playTime, size_t playTimeSize);
 
 }  // namespace dusk::mods

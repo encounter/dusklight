@@ -130,19 +130,22 @@ current. Newly ported from the delta:
 
 Additional gaps from the delta:
 
-18. **File-select "Play Type" flow** (the Vanilla/Randomizer dialog +
-    `FileSelectRandomizerWindow` on new save): origin adds a new file-select proc
-    (`selectDataPlayTypeMove`), a `mDusk` state member on `dFile_select_c`, and
-    menu-pointer integration — a structural game change (member add = ABI break) that
-    can't be hook-ported. Needs an in-tree seam design: either a generic "new-save
-    interstitial" extension point (host runs a mod-supplied UiService dialog/window
-    between file selection and name entry) or landing the origin proc in-tree behind
-    a mod-facing callout. Until then, the pending seed is chosen via the Randomizer
-    menu tab / `mod.dev_twilitrealm_randomizer.seed` config var.
-19. **File-select slot info ("Randomizer" + seed hash per file)**: origin stores per-file
-    seed hashes in host settings; the port keeps them in SaveService blobs, which only
-    expose the *current* slot — displaying other slots' seeds at file select needs a
-    SaveService peek API (or the host reading the sidecar) plus a d_file_sel_info seam.
+18. **File-select "Play Type" flow** — **PORTED July 6 2026** on SaveService 1.1's
+    new-save gate chain: the host proc `dFile_select_c::selectDataGateMove`
+    (generalized from origin's `selectDataPlayTypeMove`; enum + two PC members, no
+    `mDusk` struct) runs registered gates between opening an empty file and name
+    entry; the mod's gate pushes the Play Type dialog (Vanilla / Randomizer) and, for
+    Randomizer, a seed window (Play tab: seed SELECT + Start Randomizer; plus the
+    Seed Management and Settings tabs) — Start writes the pending-seed config var and
+    completes proceed, dismiss/close completes cancel (backs out to file select).
+    The menu tab / `seed` config var still works as a non-interactive fallback.
+19. **File-select slot info ("Randomizer" + seed hash per file)** — **PORTED July 6
+    2026**: SaveService 1.1 `peek_blob` (any slot, no active slot needed) + slot-info
+    providers (first non-pass wins) + an in-tree callout `dFile_info_c::setModSlotInfo`
+    writing the `f_s_t_02`/`f_p_t_02` labels (origin's edit, plus capture/restore of
+    the vanilla binding/width so erased or vanilla slots render correctly — fixes
+    origin's repeated width-doubling). The mod's provider shows "Randomizer" + the
+    slot's `seed_hash` blob.
 20. **Presets / permalink / seed-menu restyle UI**: generator support is ported
     (`Config::SetPermalink` etc.); the origin `rando_config.cpp` UI for them (+765
     lines) is not re-expressed in the UiService window yet.
@@ -204,15 +207,24 @@ funnels → TextService 1.1 → SaveService → StageService 1.2 → minors as c
   <5000 group-0 collapse) with callouts at `dMsgFlow_c::setNormalMsg` and the
   `dMsgObject_c::getRevoMessageIndex` path (Ilia); the give half enqueues via
   `give_item` at textbox close (`dMsgObject_c::waitProc` seam, `mpScrnDraw == NULL`).
-- **SaveService** (gaps 18, 19): the save-creation lifecycle is redesigned as one
+- **SaveService 1.1** (gaps 18, 19) — **BUILT July 6 2026** (smoke-verified:
+  mod_test registration/negative coverage + `--stage` boot; the interactive
+  file-select flow is left for gameplay eyeball). The save-creation lifecycle as one
   flow: interactive **new-save gate chain** (host generalization of origin's
-  `SELECT_DATA_PLAY_MOVE` proc — gates push UiService documents, complete
-  proceed/cancel, host polls `is_any_document_visible`, any cancel backs out to file
-  select) → name entry → `on_new_save`. Plus `peek_blob(slot, name, ...)` (the
-  sidecar already keeps all three slots resident; warn-only staleness) and a
-  **slot-info provider** (first non-pass wins) writing the `f_s_t_02`/`f_p_t_02`
-  textboxes via a callout in `dFile_info_c::setSaveData` — replaces origin's
-  host-settings `seedHashes` coupling.
+  `SELECT_DATA_PLAY_MOVE` proc — `register_new_save_gate` /
+  `complete_new_save_gate(proceed)`; gates run in load order, invoked one at a time
+  from `dFile_select_c::selectDataGateMove`, which the host only enters when gates
+  are registered; the loader's chain runner holds while `any_document_visible`, a
+  gate that neither completes nor shows a document is skipped-with-warning after 300
+  frames, and cancel backs out to file select with origin's 6-frame RML close delay)
+  → name entry → `on_new_save`. Plus `peek_blob(slot, name, ...)` (all three slots
+  resident in the sidecar; warn-only staleness) and **slot-info providers** (first
+  non-pass wins, later-loaded first) writing the `f_s_t_02`/`f_p_t_02` textboxes via
+  `dFile_info_c::setModSlotInfo` — replaces origin's host-settings `seedHashes`
+  coupling. In-tree additions: `DATASELPROC_SELECT_DATA_GATE_MOVE` + two PC members
+  on `dFile_select_c` (`mGateChainStarted`, `mPendingUiCloseFrames`; no `mDusk`
+  struct), the origin PC-gated `J2DTextBox::setH/VBinding` setters, and vanilla
+  label capture/restore in `dFile_info_c`.
 - **StageService 1.2** (gaps 13a, 6-wolves): player-spawn record rewriter (visit
   callback over the raw spawn records in `dStage_playerInit`, mod mutates
   entrance-type bytes); **gated additions** (`should_spawn(stage, room, layer)`

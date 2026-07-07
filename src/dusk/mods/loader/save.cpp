@@ -7,7 +7,9 @@
 #include <fmt/format.h>
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <array>
+#include <cstdio>
 #include <cstring>
 #include <fstream>
 #include <map>
@@ -43,12 +45,58 @@ struct SaveObserverRecord {
     void* userData = nullptr;
 };
 
+struct SaveGateRecord {
+    uint64_t handle = 0;
+    LoadedMod* mod = nullptr;
+    SaveNewSaveGateFn fn = nullptr;
+    void* userData = nullptr;
+    int32_t seq = 0;
+};
+
+struct SlotInfoRecord {
+    uint64_t handle = 0;
+    LoadedMod* mod = nullptr;
+    SaveSlotInfoFn fn = nullptr;
+    void* userData = nullptr;
+    int32_t seq = 0;
+};
+
+// A gate that has neither completed nor a document visible for this many frames is
+// skipped (as proceed), so a broken mod can't dead-lock file creation.
+constexpr int kGateIdleFrameLimit = 300;
+
 // Game thread only (same rule as the other loader registries).
 std::array<SlotStore, kSlotCount> s_slots;
 int32_t s_currentSlot = -1;
 bool s_sidecarLoaded = false;
 std::vector<SaveObserverRecord> s_observers;
+std::vector<SaveGateRecord> s_gates;
+std::vector<SlotInfoRecord> s_slotInfoProviders;
 uint64_t s_nextHandle = 1;
+int32_t s_nextSeq = 1;
+
+// Gate-chain runner state (one chain at a time, driven by file select).
+std::vector<SaveGateRecord> s_gateChain;
+size_t s_gateIndex = 0;
+uint32_t s_gateSlot = 0;
+bool s_gateChainActive = false;
+bool s_gateInvoked = false;
+bool s_gateCompleted = false;
+bool s_gateProceed = false;
+int s_gateIdleFrames = 0;
+SaveGateResult s_gateResult = SaveGateResult::Proceed;
+
+// Position in m_mods (dependency-sorted load order) + 1; later-loaded mods win.
+int32_t compute_mod_priority(const LoadedMod& mod) {
+    int32_t index = 0;
+    for (const auto& other : ModLoader::instance().mods()) {
+        ++index;
+        if (&other == &mod) {
+            return index;
+        }
+    }
+    return index + 1;
+}
 
 std::filesystem::path sidecar_path() {
     return dusk::ConfigPath / kSidecarName;
@@ -301,6 +349,147 @@ void save_no_slot() {
     item_gives_clear();
 }
 
+// --- new-save gate chain (d_file_select gate proc) ---
+
+namespace {
+
+void resolve_gate_chain(SaveGateResult result) {
+    s_gateChainActive = false;
+    s_gateChain.clear();
+    s_gateResult = result;
+}
+
+}  // namespace
+
+bool save_new_save_gates_registered() {
+    return std::any_of(
+        s_gates.begin(), s_gates.end(), [](const auto& gate) { return gate.mod->active; });
+}
+
+void save_new_save_gates_begin(uint32_t slot) {
+    s_gateChain = s_gates;
+    // Gates run in load order (dependency-sorted m_mods), unlike override chains: every
+    // gate runs, so there is no collision to resolve.
+    std::stable_sort(s_gateChain.begin(), s_gateChain.end(), [](const auto& a, const auto& b) {
+        const auto pa = compute_mod_priority(*a.mod);
+        const auto pb = compute_mod_priority(*b.mod);
+        return pa != pb ? pa < pb : a.seq < b.seq;
+    });
+    s_gateIndex = 0;
+    s_gateSlot = slot;
+    s_gateChainActive = true;
+    s_gateInvoked = false;
+    s_gateCompleted = false;
+    s_gateProceed = false;
+    s_gateIdleFrames = 0;
+    s_gateResult = SaveGateResult::Pending;
+}
+
+SaveGateResult save_new_save_gates_update() {
+    if (!s_gateChainActive) {
+        return s_gateResult;
+    }
+    while (true) {
+        if (s_gateIndex >= s_gateChain.size()) {
+            resolve_gate_chain(SaveGateResult::Proceed);
+            return s_gateResult;
+        }
+        auto& gate = s_gateChain[s_gateIndex];
+        if (!gate.mod->active) {
+            ++s_gateIndex;
+            s_gateInvoked = false;
+            continue;
+        }
+        if (!s_gateInvoked) {
+            s_gateInvoked = true;
+            s_gateCompleted = false;
+            s_gateIdleFrames = 0;
+            try {
+                gate.fn(gate.mod->context.get(), s_gateSlot, gate.userData);
+            } catch (const std::exception& e) {
+                fail_mod(*gate.mod, MOD_ERROR,
+                    fmt::format("exception in new-save gate: {}", e.what()));
+                ++s_gateIndex;
+                s_gateInvoked = false;
+                continue;
+            } catch (...) {
+                fail_mod(*gate.mod, MOD_ERROR, "unknown exception in new-save gate");
+                ++s_gateIndex;
+                s_gateInvoked = false;
+                continue;
+            }
+            // Give pushed documents a frame before the idle check sees them.
+            return SaveGateResult::Pending;
+        }
+        if (s_gateCompleted) {
+            // Hold until the gate's close animations finish before moving on.
+            if (ui_any_document_visible()) {
+                return SaveGateResult::Pending;
+            }
+            if (!s_gateProceed) {
+                resolve_gate_chain(SaveGateResult::Cancel);
+                return s_gateResult;
+            }
+            ++s_gateIndex;
+            s_gateInvoked = false;
+            continue;
+        }
+        if (ui_any_document_visible()) {
+            s_gateIdleFrames = 0;
+            return SaveGateResult::Pending;
+        }
+        if (++s_gateIdleFrames > kGateIdleFrameLimit) {
+            Log.warn("[{}] new-save gate neither completed nor showed a document; skipping it",
+                gate.mod->metadata.id);
+            ++s_gateIndex;
+            s_gateInvoked = false;
+            continue;
+        }
+        return SaveGateResult::Pending;
+    }
+}
+
+bool save_slot_info_text(
+    uint32_t slot, char* saveTime, size_t saveTimeSize, char* playTime, size_t playTimeSize) {
+    if (slot >= kSlotCount || s_slotInfoProviders.empty()) {
+        return false;
+    }
+    // Snapshot before callbacks; first non-pass wins, later-loaded mods first (rule-3
+    // priority; reverse registration within a mod).
+    auto chain = s_slotInfoProviders;
+    std::stable_sort(chain.begin(), chain.end(), [](const auto& a, const auto& b) {
+        const auto pa = compute_mod_priority(*a.mod);
+        const auto pb = compute_mod_priority(*b.mod);
+        return pa != pb ? pa > pb : a.seq > b.seq;
+    });
+    for (const auto& record : chain) {
+        if (!record.mod->active) {
+            continue;
+        }
+        SaveSlotInfoText text = SAVE_SLOT_INFO_TEXT_INIT;
+        bool filled = false;
+        try {
+            filled = record.fn(record.mod->context.get(), slot, &text, record.userData);
+        } catch (const std::exception& e) {
+            fail_mod(*record.mod, MOD_ERROR,
+                fmt::format("exception in slot info provider: {}", e.what()));
+            continue;
+        } catch (...) {
+            fail_mod(*record.mod, MOD_ERROR, "unknown exception in slot info provider");
+            continue;
+        }
+        if (!filled) {
+            continue;
+        }
+        text.save_time[sizeof(text.save_time) - 1] = '\0';
+        text.play_time[sizeof(text.play_time) - 1] = '\0';
+        std::snprintf(saveTime, saveTimeSize, "%s", text.save_time);
+        std::snprintf(playTime, playTimeSize, "%s", text.play_time);
+        return true;
+    }
+    return false;
+}
+
 // --- loader plumbing (service surface) ---
 
 namespace {
@@ -390,8 +579,100 @@ ModResult save_unobserve(LoadedMod& mod, uint64_t handle) {
     return removed != 0 ? MOD_OK : MOD_INVALID_ARGUMENT;
 }
 
+ModResult save_peek_blob(
+    LoadedMod& mod, uint32_t slot, const char* name, void* buf, size_t& inoutSize) {
+    if (slot >= kSlotCount) {
+        return MOD_INVALID_ARGUMENT;
+    }
+    load_sidecar();
+    const auto& mods = s_slots[slot].mods;
+    const auto modIt = mods.find(mod.metadata.id);
+    if (modIt == mods.end()) {
+        return MOD_UNAVAILABLE;
+    }
+    const auto it = modIt->second.find(name);
+    if (it == modIt->second.end()) {
+        return MOD_UNAVAILABLE;
+    }
+    if (buf == nullptr) {
+        inoutSize = it->second.size();
+        return MOD_OK;
+    }
+    if (inoutSize < it->second.size()) {
+        return MOD_INVALID_ARGUMENT;
+    }
+    std::memcpy(buf, it->second.data(), it->second.size());
+    inoutSize = it->second.size();
+    return MOD_OK;
+}
+
+ModResult save_register_gate(
+    LoadedMod& mod, SaveNewSaveGateFn fn, void* userData, uint64_t& outHandle) {
+    outHandle = s_nextHandle++;
+    s_gates.push_back({
+        .handle = outHandle,
+        .mod = &mod,
+        .fn = fn,
+        .userData = userData,
+        .seq = s_nextSeq++,
+    });
+    return MOD_OK;
+}
+
+ModResult save_unregister_gate(LoadedMod& mod, uint64_t handle) {
+    const auto removed = std::erase_if(s_gates,
+        [&](const auto& gate) { return gate.handle == handle && gate.mod == &mod; });
+    return removed != 0 ? MOD_OK : MOD_INVALID_ARGUMENT;
+}
+
+ModResult save_complete_gate(LoadedMod& mod, bool proceed) {
+    if (!s_gateChainActive || s_gateIndex >= s_gateChain.size() || !s_gateInvoked ||
+        s_gateCompleted || s_gateChain[s_gateIndex].mod != &mod)
+    {
+        return MOD_UNAVAILABLE;
+    }
+    s_gateCompleted = true;
+    s_gateProceed = proceed;
+    return MOD_OK;
+}
+
+ModResult save_register_slot_info(
+    LoadedMod& mod, SaveSlotInfoFn fn, void* userData, uint64_t& outHandle) {
+    outHandle = s_nextHandle++;
+    s_slotInfoProviders.push_back({
+        .handle = outHandle,
+        .mod = &mod,
+        .fn = fn,
+        .userData = userData,
+        .seq = s_nextSeq++,
+    });
+    return MOD_OK;
+}
+
+ModResult save_unregister_slot_info(LoadedMod& mod, uint64_t handle) {
+    const auto removed = std::erase_if(s_slotInfoProviders,
+        [&](const auto& record) { return record.handle == handle && record.mod == &mod; });
+    return removed != 0 ? MOD_OK : MOD_INVALID_ARGUMENT;
+}
+
 void save_remove_mod(LoadedMod& mod) {
     std::erase_if(s_observers, [&](const auto& observer) { return observer.mod == &mod; });
+    std::erase_if(s_gates, [&](const auto& gate) { return gate.mod == &mod; });
+    std::erase_if(s_slotInfoProviders, [&](const auto& record) { return record.mod == &mod; });
+    // Drop the mod from a running gate chain (the LoadedMod may be freed after teardown).
+    if (s_gateChainActive) {
+        for (size_t i = s_gateChain.size(); i-- > 0;) {
+            if (s_gateChain[i].mod != &mod) {
+                continue;
+            }
+            s_gateChain.erase(s_gateChain.begin() + i);
+            if (i < s_gateIndex) {
+                --s_gateIndex;
+            } else if (i == s_gateIndex) {
+                s_gateInvoked = false;
+            }
+        }
+    }
     // Slot blob data is deliberately kept: it belongs to the save, not the mod session.
 }
 

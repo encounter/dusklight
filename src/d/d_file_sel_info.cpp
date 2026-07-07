@@ -14,8 +14,11 @@
 #include <cstdio>
 #include <cstring>
 
+#if TARGET_PC
 #include "dusk/string.hpp"
 #include "dusk/version.hpp"
+#include "dusk/mods/save.hpp"
+#endif
 
 dFile_info_c::dFile_info_c(JKRArchive* i_archive, u8 param_1) {
     mArchive = i_archive;
@@ -116,6 +119,9 @@ int dFile_info_c::setSaveData(dSv_save_c* i_savedata, BOOL i_validChksum, u8 i_d
             SAFE_STRCPY(mPlayerName, player_name);
             setSaveDate(i_savedata);
             setPlayTime(i_savedata);
+#if TARGET_PC
+            setModSlotInfo(i_dataNo);
+#endif
             result = 0;
         }
     } else {
@@ -124,6 +130,47 @@ int dFile_info_c::setSaveData(dSv_save_c* i_savedata, BOOL i_validChksum, u8 i_d
     }
     return result;
 }
+
+#if TARGET_PC
+void dFile_info_c::setModSlotInfo(u8 i_dataNo) {
+#if (VERSION == VERSION_GCN_JPN) || (VERSION == VERSION_WII_JPN)
+    J2DTextBox* saveTimeText = (J2DTextBox*)mFileInfo.Scr->search(MULTI_CHAR('w_s_t_01'));
+    J2DTextBox* playTimeText = (J2DTextBox*)mFileInfo.Scr->search(MULTI_CHAR('w_p_t_01'));
+#else
+    J2DTextBox* saveTimeText = (J2DTextBox*)mFileInfo.Scr->search(MULTI_CHAR('f_s_t_02'));
+    J2DTextBox* playTimeText = (J2DTextBox*)mFileInfo.Scr->search(MULTI_CHAR('f_p_t_02'));
+#endif
+
+    char saveTime[64];
+    char playTime[64];
+    if (dusk::mods::save_slot_info_text(
+            i_dataNo, saveTime, sizeof(saveTime), playTime, sizeof(playTime)))
+    {
+        if (!mInfoLabelsCaptured) {
+            mInfoLabelsCaptured = true;
+            mSaveTimeHBind = saveTimeText->getHBinding();
+            mPlayTimeHBind = playTimeText->getHBinding();
+            mPlayTimeWidth = playTimeText->getWidth();
+        }
+        dusk::TextSpan saveSpan = saveTimeText->getStringPtr();
+        dusk::TextSpan playSpan = playTimeText->getStringPtr();
+        dusk::SafeStringCopyTruncate(saveSpan.buffer, saveSpan.size, saveTime);
+        dusk::SafeStringCopyTruncate(playSpan.buffer, playSpan.size, playTime);
+        saveTimeText->setHBinding(HBIND_LEFT);
+        playTimeText->setHBinding(HBIND_LEFT);
+        // The layout centers a short "hh:mm"; give longer override text double the box.
+        playTimeText->resize(mPlayTimeWidth * 2.0f, playTimeText->getHeight());
+        mInfoLabelsOverridden = true;
+    } else if (mInfoLabelsOverridden) {
+        mInfoLabelsOverridden = false;
+        dMeter2Info_getString(0x3D0, saveTimeText->getStringPtr(), NULL);  // Save time
+        dMeter2Info_getString(0x3D1, playTimeText->getStringPtr(), NULL);  // Total play time
+        saveTimeText->setHBinding((J2DTextBoxHBinding)mSaveTimeHBind);
+        playTimeText->setHBinding((J2DTextBoxHBinding)mPlayTimeHBind);
+        playTimeText->resize(mPlayTimeWidth, playTimeText->getHeight());
+    }
+}
+#endif
 
 void dFile_info_c::setHeartCnt(dSv_save_c* i_savedata) {
     static u64 l_htag[] = {

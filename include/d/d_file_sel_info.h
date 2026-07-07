@@ -29,6 +29,9 @@ public:
     void modeWait();
     void modeMove();
     void _draw();
+#if TARGET_PC
+    void setModSlotInfo(u8 i_dataNo);
+#endif
 
     virtual ~dFile_info_c();
 
@@ -50,6 +53,13 @@ private:
     /* 0x30 */ TEXT_SPAN mSaveDate;
     /* 0x34 */ TEXT_SPAN mPlayTime;
     /* 0x38 */ TEXT_SPAN mSaveStatus;
+#if TARGET_PC
+    bool mInfoLabelsCaptured{false};
+    bool mInfoLabelsOverridden{false};
+    u8 mSaveTimeHBind{0};
+    u8 mPlayTimeHBind{0};
+    f32 mPlayTimeWidth{0.0f};
+#endif
 };
 
 typedef void (dFile_info_c::*warningFunc)(void);

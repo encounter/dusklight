@@ -23,7 +23,7 @@ IMPORT_SERVICE(ItemService, svc_item);
 IMPORT_SERVICE(FlowService, svc_flow);
 IMPORT_SERVICE(TextService, svc_text);
 IMPORT_SERVICE_VERSION(StageService, svc_stage, 1);
-IMPORT_SERVICE(SaveService, svc_save);
+IMPORT_SERVICE_VERSION(SaveService, svc_save, 1);
 IMPORT_SERVICE(ConfigService, svc_config);
 IMPORT_SERVICE_VERSION(UiService, svc_ui, 3);
 
@@ -47,7 +47,8 @@ MOD_EXPORT ModResult mod_initialize(ModError* out_error) {
         return dusk::mods::set_error(out_error, res, "failed to initialize seed session");
     }
 
-    res = randomizer::ui::initialize(svc_ui, randomizer::session::pending_seed_var());
+    res = randomizer::ui::initialize(
+        svc_ui, svc_save, svc_config, randomizer::session::pending_seed_var());
     if (res != MOD_OK) {
         return dusk::mods::set_error(out_error, res, "failed to register randomizer UI");
     }

@@ -167,6 +167,15 @@ ModResult save_delete_blob(LoadedMod& mod, const char* name);
 ModResult save_observe(LoadedMod& mod, SaveEventFn onNewSave, SaveEventFn onLoaded,
     SaveEventFn onWritten, void* userData, uint64_t& outHandle);
 ModResult save_unobserve(LoadedMod& mod, uint64_t handle);
+ModResult save_peek_blob(
+    LoadedMod& mod, uint32_t slot, const char* name, void* buf, size_t& inoutSize);
+ModResult save_register_gate(
+    LoadedMod& mod, SaveNewSaveGateFn fn, void* userData, uint64_t& outHandle);
+ModResult save_unregister_gate(LoadedMod& mod, uint64_t handle);
+ModResult save_complete_gate(LoadedMod& mod, bool proceed);
+ModResult save_register_slot_info(
+    LoadedMod& mod, SaveSlotInfoFn fn, void* userData, uint64_t& outHandle);
+ModResult save_unregister_slot_info(LoadedMod& mod, uint64_t handle);
 void save_remove_mod(LoadedMod& mod);
 
 // Stage-service plumbing (loader/stage.cpp). Game thread only; the game-code entry points

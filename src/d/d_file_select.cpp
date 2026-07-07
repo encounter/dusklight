@@ -297,6 +297,9 @@ static DataSelProcFunc DataSelProc[] = {
     &dFile_select_c::dataSelectMoveAnime,
     &dFile_select_c::selectDataOpenMove,
     &dFile_select_c::selectDataNameMove,
+#if TARGET_PC
+    &dFile_select_c::selectDataGateMove,
+#endif
     &dFile_select_c::selectDataOpenEraseMove,
     &dFile_select_c::menuSelect,
     &dFile_select_c::menuSelectMoveAnm,
@@ -1003,7 +1006,16 @@ void dFile_select_c::dataSelectStart() {
         mpName->initial();
         modoruTxtChange(1);
 
+#if TARGET_PC
+        if (dusk::mods::save_new_save_gates_registered()) {
+            mGateChainStarted = false;
+            mDataSelProc = DATASELPROC_SELECT_DATA_GATE_MOVE;
+        } else {
+            mDataSelProc = DATASELPROC_SELECT_DATA_NAME_MOVE;
+        }
+#else
         mDataSelProc = DATASELPROC_SELECT_DATA_NAME_MOVE;
+#endif
     } else {
         #if PLATFORM_GCN
         dComIfGs_setNewFile(0);
@@ -1316,6 +1328,50 @@ void dFile_select_c::selectDataNameMove() {
         mDataSelProc = DATASELPROC_NAME_INPUT_WAIT;
     }
 }
+
+#if TARGET_PC
+void dFile_select_c::selectDataGateMove() {
+    if (!mGateChainStarted) {
+        bool isHeaderTxtChange = headerTxtChangeAnm();
+        bool isFileRecScale = fileRecScaleAnm2();
+        bool isModoruTxtDisp = modoruTxtDispAnm();
+        if (isHeaderTxtChange != true || isFileRecScale != true || isModoruTxtDisp != true) {
+            return;
+        }
+        field_0x0128 = false;
+        mNameBasePane->hide();
+        dusk::mods::save_new_save_gates_begin(mSelectNum);
+        mGateChainStarted = true;
+        mPendingUiCloseFrames = 0;
+        return;
+    }
+
+    switch (dusk::mods::save_new_save_gates_update()) {
+    case dusk::mods::SaveGateResult::Pending:
+        break;
+    case dusk::mods::SaveGateResult::Proceed:
+        if (!field_0x0128) {
+            field_0x0128 = true;
+            mNameBasePane->show();
+            mPendingUiCloseFrames = 6;
+        }
+        if (mPendingUiCloseFrames > 0) {
+            mPendingUiCloseFrames--;
+        } else if (nameMoveAnm()) {
+            mDataSelProc = DATASELPROC_NAME_INPUT_WAIT;
+        }
+        break;
+    case dusk::mods::SaveGateResult::Cancel:
+        headerTxtSet(0x43, 1, 0);
+        fileRecScaleAnmInitSet2(0.0f, 1.0f);
+        nameMoveAnmInitSet(0xd29, 0xd1f);
+        modoruTxtDispAnmInit(0);
+        mPendingUiCloseFrames = 6;
+        mDataSelProc = DATASELPROC_NAME_TO_DATA_SELECT_MOVE;
+        break;
+    }
+}
+#endif
 
 void dFile_select_c::selectDataOpenEraseMove() {
     bool isHeaderTxtChange = headerTxtChangeAnm();
@@ -1659,6 +1715,13 @@ void dFile_select_c::nameInput() {
 }
 
 void dFile_select_c::nameToDataSelectMove() {
+#if TARGET_PC
+    if (mPendingUiCloseFrames > 0) {
+        mPendingUiCloseFrames--;
+        return;
+    }
+#endif
+
     bool isHeaderTxtChange = headerTxtChangeAnm();
     bool isFileRecScale = fileRecScaleAnm2();
     bool isNameMove = nameMoveAnm();

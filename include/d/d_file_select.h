@@ -203,6 +203,9 @@ public:
         DATASELPROC_DATA_SELECT_MOVE_ANIME,
         DATASELPROC_SELECT_DATA_OPEN_MOVE,
         DATASELPROC_SELECT_DATA_NAME_MOVE,
+#if TARGET_PC
+        DATASELPROC_SELECT_DATA_GATE_MOVE,
+#endif
         DATASELPROC_SELECT_DATA_OPENERASE_MOVE,
         DATASELPROC_MENU_SELECT,
         DATASELPROC_MENU_SELECT_MOVE_ANM,
@@ -331,6 +334,9 @@ public:
     void makeRecInfo(u8);
     void selectDataOpenMove();
     void selectDataNameMove();
+#if TARGET_PC
+    void selectDataGateMove();
+#endif
     void selectDataOpenEraseMove();
     void menuSelect();
     void menuSelectStart();
@@ -733,6 +739,10 @@ public:
     #endif
 #ifdef TARGET_PC
     dDlst_FileSelFade_c mFadeDlst;
+    // New-save gate proc state (selectDataGateMove).
+    bool mGateChainStarted{false};
+    // Frames to wait out a UI close transition before the next pane animation.
+    int mPendingUiCloseFrames{0};
 #endif
 
     #if PLATFORM_WII || PLATFORM_SHIELD
@@ -743,7 +753,7 @@ public:
 };
 
 #ifdef TARGET_PC
-STATIC_ASSERT(sizeof(dFile_select_c) == 0x237C + sizeof(dDlst_FileSelFade_c));
+STATIC_ASSERT(sizeof(dFile_select_c) == 0x237C + sizeof(dDlst_FileSelFade_c) + 8);
 #else
 STATIC_ASSERT(sizeof(dFile_select_c) == 0x237C);
 #endif

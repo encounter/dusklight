@@ -60,6 +60,7 @@ uint8_t s_event044_id = 0;
 
 ConfigVarHandle s_pending_seed_var{};
 SaveObserverHandle s_save_observer{};
+SaveSlotInfoHandle s_slot_info{};
 
 // --- item checks -----------------------------------------------------------------
 
@@ -313,6 +314,18 @@ void on_new_save(ModContext*, uint32_t, void*) {
     save_setup::setup_new_save();
 }
 
+bool slot_info(ModContext* ctx, uint32_t slot, SaveSlotInfoText* out_text, void*) {
+    char hash[sizeof(out_text->play_time)];
+    size_t size = sizeof(hash) - 1;
+    if (s_svc.save->peek_blob(ctx, slot, kSeedHashBlob, hash, &size) != MOD_OK || size == 0) {
+        return false;
+    }
+    hash[size] = '\0';
+    std::strcpy(out_text->save_time, "Randomizer");
+    std::memcpy(out_text->play_time, hash, size + 1);
+    return true;
+}
+
 void load_sky_characters() {
     s_sky_characters = 0;
     size_t size = sizeof(s_sky_characters);
@@ -456,8 +469,13 @@ ModResult initialize(const Services& services) {
         return res;
     }
 
-    return s_svc.save->observe_saves(
+    res = s_svc.save->observe_saves(
         mod_ctx, on_new_save, on_save_loaded, nullptr, nullptr, &s_save_observer);
+    if (res != MOD_OK) {
+        return res;
+    }
+
+    return s_svc.save->register_slot_info_provider(mod_ctx, slot_info, nullptr, &s_slot_info);
 }
 
 ConfigVarHandle pending_seed_var() {
@@ -474,11 +492,18 @@ void set_sky_characters(uint8_t num) {
 }
 
 void update() {
-    // Returning to the title screen ends the slot: drop the seed session (matches the
-    // branch's RandomizerState reset when inactive; on_save_loaded re-activates).
-    if (s_seed_active && playerIsOnTitleScreen() && !randomizer_GetContext().mCreatingSave) {
-        deactivate_seed();
-        return;
+    // Returning to the title screen ends the slot: drop the seed session (on_save_loaded
+    // re-activates). Only a *return* counts — both on_new_save and on_save_loaded fire at
+    // file select, which still runs on the title stage, so a plain title-screen check
+    // would tear the seed down before the stage transition.
+    static bool s_was_in_game = false;
+    if (playerIsOnTitleScreen()) {
+        if (s_seed_active && s_was_in_game) {
+            deactivate_seed();
+        }
+        s_was_in_game = false;
+    } else {
+        s_was_in_game = true;
     }
 
     // Branch fpcM_Management insertion: lazy _create + execute while active, reset
