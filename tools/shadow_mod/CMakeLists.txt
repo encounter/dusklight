@@ -12,4 +12,5 @@ add_dusk_mod(shadow_mod
     SOURCES  src/mod.cpp
     MOD_JSON mod.json
     RES_DIR  res
+    BUNDLE
 )

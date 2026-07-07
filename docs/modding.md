@@ -69,13 +69,31 @@ artifact, fall back to the full tree with `-DDUSK_MOD_USE_FULL_TREE=ON` (in the 
 or `add_subdirectory("${DUSK_DIR}" dusk EXCLUDE_FROM_ALL)` directly — that configures the
 whole game; building your mod on Windows then builds the game once to generate the implib.
 
-Building produces `my_mod.dusk` in `mods/` next to the project root (configurable via the `DUSK_MODS_OUTPUT_DIR` cache variable). Copy it into the game's mods folder and launch:
+Building produces `my_mod.dusk` in `mods/` next to the project root for standalone mod builds, or in `build/<preset>/mods/` for in-tree builds (configurable via the `DUSK_MODS_OUTPUT_DIR` cache variable). Copy it into the game's mods folder and launch:
 
 - Windows: `%APPDATA%\TwilitRealm\Dusklight\mods`
 - Linux: `~/.local/share/TwilitRealm/Dusklight/mods`
 - macOS: `~/Library/Application Support/TwilitRealm/Dusklight/mods`
 
-You can also pass `--mods <dir>` on the command line, which is handy during development.
+You can also pass `--mods <dir>` on the command line, which is handy during development — it replaces the user directory above (bundled mods still load, see below).
+
+**Mod directories.** The loader scans up to three directories, in priority order:
+
+1. **User dir** — `<data>/mods` (the paths above), or the `--mods` override.
+2. **Next to the app** — `mods/` beside the executable (beside the `.app` on macOS). In dev builds this is `build/<preset>/mods`, so freshly built mods load without any flags.
+3. **Inside the app bundle** (Apple) — `Contents/Resources/mods` on macOS, `<app>/mods` on iOS/tvOS; install-bundled mods injected at install time.
+
+If the same mod ID exists in more than one, the higher-priority copy wins outright — it shadows the others and also beats them in asset-conflict priority (overlays, textures). Directory-form bundles in the non-user dirs are loaded in place: native libraries are dlopen'd where they sit (never extracted), reload is unsupported, and their statics persist across disable/enable within a session. `.dusk` archives extract to the user cache as usual wherever they live.
+
+Per-platform bundled layout (produced by marking an in-tree mod `BUNDLE` in `add_dusk_mod`; the build mirrors those `.dusk` files into `build/<preset>/bundled_mods/`, and `--target install` performs the platform placement):
+
+| Platform | Layout |
+|---|---|
+| Windows | `<install>\mods\<name>.dusk` (archives; native libs extract to the user cache as usual) |
+| Linux / AppImage | `<install>/mods/<id>/` extracted directories; the `.so` is dlopen'd in place |
+| macOS | `Dusklight.app/Contents/Resources/mods/<id>/`, injected at install time; the dylib is ad-hoc signed in place before the final bundle sign — release re-signing must sign each `Resources/mods/*/darwin-*.dylib` before signing the bundle |
+| iOS / tvOS | assets in `<app>/mods/<id>/` (no Mach-O inside); the dylib lives at `<app>/Frameworks/<mod id>.dylib` (store validation restricts Mach-O placement) and the loader falls back to it when a bundle dir carries no top-level platform lib |
+| Android | `.dusk` files ride in APK assets (`assets/mods/<abi>/`) and are extracted to internal storage (`bundled_mods/`) at app startup |
 
 **Windows toolchains.** Mods must use the MSVC ABI; two toolchains are supported, differing
 in how *game data* (globals like `g_dComIfG_gameInfo`) is reached:
@@ -392,9 +410,11 @@ All WGPU handles the service hands out are borrowed: draw-context handles are va
 
 **Stages.** `register_stage_hook(stage, ...)` fires your callback at a named point of every rendered frame (frame interpolation included — read interpolated state fresh each call; `GfxStageContext.interpolated_frame` tells you which kind of frame it is):
 
-- `GFX_STAGE_WORLD_LATE` — inside the 3D scene, after terrain/shadow lists, before object and translucent lists. The place to record opaque world geometry with proper depth. May fire once per camera window.
-- `GFX_STAGE_BEFORE_HUD` — the 3D scene and wipe are complete; no 2D/HUD lists yet. Post-process the world while leaving the HUD crisp.
-- `GFX_STAGE_AFTER_HUD` — everything including the HUD is drawn. Whole-frame post-processing.
+- `GFX_STAGE_SCENE_BEGIN` — inside a world camera window, after camera/projection/light setup, before terrain/background opaque scene lists.
+- `GFX_STAGE_SCENE_AFTER_TERRAIN` — inside the 3D scene, after terrain/shadow lists, before object and translucent lists. The place to record opaque world geometry with proper depth. May fire once per camera window.
+- `GFX_STAGE_SCENE_AFTER_OPAQUE` — inside the 3D scene, after sky/terrain/object opaque lists, before translucent lists and fog-priority particle overlays. Good for opaque-only screen-space composites that should sit behind later fog/mist overlays. May fire once per camera window. Requires GfxService minor 2.
+- `GFX_STAGE_FRAME_BEFORE_HUD` — the 3D scene and wipe are complete; no 2D/HUD lists yet. Post-process the world while leaving the HUD crisp.
+- `GFX_STAGE_FRAME_AFTER_HUD` — everything including the HUD is drawn. Whole-frame post-processing.
 
 The host UI (RmlUi windows, ImGui console) composites after the frame is done, so it always renders on top of anything you draw at any stage.
 
@@ -404,7 +424,7 @@ The host UI (RmlUi windows, ImGui console) composites after the frame is done, s
 
 **Pass primitives.** `resolve_pass(desc, &targets)` snapshots the current pass targets into pooled textures — `desc.color` gives the scene color (single-sample, post-MSAA-resolve), `desc.depth` a raw-depth `R32Float` snapshot (check `uses_reversed_z` from `get_device_info`; may be NULL if the device lacks depth-sampling support) — then rendering continues on a fresh pass that loads the existing contents. `create_pass(width, height)` opens a cleared single-sample offscreen pass; subsequent draws target it until `resolve_pass` returns its snapshot and restores the scene pass. Balance every `create_pass` with a `resolve_pass` before your stage callback returns (leaving one open fails your mod), and don't nest them. Both return `MOD_UNAVAILABLE` outside an active pass (the true no-pass window is `mod_initialize` — `mod_update` runs inside the frame) and while the game is inside its own offscreen scope.
 
-The post-process recipe (see crt_mod): register a draw type and an `AFTER_HUD` stage hook once; per frame, from the stage callback, `resolve_pass` the scene, `push_uniform` your parameters, and `push_draw` with the snapshot view in the payload; in the draw callback, lazily create your pipeline, bind the snapshot + uniforms, and draw a fullscreen triangle back over the frame. Multi-resolution chains (bloom pyramids, half-res AO) alternate `create_pass`/`resolve_pass` between full-size passes. Multiple mods compose naturally: each resolve sees everything drawn before it, in stage-hook registration order.
+The post-process recipe (see crt_mod): register a draw type and a `GFX_STAGE_FRAME_AFTER_HUD` stage hook once; per frame, from the stage callback, `resolve_pass` the scene, `push_uniform` your parameters, and `push_draw` with the snapshot view in the payload; in the draw callback, lazily create your pipeline, bind the snapshot + uniforms, and draw a fullscreen triangle back over the frame. Multi-resolution chains (bloom pyramids, half-res AO) alternate `create_pass`/`resolve_pass` between full-size passes. Multiple mods compose naturally: each resolve sees everything drawn before it, in stage-hook registration order.
 
 **Compute tasks (minor 1).** `register_compute_type` + `push_compute` splice compute work into the middle of the frame: `push_compute(handle, payload, size)` splits the scene pass at the current position, and your `GfxComputeFn` runs on the render worker with the frame's `WGPUCommandEncoder` between the two halves — dispatches see everything drawn (and resolved) before the call, and draws recorded after it see the compute output. The callback may begin/end any number of compute passes and record copies on the encoder; leave no pass open when returning and never `Finish`/`Release` the encoder. A single compute pass can chain dependent dispatches (WebGPU synchronizes between dispatches, so a storage texture written by one is readable by the next). Payload rules match `push_draw`. The typical multi-pass effect shape: `resolve_pass` for input snapshots → `push_compute` running the whole chain into mod-owned storage textures → `push_draw` compositing the result back over the scene. `MOD_UNAVAILABLE` outside an active pass or while any offscreen pass is open (compute can't split an offscreen pass — order it before `create_pass` or after its `resolve_pass`).
 
@@ -424,7 +444,7 @@ let world = world4.xyz / world4.w;
 
 (If `viewport_near_z`/`viewport_far_z` are not the usual 0/1, remap `d` first as documented in the header.)
 
-**When to call.** Game thread only. Call from a gfx stage callback (or `mod_update`, which runs inside the frame) and the values match the frame being recorded — frame interpolation rewrites the live camera in place before each rendered frame, so this is automatically correct on interpolated frames too. During `GFX_STAGE_WORLD_LATE` you get the current camera window's camera; at `BEFORE_HUD`/`AFTER_HUD` the last window's. Returns `MOD_UNAVAILABLE` while no camera exists (menus before the first in-game frame, and always during `mod_initialize`) — handle it by skipping your effect that frame.
+**When to call.** Game thread only. Call from a gfx stage callback (or `mod_update`, which runs inside the frame) and the values match the frame being recorded — frame interpolation rewrites the live camera in place before each rendered frame, so this is automatically correct on interpolated frames too. During scene stages (`GFX_STAGE_SCENE_BEGIN`, `GFX_STAGE_SCENE_AFTER_TERRAIN`, `GFX_STAGE_SCENE_AFTER_OPAQUE`) you get the current camera window's camera; at `GFX_STAGE_FRAME_BEFORE_HUD`/`GFX_STAGE_FRAME_AFTER_HUD` the last window's. Returns `MOD_UNAVAILABLE` while no camera exists (menus before the first in-game frame, and always during `mod_initialize`) — handle it by skipping your effect that frame.
 
 ---
 

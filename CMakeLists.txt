@@ -212,7 +212,7 @@ FetchContent_Declare(json
     EXCLUDE_FROM_ALL
 )
 
-message(STATUS "dusk: Fetching miniz")
+message(STATUS "dusklight: Fetching miniz")
 FetchContent_Declare(miniz
     URL https://github.com/richgel999/miniz/releases/download/3.0.2/miniz-3.0.2.zip
     DOWNLOAD_EXTRACT_TIMESTAMP TRUE
@@ -231,7 +231,7 @@ endif ()
 
 set(_fetch_content_deps cxxopts json miniz)
 if (DUSK_ENABLE_CODE_MODS)
-    message(STATUS "dusk: Fetching funchook")
+    message(STATUS "dusklight: Fetching funchook")
     # cmake/patch_funchook.cmake patches funchook's cmake/capstone.cmake.in to inject a
     # PATCH_COMMAND into capstone's inner ExternalProject. That PATCH_COMMAND runs
     # cmake/fix_capstone_policy.cmake after capstone is cloned, which removes the
@@ -586,6 +586,16 @@ endif ()
 
 include(cmake/DuskModSDK.cmake)
 
+if (DUSK_ENABLE_CODE_MODS AND CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    add_custom_target(dusklight_mods) # Aggregate target for all in-tree mods
+    add_subdirectory(tools/mod_test)
+    add_subdirectory(tools/mod_test_dep)
+    add_subdirectory(tools/crt_mod)
+    add_subdirectory(tools/ao_mod)
+    add_subdirectory(tools/shadow_mod)
+    add_subdirectory(tools/randomizer)
+endif ()
+
 if (APPLE)
     if (IOS)
         set(DUSK_RESOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/platforms/ios)
@@ -773,12 +783,4 @@ foreach (target IN LISTS BINARY_TARGETS)
     endforeach ()
 endforeach ()
 
-if (DUSK_ENABLE_CODE_MODS AND CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
-    add_custom_target(dusk_mods) # Aggregate target for all in-tree mods
-    add_subdirectory(tools/mod_test)
-    add_subdirectory(tools/mod_test_dep)
-    add_subdirectory(tools/crt_mod)
-    add_subdirectory(tools/ao_mod)
-    add_subdirectory(tools/shadow_mod)
-    add_subdirectory(tools/randomizer)
-endif ()
+dusk_install_bundled_mods()

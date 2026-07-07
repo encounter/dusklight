@@ -80,7 +80,7 @@ function(ensure_symgen required)
         set(_symgen_dir "${CMAKE_BINARY_DIR}/_deps/symgen")
         set(_symgen "${_symgen_dir}/${_asset}")
         set(_url "${_SYMGEN_RELEASE_BASE_URL}/${_asset}")
-        message(STATUS "dusk: Fetching symgen ${_SYMGEN_VERSION} (${_asset})")
+        message(STATUS "dusklight: Fetching symgen ${_SYMGEN_VERSION} (${_asset})")
         file(MAKE_DIRECTORY "${_symgen_dir}")
         file(DOWNLOAD "${_url}" "${_symgen}"
                 EXPECTED_HASH "SHA256=${_hash}"

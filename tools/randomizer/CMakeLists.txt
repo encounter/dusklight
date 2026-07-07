@@ -87,6 +87,7 @@ add_dusk_mod(randomizer
         src/ui/ui.cpp
         ${RANDOMIZER_GENERATOR_SOURCES}
         MOD_JSON mod.json
+        BUNDLE
 )
 
 target_link_libraries(randomizer PRIVATE yaml-cpp::yaml-cpp base64pp fmt::fmt)

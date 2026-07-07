@@ -835,13 +835,50 @@ int game_main(int argc, char* argv[]) {
 
     mDoDvdThd::SyncWidthSound = false;
 
-    // Setup mods
-    if (parsed_arg_options.contains("mods") &&
-        !parsed_arg_options["mods"].as<std::string>().empty())
+    // Setup mods. Highest priority first: user dir (--mods replaces it), then mods/ next to
+    // the app, then install-bundled mods inside the app bundle.
     {
-        dusk::mods::ModLoader::instance().set_mods_dir(parsed_arg_options["mods"].as<std::string>());
-    } else {
-        dusk::mods::ModLoader::instance().set_mods_dir(dusk::ConfigPath / "mods");
+        std::vector<dusk::mods::ModSearchDir> modDirs;
+        if (parsed_arg_options.contains("mods") &&
+            !parsed_arg_options["mods"].as<std::string>().empty())
+        {
+            modDirs.push_back({.path = parsed_arg_options["mods"].as<std::string>()});
+        } else {
+            modDirs.push_back({.path = dusk::ConfigPath / "mods"});
+        }
+#if TARGET_ANDROID
+        // APK-bundled mods are extracted to internal storage
+        // by DuskActivity before SDL_main runs.
+        modDirs.push_back({
+            .path = dusk::CachePath / "bundled_mods",
+        });
+#elif defined(__APPLE__) && (TARGET_OS_IOS || TARGET_OS_TV)
+        modDirs.push_back({
+            .path = dusk::data::base_path_relative("mods"),
+            .inPlaceNative = true,
+            .nativeLibDir = dusk::data::base_path_relative("Frameworks"),
+        });
+#else
+#if defined(__APPLE__)
+        // Base path is Contents/Resources; search up for dev mods
+        // TODO: scope to non-CI builds
+        modDirs.push_back({
+            .path = dusk::data::base_path_relative("../../../mods").lexically_normal(),
+            .inPlaceNative = true,
+        });
+        // Contents/Resources/mods
+        modDirs.push_back({
+            .path = dusk::data::base_path_relative("mods"),
+            .inPlaceNative = true,
+        });
+#else
+        modDirs.push_back({
+            .path = dusk::data::base_path_relative("mods"),
+            .inPlaceNative = true,
+        });
+#endif
+#endif
+        dusk::mods::ModLoader::instance().set_search_dirs(std::move(modDirs));
     }
 #if TARGET_ANDROID
     // A user-relocated data dir can live on external storage, which is mounted noexec;

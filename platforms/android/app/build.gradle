@@ -12,6 +12,14 @@ def syncDuskAssets = tasks.register('syncDuskAssets', Sync) {
         into 'res'
         exclude '**/.DS_Store'
     }
+    from(new File(duskRepoDir, 'build/android-arm64/bundled_mods')) {
+        into 'mods/arm64-v8a'
+        include '*.dusk'
+    }
+    from(new File(duskRepoDir, 'build/android-x86_64/bundled_mods')) {
+        into 'mods/x86_64'
+        include '*.dusk'
+    }
     into duskGeneratedAssetsDir
 }
 

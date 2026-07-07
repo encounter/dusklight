@@ -93,9 +93,11 @@ public:
         actions->SetClass("mod-actions", true);
         const std::string modId = mod.metadata.id;
         if (mod.cvarIsEnabled->getValue()) {
-            make_button(actions, "Reload").on_pressed([modId] {
-                mods::ModLoader::instance().request_reload(modId);
-            });
+            if (!mod.inPlace) {
+                make_button(actions, "Reload").on_pressed([modId] {
+                    mods::ModLoader::instance().request_reload(modId);
+                });
+            }
             make_button(actions, "Disable").on_pressed([modId] {
                 mods::ModLoader::instance().request_disable(modId);
             });

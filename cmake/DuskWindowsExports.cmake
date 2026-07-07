@@ -7,7 +7,7 @@ get_filename_component(_DUSK_WINDOWS_EXPORTS_CMAKE_DIR "${CMAKE_CURRENT_LIST_FIL
 # writes a .def used by the main link and import library generation.
 function(dusk_setup_windows_exports target)
     if (NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
-        message(WARNING "dusk: Windows code-mod exports are x64-only for now; skipping")
+        message(WARNING "dusklight: Windows code-mod exports are x64-only for now; skipping")
         return()
     endif ()
 

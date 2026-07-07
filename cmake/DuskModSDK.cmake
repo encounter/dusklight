@@ -1,10 +1,6 @@
 # add_dusk_mod(<target> SOURCES <file>... MOD_JSON <mod.json> [RES_DIR <res>] [OVERLAY_DIR <overlay>]
-#              [TEXTURES_DIR <textures>] [OUTPUT_DIR <dir>])
-if (CMAKE_CROSSCOMPILING)
-    set(DUSK_MODS_OUTPUT_DIR "${CMAKE_BINARY_DIR}/mods" CACHE PATH "Directory to write .dusk packages into")
-else ()
-    set(DUSK_MODS_OUTPUT_DIR "${CMAKE_SOURCE_DIR}/mods" CACHE PATH "Directory to write .dusk packages into")
-endif ()
+#              [TEXTURES_DIR <textures>] [OUTPUT_DIR <dir>] [BUNDLE])
+set(DUSK_MODS_OUTPUT_DIR "${CMAKE_BINARY_DIR}/mods" CACHE PATH "Directory to write .dusk packages into")
 set(_DUSK_MOD_SDK_DIR "${CMAKE_CURRENT_SOURCE_DIR}/sdk")
 
 function(_dusk_mod_lib_name out_var)
@@ -50,7 +46,7 @@ function(_dusk_mod_collect_assets out_var dir)
 endfunction()
 
 function(add_dusk_mod target_name)
-    cmake_parse_arguments(ARG "" "MOD_JSON;RES_DIR;OVERLAY_DIR;TEXTURES_DIR;OUTPUT_DIR" "SOURCES" ${ARGN})
+    cmake_parse_arguments(ARG "BUNDLE" "MOD_JSON;RES_DIR;OVERLAY_DIR;TEXTURES_DIR;OUTPUT_DIR" "SOURCES" ${ARGN})
     if (NOT ARG_MOD_JSON)
         message(FATAL_ERROR "add_dusk_mod: MOD_JSON is required")
     endif ()
@@ -183,6 +179,20 @@ function(add_dusk_mod target_name)
                 "${_textures_dir}" "${_stage}/textures")
     endif ()
 
+    set(_bundle_cmds "")
+    if (ARG_BUNDLE AND TARGET dusklight)
+        file(READ "${_mod_json}" _mod_json_text)
+        string(JSON _mod_id GET "${_mod_json_text}" id)
+        set_property(GLOBAL APPEND PROPERTY DUSK_BUNDLED_MOD_TARGETS "${target_name}")
+        set_property(GLOBAL APPEND PROPERTY DUSK_BUNDLED_MOD_IDS "${_mod_id}")
+        set_property(GLOBAL APPEND PROPERTY DUSK_BUNDLED_MOD_STAGES "${_stage}")
+        set_property(GLOBAL APPEND PROPERTY DUSK_BUNDLED_MOD_PACKAGES "${_out}")
+        set_property(GLOBAL APPEND PROPERTY DUSK_BUNDLED_MOD_LIB_NAMES "${_lib_name}")
+        set(_bundle_cmds
+                COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/bundled_mods"
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_out}" "${CMAKE_BINARY_DIR}/bundled_mods/${target_name}.dusk")
+    endif ()
+
     set(_package_target "${target_name}_package")
     set(_package_inputs_file "${CMAKE_CURRENT_BINARY_DIR}/${target_name}_package_inputs.txt")
     list(SORT _package_inputs)
@@ -198,6 +208,7 @@ function(add_dusk_mod target_name)
             COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_mod_json}" "${_stage}/mod.json"
             ${_extra_cmds}
             COMMAND ${CMAKE_COMMAND} -E chdir "${_stage}" ${CMAKE_COMMAND} -E tar cvf "${_out}" --format=zip ${_zip_args}
+            ${_bundle_cmds}
             DEPENDS ${target_name} ${_package_deps} "${_package_inputs_file}"
             COMMENT "Packaging ${target_name} -> ${_out}"
             COMMAND_EXPAND_LISTS
@@ -210,7 +221,81 @@ function(add_dusk_mod target_name)
         # target itself.
         add_dependencies(dusklight ${_package_target})
     endif ()
-    if (TARGET dusk_mods)
-        add_dependencies(dusk_mods ${_package_target})
+    if (TARGET dusklight_mods)
+        add_dependencies(dusklight_mods ${_package_target})
+    endif ()
+endfunction()
+
+# Install rules for BUNDLE-marked mods.
+# - Windows: the .dusk archives into <install>/mods (the loader extracts native libs to the
+#   user cache).
+# - Linux: pre-extracted stage dirs into <install>/mods so native libs dlopen in place from
+#   read-only installs (AppImage squashfs).
+# - macOS: pre-extracted stage dirs into the installed app's Contents/Resources/mods, dylibs
+#   ad-hoc signed in place, then the whole bundle re-signed (must be the last install step that
+#   touches the bundle — the sign seals Resources). Dev builds don't carry mods in the .app;
+#   the loader picks them up from mods/ next to it (= ${CMAKE_BINARY_DIR}/mods).
+# - iOS/tvOS: assets into <app>/mods/<id> and the dylib into Frameworks/<id>.dylib — store
+#   validation requires all Mach-O directly under Frameworks/, and the per-platform lib name
+#   (e.g. ios-arm64.dylib) is identical across mods; the loader falls back to
+#   Frameworks/<mod id><ext> when a bundle dir carries no platform lib. build-ios.sh signs the
+#   installed app (including Frameworks/) afterwards.
+# - Android: nothing here; gradle packs ${CMAKE_BINARY_DIR}/bundled_mods into APK assets.
+function(dusk_install_bundled_mods)
+    get_property(_targets GLOBAL PROPERTY DUSK_BUNDLED_MOD_TARGETS)
+    if (NOT _targets OR ANDROID)
+        return ()
+    endif ()
+    get_property(_ids GLOBAL PROPERTY DUSK_BUNDLED_MOD_IDS)
+    get_property(_stages GLOBAL PROPERTY DUSK_BUNDLED_MOD_STAGES)
+    get_property(_lib_names GLOBAL PROPERTY DUSK_BUNDLED_MOD_LIB_NAMES)
+    list(LENGTH _targets _count)
+    math(EXPR _last "${_count} - 1")
+
+    if (APPLE)
+        get_target_property(_app_name dusklight OUTPUT_NAME)
+        if (NOT _app_name)
+            set(_app_name dusklight)
+        endif ()
+        set(_bundle_dir "${CMAKE_INSTALL_PREFIX}/${_app_name}.app")
+        if (IOS OR TVOS)
+            foreach (_i RANGE ${_last})
+                list(GET _targets ${_i} _target)
+                list(GET _ids ${_i} _id)
+                list(GET _stages ${_i} _stage)
+                list(GET _lib_names ${_i} _lib_name)
+                install(DIRECTORY "${_stage}/" DESTINATION "${_bundle_dir}/mods/${_id}"
+                        PATTERN "${_lib_name}" EXCLUDE)
+                install(PROGRAMS "$<TARGET_FILE:${_target}>"
+                        DESTINATION "${_bundle_dir}/Frameworks" RENAME "${_id}.dylib")
+            endforeach ()
+        else ()
+            foreach (_i RANGE ${_last})
+                list(GET _ids ${_i} _id)
+                list(GET _stages ${_i} _stage)
+                list(GET _lib_names ${_i} _lib_name)
+                install(DIRECTORY "${_stage}/" DESTINATION "${_bundle_dir}/Contents/Resources/mods/${_id}")
+                install(CODE "execute_process(COMMAND /usr/bin/codesign --force --sign - \"${_bundle_dir}/Contents/Resources/mods/${_id}/${_lib_name}\" COMMAND_ERROR_IS_FATAL ANY)")
+            endforeach ()
+            install(CODE "execute_process(COMMAND /usr/bin/codesign --force --sign - --entitlements \"${DUSK_ENTITLEMENTS}\" \"${_bundle_dir}\" COMMAND_ERROR_IS_FATAL ANY)")
+        endif ()
+        return ()
+    endif ()
+
+    if (DUSK_PACKAGE_INSTALL)
+        set(_mods_dest "${CMAKE_INSTALL_DATAROOTDIR}/dusklight/mods")
+    else ()
+        set(_mods_dest "${CMAKE_INSTALL_PREFIX}/mods")
+    endif ()
+    if (WIN32)
+        foreach (_target IN LISTS _targets)
+            install(FILES "${CMAKE_BINARY_DIR}/bundled_mods/${_target}.dusk" DESTINATION "${_mods_dest}")
+        endforeach ()
+    else ()
+        foreach (_i RANGE ${_last})
+            list(GET _ids ${_i} _id)
+            list(GET _stages ${_i} _stage)
+            install(DIRECTORY "${_stage}/" DESTINATION "${_mods_dest}/${_id}")
+        endforeach ()
     endif ()
 endfunction()

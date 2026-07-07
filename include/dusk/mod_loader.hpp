@@ -62,6 +62,15 @@ struct ModMetadata {
     std::string bannerPath;
 };
 
+struct ModSearchDir {
+    std::filesystem::path path;
+    // Directory bundles dlopen their native lib in place instead of extracting it to the cache.
+    // Required where extracted code cannot run (iOS), desirable for signed/read-only installs.
+    bool inPlaceNative = false;
+    // Native library location for platforms that restrict placement (e.g. iOS/tvOS Frameworks/)
+    std::filesystem::path nativeLibDir;
+};
+
 struct NativeMod {
     std::unique_ptr<loader::NativeModule> handle;
     const ModManifest* manifest = nullptr;
@@ -117,6 +126,10 @@ struct LoadedMod {
     std::string modPath;
     std::string dir;
 
+    uint32_t searchDirIndex = 0;
+    // Native lib is dlopen'd in place and stays resident for the session. Reload is unsupported.
+    bool inPlace = false;
+
     std::unique_ptr<ConfigVar<bool> > cvarIsEnabled;
     config::Subscription enabledSubscription = 0;
 
@@ -160,7 +173,7 @@ class ModLoader {
 public:
     static ModLoader& instance();
 
-    void set_mods_dir(std::filesystem::path dir) { m_modsDir = std::move(dir); }
+    void set_search_dirs(std::vector<ModSearchDir> dirs) { m_searchDirs = std::move(dirs); }
     void set_cache_dir(std::filesystem::path dir) { m_cacheDir = std::move(dir); }
     void init();
     void tick();
@@ -199,15 +212,17 @@ private:
     };
 
     std::vector<std::unique_ptr<LoadedMod> > m_mods;
-    std::filesystem::path m_modsDir;
+    std::vector<ModSearchDir> m_searchDirs;
     std::filesystem::path m_cacheDir;
     std::vector<Request> m_pendingRequests;
     std::vector<RetiredNative> m_retiredNatives;
     bool m_initialized = false;
     bool m_startupComplete = false;
 
-    void try_load_mod(const std::filesystem::path& modPath, bool fromDir);
+    void try_load_mod(const std::filesystem::path& modPath, bool fromDir, uint32_t searchDirIndex);
     void load_native(LoadedMod& mod, const std::string& dllEntry);
+    // Resolved <nativeLibDir>/<mod id><ext> if it exists on disk, empty otherwise.
+    [[nodiscard]] std::filesystem::path external_native_lib_path(const LoadedMod& mod) const;
     void unload_native(LoadedMod& mod);
     // Registers exports (unless already registered), resolves imports and runs mod_initialize.
     // Returns whether the mod ended up active; failures go through failMod.

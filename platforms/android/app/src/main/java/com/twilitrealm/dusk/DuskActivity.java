@@ -26,7 +26,14 @@ import android.view.WindowInsetsController;
 import org.libsdl.app.SDLActivity;
 import org.libsdl.app.SDLSurface;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -90,8 +97,85 @@ public class DuskActivity extends SDLActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        syncBundledMods();
         super.onCreate(savedInstanceState);
         hideSystemBars();
+    }
+
+    private void syncBundledMods() {
+        File outDir = new File(getFilesDir(), "bundled_mods");
+        File marker = new File(outDir, ".synced");
+        try {
+            String abi = Build.SUPPORTED_ABIS.length > 0 ? Build.SUPPORTED_ABIS[0] : "";
+            String assetDir = "mods/" + abi;
+            String[] names = getAssets().list(assetDir);
+
+            StringBuilder state = new StringBuilder();
+            state.append("apk=")
+                .append(new File(getApplicationInfo().sourceDir).lastModified())
+                .append('\n');
+            if (names != null) {
+                for (String name : names) {
+                    state.append(name).append('\n');
+                }
+            }
+            String expected = state.toString();
+            if (marker.isFile() && expected.equals(readTextFile(marker))) {
+                return;
+            }
+
+            deleteRecursively(outDir);
+            if (names == null || names.length == 0) {
+                return;
+            }
+            if (!outDir.mkdirs()) {
+                Log.w(TAG, "Unable to create " + outDir);
+                return;
+            }
+            for (String name : names) {
+                copyAsset(assetDir + "/" + name, new File(outDir, name));
+            }
+            try (OutputStream out = new FileOutputStream(marker)) {
+                out.write(expected.getBytes(StandardCharsets.UTF_8));
+            }
+            Log.i(TAG, "Extracted " + names.length + " bundled mod(s) to " + outDir);
+        } catch (IOException e) {
+            Log.w(TAG, "Unable to sync bundled mods", e);
+        }
+    }
+
+    private void copyAsset(String assetPath, File dest) throws IOException {
+        try (InputStream in = getAssets().open(assetPath);
+             OutputStream out = new FileOutputStream(dest))
+        {
+            byte[] buffer = new byte[65536];
+            int read;
+            while ((read = in.read(buffer)) > 0) {
+                out.write(buffer, 0, read);
+            }
+        }
+    }
+
+    private static String readTextFile(File file) throws IOException {
+        try (InputStream in = new FileInputStream(file)) {
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            byte[] buffer = new byte[4096];
+            int read;
+            while ((read = in.read(buffer)) > 0) {
+                out.write(buffer, 0, read);
+            }
+            return new String(out.toByteArray(), StandardCharsets.UTF_8);
+        }
+    }
+
+    private static void deleteRecursively(File file) {
+        File[] children = file.listFiles();
+        if (children != null) {
+            for (File child : children) {
+                deleteRecursively(child);
+            }
+        }
+        file.delete();
     }
 
     @Override
