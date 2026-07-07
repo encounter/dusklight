@@ -617,7 +617,7 @@ void on_gfx_stage(ModContext*, const GfxStageContext* stageCtx, void*) {
         return;
     }
     g_gfx_stage_ran = true;
-    g_gfx_stage_ok = stageCtx != nullptr && stageCtx->stage == GFX_STAGE_BEFORE_HUD;
+    g_gfx_stage_ok = stageCtx != nullptr && stageCtx->stage == GFX_STAGE_FRAME_BEFORE_HUD;
 
     // Streaming pushes are valid at record time.
     const float verts[8] = {0.f, 0.f, 1.f, 0.f, 0.f, 1.f, 1.f, 1.f};
@@ -1671,7 +1671,7 @@ MOD_EXPORT ModResult mod_initialize(ModError* error) {
     // GfxService: device info + proc lookup, draw type/stage hook registration round trips, and
     // negatives. ModLoader::init runs before the frame loop, so no render pass is active here:
     // the pass-scoped calls must fail with MOD_UNAVAILABLE. The pass-scoped positive tests run
-    // in the BEFORE_HUD stage callback and are reported from mod_update.
+    // in the frame-before-HUD stage callback and are reported from mod_update.
     GfxDeviceInfo gfxInfo = GFX_DEVICE_INFO_INIT;
     g_gfx_device_ok = svc_gfx->get_device_info(mod_ctx, &gfxInfo) == MOD_OK &&
                       gfxInfo.device != nullptr && gfxInfo.queue != nullptr &&
@@ -1694,7 +1694,7 @@ MOD_EXPORT ModResult mod_initialize(ModError* error) {
     GfxStageHookDesc gfxStageDesc = GFX_STAGE_HOOK_DESC_INIT;
     gfxStageDesc.callback = on_gfx_stage;
     gfxResult = svc_gfx->register_stage_hook(
-        mod_ctx, GFX_STAGE_BEFORE_HUD, &gfxStageDesc, &g_gfx_stage_hook);
+        mod_ctx, GFX_STAGE_FRAME_BEFORE_HUD, &gfxStageDesc, &g_gfx_stage_hook);
     if (gfxResult != MOD_OK) {
         return require_ok(gfxResult, error, "failed to register gfx stage hook");
     }
@@ -1708,7 +1708,7 @@ MOD_EXPORT ModResult mod_initialize(ModError* error) {
                       svc_gfx->register_draw_type(mod_ctx, &gfxDrawDesc, &gfxTempDraw) == MOD_OK &&
                       svc_gfx->unregister_draw_type(mod_ctx, gfxTempDraw) == MOD_OK &&
                       svc_gfx->register_stage_hook(
-                          mod_ctx, GFX_STAGE_AFTER_HUD, &gfxStageDesc, &gfxTempStage) == MOD_OK &&
+                          mod_ctx, GFX_STAGE_FRAME_AFTER_HUD, &gfxStageDesc, &gfxTempStage) == MOD_OK &&
                       svc_gfx->unregister_stage_hook(mod_ctx, gfxTempStage) == MOD_OK;
 
     // Negative tests. Expected host error lines: game-owned/no-pass rejections come back as

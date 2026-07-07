@@ -58,9 +58,9 @@ ConfigVarHandle g_cvarContactShadows = 0;
 ConfigVarHandle g_cvarDebugView = 0;
 
 GfxDrawTypeHandle g_drawType = 0;
-GfxStageHookHandle g_worldBeforeTerrainHook = 0;
-GfxStageHookHandle g_worldListsReadyHook = 0;
-GfxStageHookHandle g_beforeHudHook = 0;
+GfxStageHookHandle g_sceneBeginHook = 0;
+GfxStageHookHandle g_sceneAfterTerrainHook = 0;
+GfxStageHookHandle g_frameBeforeHudHook = 0;
 UiWindowHandle g_controlsWindow = 0;
 ResourceBuffer g_shaderSource = RESOURCE_BUFFER_INIT;
 GfxDeviceInfo g_deviceInfo = GFX_DEVICE_INFO_INIT;
@@ -709,7 +709,7 @@ bool build_light_replay_projection(
 
 // True when the dynamic shadow pass will run this frame: enabled, a camera exists, and the
 // sun or moon is above the horizon. Also gates the game-shadow skip hooks, which fire earlier
-// in the painter than our WORLD_LATE hook.
+// in the painter than our SCENE_AFTER_TERRAIN hook.
 bool dynamic_shadows_wanted() {
     if (!get_bool_option(g_cvarEnabled, true)) {
         return false;
@@ -785,7 +785,7 @@ void restore_actual_light_debug() {
     g_actualLightDebug.active = false;
 }
 
-void on_world_before_terrain(ModContext*, const GfxStageContext* stageCtx, void*) {
+void on_scene_begin(ModContext*, const GfxStageContext* stageCtx, void*) {
     if (stageCtx->window_index != 0) {
         return;
     }
@@ -826,7 +826,7 @@ void on_world_before_terrain(ModContext*, const GfxStageContext* stageCtx, void*
     J3DShape::resetVcdVatCache();
 }
 
-void on_world_lists_ready(ModContext*, const GfxStageContext* stageCtx, void*) {
+void on_scene_lists_ready(ModContext*, const GfxStageContext* stageCtx, void*) {
     if (stageCtx->window_index != 0 || g_mapReady) {
         return;
     }
@@ -846,7 +846,7 @@ void on_world_lists_ready(ModContext*, const GfxStageContext* stageCtx, void*) {
     render_shadow_map(replayView, replayProjectionMtx, replayProjection);
 }
 
-void on_world_late(ModContext*, const GfxStageContext* stageCtx, void*) {
+void on_scene_after_terrain(ModContext*, const GfxStageContext* stageCtx, void*) {
     if (stageCtx->window_index != 0 || g_mapReady) {
         return;
     }
@@ -864,7 +864,7 @@ void on_world_late(ModContext*, const GfxStageContext* stageCtx, void*) {
     render_shadow_map(replayView, replayProjectionMtx, replayProjection);
 }
 
-// Game thread, after the draw handlers have populated next frame's world lists: replay opaque scene
+// Game thread, after the draw handlers have populated next frame's scene lists: replay opaque scene
 // geometry from the light's point of view.
 void render_shadow_map(
     const Mtx replayView, const Mtx44 replayProjectionMtx, const f32 replayProjection[7]) {
@@ -970,7 +970,7 @@ void render_shadow_map(
 }
 
 // Game thread, after the full 3D scene: deferred composite.
-void on_before_hud(ModContext*, const GfxStageContext*, void*) {
+void on_frame_before_hud(ModContext*, const GfxStageContext*, void*) {
     const int64_t debugMode = get_debug_mode();
     restore_actual_light_debug();
 
@@ -1242,21 +1242,21 @@ MOD_EXPORT ModResult mod_initialize(ModError* error) {
         return dusk::mods::set_error(error, MOD_ERROR, "failed to register draw type");
     }
     GfxStageHookDesc stageDesc = GFX_STAGE_HOOK_DESC_INIT;
-    stageDesc.callback = on_world_before_terrain;
-    if (svc_gfx->register_stage_hook(mod_ctx, GFX_STAGE_WORLD_BEFORE_TERRAIN, &stageDesc,
-            &g_worldBeforeTerrainHook) != MOD_OK)
+    stageDesc.callback = on_scene_begin;
+    if (svc_gfx->register_stage_hook(mod_ctx, GFX_STAGE_SCENE_BEGIN, &stageDesc,
+            &g_sceneBeginHook) != MOD_OK)
     {
         return dusk::mods::set_error(error, MOD_ERROR, "failed to register stage hook");
     }
-    stageDesc.callback = on_world_late;
+    stageDesc.callback = on_scene_after_terrain;
     if (svc_gfx->register_stage_hook(
-            mod_ctx, GFX_STAGE_WORLD_LATE, &stageDesc, &g_worldListsReadyHook) != MOD_OK)
+            mod_ctx, GFX_STAGE_SCENE_AFTER_TERRAIN, &stageDesc, &g_sceneAfterTerrainHook) != MOD_OK)
     {
         return dusk::mods::set_error(error, MOD_ERROR, "failed to register stage hook");
     }
-    stageDesc.callback = on_before_hud;
-    if (svc_gfx->register_stage_hook(mod_ctx, GFX_STAGE_BEFORE_HUD, &stageDesc, &g_beforeHudHook) !=
-        MOD_OK)
+    stageDesc.callback = on_frame_before_hud;
+    if (svc_gfx->register_stage_hook(
+            mod_ctx, GFX_STAGE_FRAME_BEFORE_HUD, &stageDesc, &g_frameBeforeHudHook) != MOD_OK)
     {
         return dusk::mods::set_error(error, MOD_ERROR, "failed to register stage hook");
     }
@@ -1313,7 +1313,7 @@ MOD_EXPORT ModResult mod_shutdown(ModError*) {
     g_cvarEnabled = g_cvarMapSize = g_cvarNoFrustumClipping = 0;
     g_cvarStrength = 0;
     g_cvarPcf = g_cvarBias = g_cvarBoxRadius = g_cvarContactShadows = g_cvarDebugView = 0;
-    g_drawType = g_worldBeforeTerrainHook = g_worldListsReadyHook = g_beforeHudHook = 0;
+    g_drawType = g_sceneBeginHook = g_sceneAfterTerrainHook = g_frameBeforeHudHook = 0;
     g_controlsWindow = 0;
     g_shadowMapView = nullptr;
     g_lightColorView = nullptr;

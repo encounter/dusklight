@@ -453,7 +453,7 @@ MOD_EXPORT ModResult mod_initialize(ModError* error) {
     // `on_stage` will run on the main thread "after HUD" in the frame's draw
     GfxStageHookDesc stageDesc = GFX_STAGE_HOOK_DESC_INIT;
     stageDesc.callback = on_stage;
-    if (svc_gfx->register_stage_hook(mod_ctx, GFX_STAGE_AFTER_HUD, &stageDesc, &g_stageHook) !=
+    if (svc_gfx->register_stage_hook(mod_ctx, GFX_STAGE_FRAME_AFTER_HUD, &stageDesc, &g_stageHook) !=
         MOD_OK)
     {
         return dusk::mods::set_error(error, MOD_ERROR, "failed to register stage hook");

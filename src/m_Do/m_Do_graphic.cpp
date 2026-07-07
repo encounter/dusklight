@@ -2351,7 +2351,7 @@ int mDoGph_Painter() {
 
             #if TARGET_PC
             dusk::mods::gfx_run_stage(
-                dusk::mods::GfxStageWorldBeforeTerrain, 0, &camera_p->view, view_port);
+                dusk::mods::GfxStageSceneBegin, 0, &camera_p->view, view_port);
             #endif
 
             #if DEBUG
@@ -2384,7 +2384,7 @@ int mDoGph_Painter() {
 
             #if TARGET_PC
             dusk::mods::gfx_run_stage(
-                dusk::mods::GfxStageWorldLate, 0, &camera_p->view, view_port);
+                dusk::mods::GfxStageSceneAfterTerrain, 0, &camera_p->view, view_port);
             #endif
 
             #if DEBUG
@@ -2415,6 +2415,11 @@ int mDoGph_Painter() {
 #endif
 
             GX_DEBUG_GROUP(dComIfGd_drawOpaListPacket);
+
+            #if TARGET_PC
+            dusk::mods::gfx_run_stage(
+                dusk::mods::GfxStageSceneAfterOpaque, 0, &camera_p->view, view_port);
+            #endif
 
             #if DEBUG
             // "drawing up to special-use drawing (Opaque) except J3D (Rendering)"
@@ -2783,7 +2788,7 @@ int mDoGph_Painter() {
 
     #if TARGET_PC
     // Scene (3D + wipe) fully drawn; no 2D/HUD lists yet. Covers both branches below.
-    dusk::mods::gfx_run_stage(dusk::mods::GfxStageBeforeHud);
+    dusk::mods::gfx_run_stage(dusk::mods::GfxStageFrameBeforeHud);
     #endif
 
     if (fapGmHIO_get2Ddraw()) {
@@ -2837,7 +2842,7 @@ int mDoGph_Painter() {
     }
 
     #if TARGET_PC
-    dusk::mods::gfx_run_stage(dusk::mods::GfxStageAfterHud);
+    dusk::mods::gfx_run_stage(dusk::mods::GfxStageFrameAfterHud);
     #endif
 
     #if DEBUG

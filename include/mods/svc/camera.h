@@ -74,10 +74,11 @@ typedef struct CameraService {
 
     /* Snapshot the active game camera. Game thread only. Call from a gfx
      * stage callback (or mod_update, which runs inside the frame) for values
-     * matching the frame being recorded. During GFX_STAGE_WORLD_LATE this is
-     * the current camera window's camera; at BEFORE_HUD/AFTER_HUD it is the
-     * last window's. Returns MOD_UNAVAILABLE while no camera exists (menus
-     * before the first in-game frame; always during mod_initialize). */
+     * matching the frame being recorded. During scene stages this is the
+     * current camera window's camera; at GFX_STAGE_FRAME_BEFORE_HUD or
+     * GFX_STAGE_FRAME_AFTER_HUD it is the last window's. Returns
+     * MOD_UNAVAILABLE while no camera exists (menus before the first in-game
+     * frame; always during mod_initialize). */
     ModResult (*get_camera)(ModContext* ctx, CameraInfo* out_info);
 } CameraService;
 

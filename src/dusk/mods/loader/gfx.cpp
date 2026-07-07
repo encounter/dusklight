@@ -44,7 +44,7 @@ struct GfxSlot {
     uint64_t auroraId = aurora::gfx::InvalidDrawType; // DrawTypeId or EncoderTaskId
 
     GfxStageFn stageFn = nullptr;
-    GfxStage stage = GFX_STAGE_WORLD_LATE;
+    GfxStage stage = GFX_STAGE_SCENE_AFTER_TERRAIN;
 
     GfxComputeFn computeFn = nullptr;
 };
@@ -489,10 +489,11 @@ ModResult gfx_push_compute(
     return MOD_OK;
 }
 
-static_assert(GfxStageWorldLate == GFX_STAGE_WORLD_LATE &&
-                  GfxStageBeforeHud == GFX_STAGE_BEFORE_HUD &&
-                  GfxStageAfterHud == GFX_STAGE_AFTER_HUD &&
-                  GfxStageWorldBeforeTerrain == GFX_STAGE_WORLD_BEFORE_TERRAIN,
+static_assert(GfxStageSceneAfterTerrain == GFX_STAGE_SCENE_AFTER_TERRAIN &&
+                  GfxStageFrameBeforeHud == GFX_STAGE_FRAME_BEFORE_HUD &&
+                  GfxStageFrameAfterHud == GFX_STAGE_FRAME_AFTER_HUD &&
+                  GfxStageSceneBegin == GFX_STAGE_SCENE_BEGIN &&
+                  GfxStageSceneAfterOpaque == GFX_STAGE_SCENE_AFTER_OPAQUE,
     "gfx_stages.hpp mirror values out of sync with GfxStage");
 
 void gfx_run_stage(

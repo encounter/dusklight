@@ -1,8 +1,8 @@
 // Ambient occlusion (GTAO) example mod.
-// Showcases the gfx service's compute tasks and the camera service: every frame, before the
-// HUD draws, the scene depth is resolved and a three-dispatch compute chain — depth MIP
-// prefilter, GTAO, spatial denoise — produces a visibility texture that a fullscreen draw
-// multiplies over the world. The HUD stays untouched because everything happens BEFORE_HUD.
+// Showcases the gfx service's compute tasks and the camera service: after opaque scene draws,
+// before translucent/fog overlays, the scene depth is resolved and a three-dispatch compute
+// chain — depth MIP prefilter, GTAO, spatial denoise — produces a visibility texture that a
+// fullscreen draw multiplies over the world. The HUD stays untouched because it draws later.
 //
 // The WGSL in res/ is ported from Bevy Engine's SSAO implementation (MIT OR Apache-2.0),
 // itself based on Intel XeGTAO (MIT); see res/licenses/ and the `PORT:` notes in the shaders.
@@ -29,7 +29,7 @@ IMPORT_SERVICE(LogService, svc_log);
 IMPORT_SERVICE(ConfigService, svc_config);
 IMPORT_SERVICE(ResourceService, svc_resource);
 IMPORT_SERVICE_VERSION(UiService, svc_ui, 2);
-IMPORT_SERVICE_VERSION(GfxService, svc_gfx, 1);
+IMPORT_SERVICE_VERSION(GfxService, svc_gfx, 2);
 IMPORT_SERVICE(CameraService, svc_camera);
 
 namespace {
@@ -43,8 +43,7 @@ ConfigVarHandle g_cvarDebugView = 0;
 
 GfxComputeTypeHandle g_computeType = 0;
 GfxDrawTypeHandle g_drawType = 0;
-GfxStageHookHandle g_worldLateHook = 0;
-GfxStageHookHandle g_beforeHudHook = 0;
+GfxStageHookHandle g_afterOpaqueHook = 0;
 UiWindowHandle g_controlsWindow = 0;
 
 ResourceBuffer g_preprocessSource = RESOURCE_BUFFER_INIT;
@@ -92,7 +91,6 @@ struct RetiredTargets {
 };
 std::vector<RetiredTargets> g_retiredTargets;
 
-bool g_sceneRendered = false;
 bool g_warnedNoDepth = false;
 bool g_loggedChain = false;
 std::atomic<bool> g_chainExecuted{false};
@@ -542,17 +540,10 @@ void on_draw(
     wgpuBindGroupRelease(bindGroup);
 }
 
-// Game thread, per camera window: only run AO on frames that rendered a 3D scene (menus and
-// the logo scene never fire WORLD_LATE).
-void on_world_late(ModContext*, const GfxStageContext*, void*) {
-    g_sceneRendered = true;
-}
-
-// Game thread, after the 3D scene (wipe included), before any HUD draw lists.
-void on_before_hud(ModContext*, const GfxStageContext*, void*) {
-    const bool sceneRendered = std::exchange(g_sceneRendered, false);
+// Game thread, after opaque scene draws and before translucent/fog overlay lists.
+void on_scene_after_opaque(ModContext*, const GfxStageContext*, void*) {
     tick_retired_targets();
-    if (!sceneRendered || !get_bool_option(g_cvarEnabled, true)) {
+    if (!get_bool_option(g_cvarEnabled, true)) {
         return;
     }
 
@@ -847,15 +838,9 @@ MOD_EXPORT ModResult mod_initialize(ModError* error) {
         return dusk::mods::set_error(error, MOD_ERROR, "failed to register draw type");
     }
     GfxStageHookDesc stageDesc = GFX_STAGE_HOOK_DESC_INIT;
-    stageDesc.callback = on_world_late;
-    if (svc_gfx->register_stage_hook(mod_ctx, GFX_STAGE_WORLD_LATE, &stageDesc, &g_worldLateHook) !=
-        MOD_OK)
-    {
-        return dusk::mods::set_error(error, MOD_ERROR, "failed to register stage hook");
-    }
-    stageDesc.callback = on_before_hud;
-    if (svc_gfx->register_stage_hook(mod_ctx, GFX_STAGE_BEFORE_HUD, &stageDesc, &g_beforeHudHook) !=
-        MOD_OK)
+    stageDesc.callback = on_scene_after_opaque;
+    if (svc_gfx->register_stage_hook(
+            mod_ctx, GFX_STAGE_SCENE_AFTER_OPAQUE, &stageDesc, &g_afterOpaqueHook) != MOD_OK)
     {
         return dusk::mods::set_error(error, MOD_ERROR, "failed to register stage hook");
     }
@@ -929,7 +914,7 @@ MOD_EXPORT ModResult mod_shutdown(ModError*) {
     g_cvarEnabled = g_cvarQuality = g_cvarRadius = g_cvarIntensity = 0;
     g_cvarHalfRes = g_cvarDebugView = 0;
     g_computeType = g_drawType = 0;
-    g_worldLateHook = g_beforeHudHook = 0;
+    g_afterOpaqueHook = 0;
     g_controlsWindow = 0;
     return MOD_OK;
 }

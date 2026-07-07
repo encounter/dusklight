@@ -41,7 +41,7 @@ int fpcDw_Handler(fpcDw_HandlerFuncFunc i_iterHandler, fpcDw_HandlerFunc i_func)
     cAPIGph_BeforeOfDraw();
     ret = i_iterHandler(i_func);
 #if TARGET_PC
-    dusk::mods::gfx_run_stage(dusk::mods::GfxStageWorldListsReady, 0);
+    dusk::mods::gfx_run_stage(dusk::mods::GfxStageSceneListsReady, 0);
 #endif
     cAPIGph_AfterOfDraw();
     return ret;

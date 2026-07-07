@@ -11,8 +11,9 @@
  */
 #define GFX_SERVICE_MAJOR 1u
 /* Minor 1: compute/encoder tasks (register_compute_type, unregister_compute_type,
- * push_compute). */
-#define GFX_SERVICE_MINOR 1u
+ * push_compute).
+ * Minor 2: GFX_STAGE_SCENE_AFTER_OPAQUE stage hook. */
+#define GFX_SERVICE_MINOR 2u
 
 // Maximum payload size for push_draw
 #define GFX_INLINE_DRAW_PAYLOAD_SIZE 128u
@@ -114,25 +115,31 @@ typedef struct GfxDrawTypeDesc {
 #define GFX_DRAW_TYPE_DESC_INIT {sizeof(GfxDrawTypeDesc), NULL, NULL, NULL}
 
 typedef enum GfxStage {
-    /* End of a camera window's 3D scene lists, inside the world EFB pass. May
-     * fire more than once per frame (once per camera window). */
-    GFX_STAGE_WORLD_LATE = 0,
-    /* After 3D and wipe rendering, before any 2D/HUD draw lists. Fires once
-     * per rendered frame. */
-    GFX_STAGE_BEFORE_HUD = 1,
-    /* After all 2D/HUD draw lists, before the frame ends. Fires once per
-     * rendered frame. */
-    GFX_STAGE_AFTER_HUD = 2,
+    /* Values are part of the mod ABI; keep them explicit. */
     /* After the camera/projection/light setup for a world camera window, before
      * terrain/background opaque scene lists are consumed. May fire more than
      * once per frame (once per camera window). */
-    GFX_STAGE_WORLD_BEFORE_TERRAIN = 3,
+    GFX_STAGE_SCENE_BEGIN = 3,
+    /* After terrain/background/shadow lists, before object opaque and
+     * translucent lists. May fire more than once per frame (once per camera
+     * window). */
+    GFX_STAGE_SCENE_AFTER_TERRAIN = 0,
+    /* After sky/terrain/object opaque lists, before translucent lists and fog
+     * priority particle overlays. May fire more than once per frame (once per
+     * camera window). (Minor 2.) */
+    GFX_STAGE_SCENE_AFTER_OPAQUE = 4,
+    /* After 3D and wipe rendering, before any 2D/HUD draw lists. Fires once
+     * per rendered frame. */
+    GFX_STAGE_FRAME_BEFORE_HUD = 1,
+    /* After all 2D/HUD draw lists, before the frame ends. Fires once per
+     * rendered frame. */
+    GFX_STAGE_FRAME_AFTER_HUD = 2,
 } GfxStage;
 
 typedef struct GfxStageContext {
     uint32_t struct_size;
     GfxStage stage;
-    uint32_t window_index; /* camera window for WORLD_LATE; 0 otherwise */
+    uint32_t window_index; /* camera window for scene stages; 0 otherwise */
     /* True when this rendered frame is a frame-interpolation presentation
      * frame. Stage callbacks fire on every rendered frame either way; read
      * interpolated state (camera etc.) fresh in each callback. */
@@ -223,12 +230,13 @@ typedef struct GfxComputeTypeDesc {
  * Raw WebGPU access integrated into the frame, plus hooks at named points of
  * the render process.
  *
- * The intended post-process shape: register a stage hook (e.g. AFTER_HUD) and
- * a draw type once; per frame, from the stage callback, resolve_pass the scene
- * into snapshot textures, build a bind group sampling them, push_uniform any
- * parameters, and push_draw a fullscreen triangle that writes back over the
- * frame. Everything downstream (UI compositing included) sees the processed
- * frame. Multi-resolution chains use create_pass for intermediate targets.
+ * The intended post-process shape: register a stage hook (e.g.
+ * GFX_STAGE_FRAME_AFTER_HUD) and a draw type once; per frame, from the stage
+ * callback, resolve_pass the scene into snapshot textures, build a bind group
+ * sampling them, push_uniform any parameters, and push_draw a fullscreen
+ * triangle that writes back over the frame. Everything downstream (UI
+ * compositing included) sees the processed frame. Multi-resolution chains use
+ * create_pass for intermediate targets.
  */
 typedef struct GfxService {
     ServiceHeader header;
