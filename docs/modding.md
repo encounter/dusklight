@@ -373,6 +373,28 @@ buffer contract as `get_blob`. Pass a `NULL` buffer to either read function to q
 are cleared. Observers are removed automatically when the mod is detached, so the output handle is only needed for
 manual unregistration. Save callbacks run on the game thread.
 
+### ItemService (`mods/svc/item.h`)
+
+Resolves named item checks, queues inventory grants, and observes grants from both the game and mods.
+
+```cpp
+IMPORT_SERVICE(ItemService, svc_item);
+
+svc_item->set_check_override(mod_ctx, "Ordon Sword", dItemNo_BOMB_BAG_LV1_e);
+svc_item->give_item(mod_ctx, "Ordon Sword", dItemNo_NONE_e, ITEM_GIVE_RESOLVE);
+```
+
+Fixed overrides and resolver callbacks compose in mod load order. The last fixed override wins, and each resolver sees
+the item selected by earlier registrations. Item resolution can run more than once, so resolver callbacks must not
+change game or mod state.
+
+`give_item` adds a request to a global FIFO and waits for a safe gameplay state. Use `ITEM_GIVE_SILENT` to update the
+inventory without a get-item demo and `ITEM_GIVE_RESOLVE` to resolve the named check when the request is dispatched.
+Observers receive completed game and queued grants on the game thread. Registrations and pending requests are removed
+when their mod is detached.
+
+See [ItemService checks and grants](item-service.md) for check names, queue behavior, and complete examples.
+
 ### StageService (`mods/svc/stage.h`)
 
 Allows making changes to a stage's "stage info" (contents of .dzs/.dzr files).

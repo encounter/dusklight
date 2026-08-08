@@ -1190,8 +1190,9 @@ int daNpc_grS_c::talk(void* param_0) {
         if (unkFlag1 && talkProc(NULL, 1, NULL)) {
             if (mType == 0) {
                 if (mFlow.getEventId(&unkInt2) == 1) {
-                    mPresentItemId =
-                        fopAcM_createItemForPresentDemo(&current.pos, unkInt2, 0, -1, -1, 0, 0);
+                    DUSK_ITEM_CHECK("Goron Mines Gor Amato Key Shard", unkInt2, this);
+                    mPresentItemId = fopAcM_createItemForPresentDemo(&current.pos, unkInt2, 0, -1,
+                        -1, 0, 0 DUSK_GIVE_TAG("Goron Mines Gor Amato Key Shard"));
 
                     if (mPresentItemId != fpcM_ERROR_PROCESS_ID_e) {
                         s16 eventIdx =

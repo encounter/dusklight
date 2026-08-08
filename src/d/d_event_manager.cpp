@@ -335,6 +335,13 @@ bool dEvent_manager_c::setObjectArchive(DUSK_CONST char* arcname) {
 
     if (arcname != NULL) {
         rt = dComIfG_getObjectRes(arcname, DataFileName);
+#if TARGET_PC
+        if (rt != nullptr && strcmp(arcname, "Prayer") == 0) {
+            u8* itemNo = static_cast<u8*>(rt) + 0x927;
+            *itemNo =
+                dusk::mods::item_check("Charlo Donation Blessing", dItemNo_KAKERA_HEART_e, NULL);
+        }
+#endif
         int base_status = mEventList[BASE_ACTOR].init((char*)rt, -1);
 
         #if DEBUG

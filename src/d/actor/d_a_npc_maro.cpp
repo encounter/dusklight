@@ -2393,7 +2393,10 @@ int daNpc_Maro_c::cutArrowTutorial(int arg0) {
                     switch (evt_ret) {
                         case 1: {
                             if (mItemPartnerId == -1) {
-                                mItemPartnerId = fopAcM_createItemForPresentDemo(&current.pos, evt_id, 0, -1, -1, NULL, NULL);
+                                DUSK_ITEM_CHECK("Talo Sharpshooting", evt_id, this);
+                                mItemPartnerId =
+                                    fopAcM_createItemForPresentDemo(&current.pos, evt_id, 0, -1, -1,
+                                        NULL, NULL DUSK_GIVE_TAG("Talo Sharpshooting"));
                             }
 
                             if (fopAcM_IsExecuting(mItemPartnerId)) {
