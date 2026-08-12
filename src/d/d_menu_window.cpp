@@ -1098,6 +1098,8 @@ void dMw_c::dMw_ring_create(u8 i_origin) {
     }
 
     mpCapture->setCaptureFlag();
+
+    IF_DUSK(dusk::frame_interp::request_presentation_sync());
 }
 
 bool dMw_c::dMw_ring_delete() {

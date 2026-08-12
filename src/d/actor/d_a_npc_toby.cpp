@@ -1399,7 +1399,7 @@ int daNpc_Toby_c::cutRepairSCannon(int arg0) {
                 old.pos = current.pos;
                 setAngle(cM_deg2s(5.0f * f32(mPath.getArg0())));
                 mEventTimer = mPath.getArg2();
-                dusk::frame_interp::request_presentation_sync();
+                IF_DUSK(dusk::frame_interp::request_presentation_sync());
             }
         } else if (!mHide) {
             mHide = 1;
