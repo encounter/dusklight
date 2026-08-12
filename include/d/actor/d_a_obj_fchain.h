@@ -3,6 +3,10 @@
 
 #include "f_op/f_op_actor_mng.h"
 
+#if TARGET_PC
+#include "dusk/frame_interpolation.h"
+#endif
+
 class daObjFchain_shape_c : public J3DPacket {
 public:
     virtual void draw();
@@ -31,10 +35,6 @@ public:
     csXyz* getAngle() { return field_0x8a4; }
     J3DModelData* getModelData() { return mModelData; }
 
-#if TARGET_PC
-    void onInterpCallback();
-#endif
-
 private:
     /* 0x568 */ request_of_phase_process_class mPhase;
     /* 0x570 */ J3DModelData* mModelData;
@@ -49,10 +49,7 @@ private:
 
 #if TARGET_PC
     static const int CHAIN_COUNT = 22;
-    cXyz mChainInterpPrev[CHAIN_COUNT];
-    cXyz mChainInterpCurr[CHAIN_COUNT];
-    bool mChainInterpPrevValid;
-    bool mChainInterpCurrValid;
+    dusk::frame_interp::DualBuffer<cXyz, CHAIN_COUNT> mChainInterp{field_0x694};
 #endif
 };
 

@@ -10,7 +10,6 @@
 #include "JSystem/J3DGraphBase/J3DDrawBuffer.h"
 #include "SSystem/SComponent/c_math.h"
 #include "d/d_com_inf_game.h"
-#include "dusk/frame_interpolation.h"
 #include "dusk/settings.h"
 #include <cstring>
 
@@ -68,8 +67,7 @@ int daObjFchain_c::create() {
         }
         rv = cPhs_COMPLEATE_e;
 #if TARGET_PC
-        mChainInterpPrevValid = false;
-        mChainInterpCurrValid = false;
+        mChainInterp.reset();
 #endif
         break;
     }
@@ -295,26 +293,6 @@ void daObjFchain_shape_c::draw() {
     }
 }
 
-#if TARGET_PC
-static void fchain_interp_callback(bool isSimFrame, void* pUserWork) {
-    static_cast<daObjFchain_c*>(pUserWork)->onInterpCallback();
-}
-
-void daObjFchain_c::onInterpCallback() {
-    if (!mChainInterpPrevValid || !mChainInterpCurrValid) {
-        return;
-    }
-
-    const f32 alpha = dusk::frame_interp::get_interpolation_step();
-
-    for (int i = 0; i < CHAIN_COUNT; i++) {
-        const cXyz& p0 = mChainInterpPrev[i];
-        const cXyz& p1 = mChainInterpCurr[i];
-        field_0x694[i] = p0 + (p1 - p0) * alpha;
-    }
-}
-#endif
-
 int daObjFchain_c::draw() {
     if (field_0x584 != 0) {
         g_env_light.settingTevStruct(0, &current.pos, &tevStr);
@@ -325,16 +303,7 @@ int daObjFchain_c::draw() {
         dComIfGd_getOpaListDark()->entryImm(&mShape, 0);
 
 #if TARGET_PC
-        if (dusk::frame_interp::is_enabled()) {
-            if (mChainInterpCurrValid) {
-                memcpy(mChainInterpPrev, mChainInterpCurr, sizeof(mChainInterpCurr));
-                mChainInterpPrevValid = true;
-            }
-
-            memcpy(mChainInterpCurr, field_0x694, sizeof(mChainInterpCurr));
-            mChainInterpCurrValid = true;
-            dusk::frame_interp::add_interpolation_callback(&fchain_interp_callback, this);
-        }
+        mChainInterp.writeback(field_0x694, CHAIN_COUNT);
 #endif
     }
     return 1;

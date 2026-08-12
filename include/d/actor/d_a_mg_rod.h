@@ -8,6 +8,10 @@
 #include "d/d_msg_flow.h"
 #include "f_op/f_op_actor_mng.h"
 
+#if TARGET_PC
+#include "dusk/frame_interpolation.h"
+#endif
+
 #define MG_ROD_LURE_LINE_LEN 106
 #define MG_ROD_UKI_LINE_LEN  100
 
@@ -301,10 +305,7 @@ public:
     /* 0x168E */ u8 HIOInit;
 
 #if TARGET_PC
-    cXyz mLineInterpPrev[MG_ROD_LURE_LINE_LEN];
-    cXyz mLineInterpCurr[MG_ROD_LURE_LINE_LEN];
-    bool mLineInterpPrevValid;
-    bool mLineInterpCurrValid;
+    dusk::frame_interp::DualBuffer<cXyz, MG_ROD_LURE_LINE_LEN> mLineInterp;
 #endif
 };
 

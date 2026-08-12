@@ -14,9 +14,11 @@
 #include "d/d_s_play.h"
 #include "f_op/f_op_actor_enemy.h"
 #include "f_op/f_op_camera_mng.h"
-#include "dusk/frame_interpolation.h"
-#include "dusk/settings.h"
 #include <cstring>
+
+#if TARGET_PC
+#include "dusk/settings.h"
+#endif
 
 class daE_S1_HIO_c {
 public:
@@ -102,28 +104,16 @@ static void anm_init(e_s1_class* i_this, int i_resNo, f32 i_morf, u8 i_attr, f32
 }
 
 #if TARGET_PC
-static void daE_S1_interp_callback(bool isSimFrame, void* pUserWork) {
+static void daE_S1_interp_post(void* pUserWork) {
     e_s1_class* i_this = (e_s1_class*)pUserWork;
-    if (!i_this->mHairInterpPrevValid || !i_this->mHairInterpCurrValid) {
-        return;
-    }
-    const f32 alpha = dusk::frame_interp::get_interpolation_step();
-    for (int s = 0; s < e_s1_class::HAIR_STRAND_COUNT; s++) {
-        cXyz* dst = i_this->mLineMat.getPos(s);
-        for (int i = 0; i < e_s1_class::HAIR_SEGMENT_COUNT; i++) {
-            int idx = s * e_s1_class::HAIR_SEGMENT_COUNT + i;
-            const cXyz& p0 = i_this->mHairInterpPrev[idx];
-            const cXyz& p1 = i_this->mHairInterpCurr[idx];
-            dst[i] = p0 + (p1 - p0) * alpha;
-        }
-    }
+
     GXColor line_color;
     line_color.r = JREG_S(0) + 5;
     line_color.g = JREG_S(1) + 10;
     line_color.b = JREG_S(2) + 10;
     line_color.a = 0xFF;
 
-    i_this->mLineMat.update(16, line_color, &i_this->tevStr);
+    i_this->mLineMat.update(e_s1_class::HAIR_SEGMENT_COUNT, line_color, &i_this->tevStr);
 }
 #endif
 
@@ -161,19 +151,11 @@ static int daE_S1_Draw(e_s1_class* i_this) {
     dComIfGd_set3DlineMatDark(&i_this->mLineMat);
 
 #if TARGET_PC
-    if (dusk::frame_interp::is_enabled()) {
-        if (i_this->mHairInterpCurrValid) {
-            memcpy(i_this->mHairInterpPrev, i_this->mHairInterpCurr, sizeof(i_this->mHairInterpCurr));
-            i_this->mHairInterpPrevValid = true;
-        }
-        for (int s = 0; s < e_s1_class::HAIR_STRAND_COUNT; s++) {
-            cXyz* src = i_this->mLineMat.getPos(s);
-            memcpy(&i_this->mHairInterpCurr[s * e_s1_class::HAIR_SEGMENT_COUNT], src,
-                   e_s1_class::HAIR_SEGMENT_COUNT * sizeof(cXyz));
-        }
-        i_this->mHairInterpCurrValid = true;
-        dusk::frame_interp::add_interpolation_callback(&daE_S1_interp_callback, i_this);
+    cXyz* srcs[e_s1_class::HAIR_STRAND_COUNT];
+    for (int s = 0; s < e_s1_class::HAIR_STRAND_COUNT; s++) {
+        srcs[s] = i_this->mLineMat.getPos(s);
     }
+    i_this->mHairInterp.writeback(srcs, e_s1_class::HAIR_SEGMENT_COUNT, &daE_S1_interp_post, i_this);
 #endif
 
     dComIfGd_setList();
@@ -2194,8 +2176,7 @@ static int daE_S1_Create(fopAc_ac_c* i_this) {
         }
 
 #if TARGET_PC
-        a_this->mHairInterpPrevValid = false;
-        a_this->mHairInterpCurrValid = false;
+        a_this->mHairInterp.reset();
 #endif
 
         OS_REPORT("//////////////E_S1 SET 2 !!\n");

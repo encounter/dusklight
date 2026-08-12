@@ -417,7 +417,7 @@ void daOptiLift_c::setNextPoint() {
 }
 
 #if TARGET_PC
-static void daOptiLift_interp_callback(bool isSimFrame, void* pUserWork) {
+static void daOptiLift_interp_callback(void* pUserWork) {
     daOptiLift_c* lift = static_cast<daOptiLift_c*>(pUserWork);
     if (lift == NULL || lift->mpModel == NULL) {
         return;

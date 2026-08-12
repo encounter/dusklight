@@ -11,8 +11,10 @@
 #include "d/d_bg_w.h"
 #include "d/d_cc_uty.h"
 #include "d/d_com_inf_game.h"
-#include "dusk/frame_interpolation.h"
+
+#if TARGET_PC
 #include "dusk/settings.h"
+#endif
 
 struct daObjKLift00_HIO_c : public mDoHIO_entry_c {
     daObjKLift00_HIO_c();
@@ -298,8 +300,7 @@ int daObjKLift00_c::Create() {
         mStopSwingingFrames = 5;
 
 #if TARGET_PC
-    mChainInterpPrevValid = false;
-    mChainInterpCurrValid = false;
+    mChainInterp.reset();
 #endif
 
     return 1;
@@ -444,23 +445,19 @@ int daObjKLift00_c::Execute(Mtx** i_mtx) {
 }
 
 #if TARGET_PC
-static void klift00_interp_callback(bool isSimFrame, void* pUserWork) {
-    static_cast<daObjKLift00_c*>(pUserWork)->onInterpCallback();
+static void klift00_interp_post(void* pUserWork) {
+    static_cast<daObjKLift00_c*>(pUserWork)->onInterpPresentation();
 }
 
-void daObjKLift00_c::onInterpCallback() {
-    if (!mChainInterpPrevValid || !mChainInterpCurrValid) {
-        return;
-    }
-
-    const f32 alpha = dusk::frame_interp::get_interpolation_step();
-    cXyz savedPositions[64];
+void daObjKLift00_c::onInterpPresentation() {
+    cXyz savedPositions[CHAIN_INTERP_MAX];
 
     for (int i = 0; i < mNumChains; i++) {
         savedPositions[i] = mChainPositions[i].mCurrentPos;
-        const cXyz& p0 = mChainInterpPrev[i];
-        const cXyz& p1 = mChainInterpCurr[i];
-        mChainPositions[i].mCurrentPos = p0 + (p1 - p0) * alpha;
+    }
+
+    for (int i = 0; i < mNumChains; i++) {
+        mChainPositions[i].mCurrentPos = mChainInterpDraw[i];
     }
 
     setMtx();
@@ -493,18 +490,12 @@ int daObjKLift00_c::Draw() {
     dComIfGd_setList();
 
 #if TARGET_PC
-    if (dusk::frame_interp::is_enabled()) {
-        if (mChainInterpCurrValid) {
-            memcpy(mChainInterpPrev, mChainInterpCurr, mNumChains * sizeof(cXyz));
-            mChainInterpPrevValid = true;
-        }
-
+    if (dusk::frame_interp::is_enabled() && mNumChains > 0 && mNumChains <= CHAIN_INTERP_MAX) {
+        cXyz curr[CHAIN_INTERP_MAX];
         for (int i = 0; i < mNumChains; i++) {
-            mChainInterpCurr[i] = mChainPositions[i].mCurrentPos;
+            curr[i] = mChainPositions[i].mCurrentPos;
         }
-        
-        mChainInterpCurrValid = true;
-        dusk::frame_interp::add_interpolation_callback(&klift00_interp_callback, this);
+        mChainInterp.capture_and_schedule(curr, mNumChains, &klift00_interp_post, this);
     }
 #endif
 

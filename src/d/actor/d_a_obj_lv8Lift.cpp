@@ -385,7 +385,7 @@ void daL8Lift_c::setNextPoint() {
 }
 
 #if TARGET_PC
-void daL8Lift_interp_callback(bool isSimFrame, void* pUserWork) {
+void daL8Lift_interp_callback(void* pUserWork) {
     daL8Lift_c* lift = static_cast<daL8Lift_c*>(pUserWork);
     if (lift == NULL || lift->mpModel == NULL) {
         return;

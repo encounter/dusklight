@@ -81,7 +81,7 @@ static int nodeCallBack(J3DJoint* i_joint, int param_1) {
 }
 
 #if TARGET_PC
-static void daE_SM2_interp_callback(bool isSimFrame, void* pUserWork) {
+static void daE_SM2_interp_callback(void* pUserWork) {
     e_sm2_class* i_this = static_cast<e_sm2_class*>(pUserWork);
     if (i_this == NULL) {
         return;

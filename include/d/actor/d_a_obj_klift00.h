@@ -6,6 +6,10 @@
 #include "d/d_model.h"
 #include "f_op/f_op_actor_mng.h"
 
+#if TARGET_PC
+#include "dusk/frame_interpolation.h"
+#endif
+
 /**
  * @ingroup actors-objects
  * @class daObjKLift00_c
@@ -26,7 +30,7 @@ public:
     int Delete();
 
 #if TARGET_PC
-    void onInterpCallback();
+    void onInterpPresentation();
 #endif
 
     enum Param_e {
@@ -55,10 +59,9 @@ private:
     /* 0x115C */ s32 mStopSwingingFrames;
 
 #if TARGET_PC
-    cXyz mChainInterpPrev[64];
-    cXyz mChainInterpCurr[64];
-    bool mChainInterpPrevValid;
-    bool mChainInterpCurrValid;
+    static const int CHAIN_INTERP_MAX = 64;
+    cXyz mChainInterpDraw[CHAIN_INTERP_MAX];
+    dusk::frame_interp::DualBuffer<cXyz, CHAIN_INTERP_MAX> mChainInterp{mChainInterpDraw};
 #endif
 
     // Number of chain models

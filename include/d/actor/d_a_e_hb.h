@@ -6,6 +6,10 @@
 #include "d/d_cc_d.h"
 #include "d/d_cc_uty.h"
 
+#if TARGET_PC
+#include "dusk/frame_interpolation.h"
+#endif
+
 /**
  * @ingroup actors-enemies
  * @class e_hb_class
@@ -74,10 +78,8 @@ public:
     /* 0x1250 */ u8 field_0x1250[0x1264 - 0x1250];
     /* 0x1264 */ u8 HIOInit;
 #if TARGET_PC
-    cXyz mStalkLineInterpPrev[12];
-    cXyz mStalkLineInterpCurr[12];
-    bool mStalkLineInterpPrevValid;
-    bool mStalkLineInterpCurrValid;
+    static const int STALK_SEGMENT_COUNT = 12;
+    dusk::frame_interp::DualBuffer<cXyz, STALK_SEGMENT_COUNT> mStalkLineInterp;
 #endif
 };
 

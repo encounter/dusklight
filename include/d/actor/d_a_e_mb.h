@@ -5,6 +5,10 @@
 #include "d/d_cc_d.h"
 #include "d/d_cc_uty.h"
 
+#if TARGET_PC
+#include "dusk/frame_interpolation.h"
+#endif
+
 /**
  * @ingroup actors-enemies
  * @class e_mb_class
@@ -45,10 +49,8 @@ public:
     /* 0x8C8 */ s8 field_0x8c8;
     /* 0x8C9 */ u8 mInitHIO;
 #if TARGET_PC
-    cXyz mRopeInterpPrev[16];
-    cXyz mRopeInterpCurr[16];
-    bool mRopeInterpPrevValid;
-    bool mRopeInterpCurrValid;
+    static const int ROPE_SEGMENT_COUNT = 16;
+    dusk::frame_interp::DualBuffer<cXyz, ROPE_SEGMENT_COUNT> mRopeInterp;
 #endif
 };
 

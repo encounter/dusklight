@@ -5,14 +5,13 @@
 #include "mtx.h"
 
 #include <absl/container/flat_hash_map.h>
+#include <vector>
 
 namespace {
 
 struct Recording {
     absl::flat_hash_map<uintptr_t, Mtx> matrix_values;
 };
-
-bool s_initialized = false;
 
 bool g_enabled = false;
 bool g_recording = false;
@@ -67,38 +66,6 @@ void copy_view_to_snap(CameraSnapshot* dst, const view_class& v) {
     dst->valid = true;
 }
 
-inline void lerp_matrix(Mtx out, const Mtx lhs, const Mtx rhs, float step) {
-    for (size_t row = 0; row < 3; ++row) {
-        for (size_t col = 0; col < 4; ++col) {
-            const float l = lhs[row][col];
-            out[row][col] = l + (rhs[row][col] - l) * step;
-        }
-    }
-}
-
-inline void lerp_xyz(cXyz* out, const cXyz& lhs, const cXyz& rhs, float step) {
-    out->x = lhs.x + (rhs.x - lhs.x) * step;
-    out->y = lhs.y + (rhs.y - lhs.y) * step;
-    out->z = lhs.z + (rhs.z - lhs.z) * step;
-}
-
-static s16 lerp_bank(s16 a, s16 b, f32 t) {
-    const f32 ra = S2RAD(a);
-    const f32 d = remainderf(S2RAD(b) - ra, 2.0f * static_cast<f32>(M_PI));
-    return cAngle::Radian_to_SAngle(ra + d * t);
-}
-
-inline bool matrix_differs(const Mtx lhs, const Mtx rhs, float epsilon = 0.0001f) {
-    for (size_t row = 0; row < 3; ++row) {
-        for (size_t col = 0; col < 4; ++col) {
-            if (std::abs(lhs[row][col] - rhs[row][col]) > epsilon) {
-                return true;
-            }
-        }
-    }
-    return false;
-}
-
 const Mtx* resolve_replacement(const Mtx* source, Mtx* scratch) {
     if (!g_interpolating || source == nullptr || dusk::frame_interp::presentation_sync_active()) {
         return source;
@@ -124,12 +91,8 @@ void clear_replacements() {
 }  // namespace
 
 namespace dusk::frame_interp {
-void ensure_initialized() {
-    s_initialized = true;
-}
 
 void begin_sim_tick() {
-    ensure_initialized();
     if (!g_enabled) {
         return;
     }
@@ -162,8 +125,6 @@ bool is_sim_frame() {
 }
 
 void begin_record() {
-    ensure_initialized();
-
     if (!g_enabled) {
         g_interpolating = false;
         g_sync_presentation = false;
@@ -182,11 +143,9 @@ void begin_record() {
     g_interpolating = false;
     clear_replacements();
 
-    ::camera_process_class* cam = dComIfGp_getCamera(0);
-    if (cam == nullptr) {
+    if (dComIfGp_getCamera(0) == nullptr) {
         s_cam_prev.valid = false;
         s_cam_curr.valid = false;
-        return;
     }
 }
 
@@ -195,7 +154,6 @@ void end_record() {
 }
 
 void interpolate() {
-    ensure_initialized();
     clear_replacements();
     g_interpolating = g_enabled && !g_recording && !g_sync_presentation && has_recording_data(g_current_recording);
     if (!g_interpolating) {
@@ -205,13 +163,12 @@ void interpolate() {
         if (auto it = g_current_recording.matrix_values.find(old.first);
             it != g_current_recording.matrix_values.end())
         {
-            lerp_matrix(g_replacements[old.first], old.second, it->second, g_step);
+            lerp(g_replacements[old.first], old.second, it->second, g_step);
         }
     }
 }
 
 void request_presentation_sync() {
-    ensure_initialized();
     if (!g_enabled) {
         return;
     }
@@ -219,14 +176,13 @@ void request_presentation_sync() {
 }
 
 bool presentation_sync_active() {
-    if (!s_initialized || !g_enabled) {
+    if (!g_enabled) {
         return false;
     }
     return g_sync_presentation;
 }
 
 float get_interpolation_step() {
-    ensure_initialized();
     return presentation_sync_active() ? 1.0f : g_step;
 }
 
@@ -236,12 +192,11 @@ void set_ui_tick_pending(bool value) {
 }
 
 bool get_ui_tick_pending() {
-    ensure_initialized();
     return g_enabled ? g_ui_tick_pending : true;
 }
 
 void record_final_mtx(Mtx m, const void* key) {
-    if (!s_initialized || !g_recording || m == nullptr) {
+    if (!g_recording || m == nullptr) {
         return;
     }
 
@@ -312,9 +267,9 @@ void interp_view(::view_class* view) {
         center = s_cam_curr.center;
         up = s_cam_curr.up;
     } else {
-        lerp_xyz(&eye, s_cam_prev.eye, s_cam_curr.eye, step);
-        lerp_xyz(&center, s_cam_prev.center, s_cam_curr.center, step);
-        lerp_xyz(&up, s_cam_prev.up, s_cam_curr.up, step);
+        lerp(eye, s_cam_prev.eye, s_cam_curr.eye, step);
+        lerp(center, s_cam_prev.center, s_cam_curr.center, step);
+        lerp(up, s_cam_prev.up, s_cam_curr.up, step);
     }
     if (!up.normalizeRS()) {
         up = s_cam_curr.up;
@@ -331,7 +286,7 @@ void interp_view(::view_class* view) {
         view->near_ = s_cam_curr.near_;
         view->far_ = s_cam_curr.far_;
     } else {
-        view->bank = lerp_bank(s_cam_prev.bank, s_cam_curr.bank, step);
+        view->bank = lerp(s_cam_prev.bank, s_cam_curr.bank, step);
         view->fovy = s_cam_prev.fovy + (s_cam_curr.fovy - s_cam_prev.fovy) * step;
         view->aspect = s_cam_prev.aspect + (s_cam_curr.aspect - s_cam_prev.aspect) * step;
         view->near_ = s_cam_prev.near_ + (s_cam_curr.near_ - s_cam_prev.near_) * step;
@@ -351,19 +306,19 @@ void interp_view(::view_class* view) {
 static void run_interpolation_callbacks() {
     for (size_t i = 0; i < s_interpolationCallBackWork.size(); i++) {
         auto const& work = s_interpolationCallBackWork[i];
-        work.pCallBack(g_is_sim_frame, work.pUserWork);
+        work.pCallBack(work.pUserWork);
     }
 }
 
 void add_interpolation_callback(InterpolationCallBack pCallBack, void* pUserWork) {
-    if (!is_enabled() || s_presentation_depth > 0 || !g_is_sim_frame)
+    if (!is_enabled() || s_presentation_depth > 0 || !g_is_sim_frame) {
         return;
+    }
 
     s_interpolationCallBackWork.emplace_back(pCallBack, pUserWork);
 }
 
 void begin_presentation_camera() {
-    ensure_initialized();
     if (!g_enabled) {
         return;
     }

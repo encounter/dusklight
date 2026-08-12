@@ -6,6 +6,10 @@
 #include "d/d_cc_uty.h"
 #include "f_op/f_op_actor_mng.h"
 
+#if TARGET_PC
+#include "dusk/frame_interpolation.h"
+#endif
+
 /**
  * @ingroup actors-enemies
  * @class e_yd_class
@@ -75,10 +79,8 @@ public:
     /* 0x1254 */ u8 field_0x1254[0x1268 - 0x1254];
     /* 0x1268 */ u8 field_0x1268;
 #if TARGET_PC
-    cXyz mLineMatInterpPrev[12];
-    cXyz mLineMatInterpCurr[12];
-    bool mLineMatInterpPrevValid;
-    bool mLineMatInterpCurrValid;
+    static const int LINE_SEGMENT_COUNT = 12;
+    dusk::frame_interp::DualBuffer<cXyz, LINE_SEGMENT_COUNT> mLineMatInterp;
 #endif
 };
 

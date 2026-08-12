@@ -36,7 +36,7 @@ static f32 Reflect(cXyz* i_vec, cBgS_PolyInfo const& i_polyinfo, f32 i_scale) {
 }
 
 #if TARGET_PC
-static void d_a_obj_item_interp_callback(bool isSimFrame, void* pUserWork) {
+static void d_a_obj_item_interp_callback(void* pUserWork) {
     daItem_c* item = static_cast<daItem_c*>(pUserWork);
     if (item == NULL || item->mpModel == NULL || !item->chkDraw()) {
         return;

@@ -101,12 +101,10 @@ s32 J3DModel::entryModelData(J3DModelData* pModelData, u32 mdlFlags, u32 mtxNum)
 }
 
 #if TARGET_PC
-void J3DModel::interp_callback(bool isSimFrame, void* pUserWork) {
+void J3DModel::interp_callback(void* pUserWork) {
     J3DModel* i_this = static_cast<J3DModel*>(pUserWork);
-    if (!isSimFrame) {
-        i_this->calcMaterial();
-        i_this->diff();
-    }
+    i_this->calcMaterial();
+    i_this->diff();
 }
 
 void J3DModel::setAnmMtx(int jointNo, Mtx m) {

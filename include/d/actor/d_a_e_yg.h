@@ -5,6 +5,10 @@
 #include "d/d_cc_uty.h"
 #include "f_op/f_op_actor_mng.h"
 
+#if TARGET_PC
+#include "dusk/frame_interpolation.h"
+#endif
+
 /**
  * @ingroup actors-enemies
  * @class e_yg_class
@@ -67,10 +71,7 @@ public:
 #if TARGET_PC
     static const int TENTACLE_STRAND_COUNT = 13;
     static const int TENTACLE_SEGMENT_COUNT = 10;
-    cXyz mTentacleInterpPrev[TENTACLE_STRAND_COUNT * TENTACLE_SEGMENT_COUNT];
-    cXyz mTentacleInterpCurr[TENTACLE_STRAND_COUNT * TENTACLE_SEGMENT_COUNT];
-    bool mTentacleInterpPrevValid;
-    bool mTentacleInterpCurrValid;
+    dusk::frame_interp::DualBufferGroup<cXyz, TENTACLE_SEGMENT_COUNT, TENTACLE_STRAND_COUNT> mTentacleInterp;
 #endif
 };
 

@@ -5,6 +5,10 @@
 #include "d/d_cc_d.h"
 #include "d/d_cc_uty.h"
 
+#if TARGET_PC
+#include "dusk/frame_interpolation.h"
+#endif
+
 struct kh_chain_s {
     /* 0x000 */ J3DModel* model[16];
     /* 0x040 */ cXyz field_0x40;
@@ -68,10 +72,10 @@ public:
     /* 0x2CB4 */ u8 field_0x2cb4;
 
 #if TARGET_PC
-    Mtx mChainInterpPrev[6][16];
-    Mtx mChainInterpCurr[6][16];
-    bool mChainInterpPrevValid;
-    bool mChainInterpCurrValid;
+    static const int CHAIN_STRAND_COUNT = 6;
+    static const int CHAIN_SEGMENT_MAX = 16;
+    Mtx mChainInterpDraw[CHAIN_STRAND_COUNT][CHAIN_SEGMENT_MAX];
+    dusk::frame_interp::DualBufferGroup<Mtx, CHAIN_SEGMENT_MAX, CHAIN_STRAND_COUNT> mChainInterp;
 #endif
 };
 

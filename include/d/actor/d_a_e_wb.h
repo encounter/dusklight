@@ -6,6 +6,10 @@
 #include "SSystem/SComponent/c_phase.h"
 #include "d/d_cc_uty.h"
 
+#if TARGET_PC
+#include "dusk/frame_interpolation.h"
+#endif
+
 // copypasta, fix when actual names known
 enum daE_WB_ANM {
     ANM_APPEAR = 7,
@@ -221,12 +225,11 @@ public:
     /* 0x17E4 */ u8 field_0x17e4[0x17e8 - 0x17e4];
     /* 0x17E8 */ f32 ride_speed_max;  ///< @brief Speed rate for riding calculations.
 #if TARGET_PC
-    cXyz himo_mat_interp_prev[2][16];
-    cXyz himo_mat_interp_curr[2][16];
-    cXyz himo_tex_interp_prev[2];
-    cXyz himo_tex_interp_curr[2];
-    bool himo_interp_prev_valid;
-    bool himo_interp_curr_valid;
+    static const int HIMO_STRAND_COUNT = 2;
+    static const int HIMO_SEGMENT_COUNT = 16;
+    static const int HIMO_TEX_COUNT = 2;
+    dusk::frame_interp::DualBuffer<cXyz, HIMO_SEGMENT_COUNT> himo_mat_interp[HIMO_STRAND_COUNT];
+    dusk::frame_interp::DualBuffer<cXyz, HIMO_TEX_COUNT> himo_tex_interp;
     s8 demo_cam_sync_ticks;
 #endif
 };

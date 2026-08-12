@@ -8,6 +8,10 @@
 #include "d/d_cc_d.h"
 #include "d/d_cc_uty.h"
 
+#if TARGET_PC
+#include "dusk/frame_interpolation.h"
+#endif
+
 struct dPath;
 
 struct s1_ke_s {
@@ -85,10 +89,7 @@ public:
 #if TARGET_PC
     static const int HAIR_STRAND_COUNT = 22;
     static const int HAIR_SEGMENT_COUNT = 16;
-    cXyz mHairInterpPrev[HAIR_STRAND_COUNT * HAIR_SEGMENT_COUNT];
-    cXyz mHairInterpCurr[HAIR_STRAND_COUNT * HAIR_SEGMENT_COUNT];
-    bool mHairInterpPrevValid;
-    bool mHairInterpCurrValid;
+    dusk::frame_interp::DualBufferGroup<cXyz, HAIR_SEGMENT_COUNT, HAIR_STRAND_COUNT> mHairInterp;
 #endif
 };
 

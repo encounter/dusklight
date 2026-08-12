@@ -8,6 +8,10 @@
 #include "d/d_cc_uty.h"
 #include "d/d_bg_s_acch.h"
 
+#if TARGET_PC
+#include "dusk/frame_interpolation.h"
+#endif
+
 /**
  * @ingroup actors-enemies
  * @class b_gnd_class
@@ -189,12 +193,11 @@ public:
     /* 0x2740 */ u8 field_0x2740;
     /* 0x2744 */ dMsgFlow_c mMsgFlow;
 #if TARGET_PC
-    cXyz mReinsInterpPrev[2][16];
-    cXyz mReinsInterpCurr[2][16];
-    cXyz mReinsTexInterpPrev[2];
-    cXyz mReinsTexInterpCurr[2];
-    bool mReinsInterpPrevValid;
-    bool mReinsInterpCurrValid;
+    static const int REIN_STRAND_COUNT = 2;
+    static const int REIN_SEGMENT_COUNT = 16;
+    static const int REIN_TEX_COUNT = 2;
+    dusk::frame_interp::DualBuffer<cXyz, REIN_SEGMENT_COUNT> mReinsInterp[REIN_STRAND_COUNT];
+    dusk::frame_interp::DualBuffer<cXyz, REIN_TEX_COUNT> mReinsTexInterp;
     s8 mDemoCamSyncTicks;
 #endif
 };

@@ -79,7 +79,7 @@ public:
     virtual ~J3DModel() {}
 
 #if TARGET_PC
-    static void interp_callback(bool isSimFrame, void* pUserWork);
+    static void interp_callback(void* pUserWork);
 #endif
 
     J3DModelData* getModelData() { return mModelData; }

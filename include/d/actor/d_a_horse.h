@@ -12,6 +12,10 @@
 #include "d/d_path.h"
 #include "d/d_particle_copoly.h"
 
+#if TARGET_PC
+#include "dusk/frame_interpolation.h"
+#endif
+
 class daHorseRein_c {
 public:
     void setReinPos(int);
@@ -196,9 +200,6 @@ public:
     void copyReinPos();
     void setReinPosHandSubstance(int);
     void setReinPosNormalSubstance();
-#if TARGET_PC
-    void lerpControlPoints(f32 alpha);
-#endif
     void bgCheck();
     bool checkSpecialWallHitSubstance(cXyz const&) const;
     void setServiceWaitTimer();
@@ -479,6 +480,10 @@ public:
     /* 0x18E0 */ void (daHorse_c::*m_setHorsePosAngle)(const cXyz* i_pos, s16 i_angle);
     /* 0x18EC */ void (daHorse_c::*m_onRideFlg)();
     /* 0x18F8 */ void (daHorse_c::*m_offRideFlg)();
+#if TARGET_PC
+    static const int REIN_INTERP_MAX = 75;
+    dusk::frame_interp::DualBuffer<cXyz, REIN_INTERP_MAX> mReinInterp;
+#endif
 };
 
 class daHorse_hio_c1 {

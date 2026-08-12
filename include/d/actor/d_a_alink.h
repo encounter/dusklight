@@ -14,6 +14,10 @@
 #include "f_op/f_op_actor_mng.h"
 #include "f_op/f_op_camera_mng.h"
 
+#if TARGET_PC
+#include "dusk/frame_interpolation.h"
+#endif
+
 #include "res/Object/AlAnm.h"
 #include "res/Object/Always.h"
 
@@ -4558,28 +4562,13 @@ public:
     bool checkAimContext();
     bool checkAimInputContext();
 
-    void onIronBallChainInterpCallback();
-
     static const int IRON_BALL_CHAIN_COUNT = 102;
-    cXyz mIBChainInterpPrevPos[IRON_BALL_CHAIN_COUNT];
-    cXyz mIBChainInterpCurrPos[IRON_BALL_CHAIN_COUNT];
-    csXyz mIBChainInterpPrevAngle[IRON_BALL_CHAIN_COUNT];
-    csXyz mIBChainInterpCurrAngle[IRON_BALL_CHAIN_COUNT];
-    cXyz mIBChainInterpPrevHandRoot;
-    cXyz mIBChainInterpCurrHandRoot;
-    bool mIBChainInterpPrevValid;
-    bool mIBChainInterpCurrValid;
-
-    cXyz mHsChainInterpPrevTop;
-    cXyz mHsChainInterpCurrTop;
-    cXyz mHsChainInterpPrevRoot;
-    cXyz mHsChainInterpCurrRoot;
-    cXyz mHsChainInterpPrevSubRoot;
-    cXyz mHsChainInterpCurrSubRoot;
-    cXyz mHsChainInterpPrevSubTop;
-    cXyz mHsChainInterpCurrSubTop;
-    bool mHsChainInterpPrevValid;
-    bool mHsChainInterpCurrValid;
+    static const int HS_CHAIN_ANCHOR_COUNT = 4;
+    dusk::frame_interp::DualBuffer<cXyz, IRON_BALL_CHAIN_COUNT> mIBPosInterp;
+    dusk::frame_interp::DualBuffer<csXyz, IRON_BALL_CHAIN_COUNT> mIBAngleInterp;
+    dusk::frame_interp::DualBuffer<cXyz, 1> mIBHandRootInterp{&mHookshotTopPos};
+    cXyz mHsChainDraw[HS_CHAIN_ANCHOR_COUNT];
+    dusk::frame_interp::DualBuffer<cXyz, HS_CHAIN_ANCHOR_COUNT> mHsChainInterp{mHsChainDraw};
 
     bool mIsRollstab = false;
 #endif
