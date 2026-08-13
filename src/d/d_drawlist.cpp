@@ -14,14 +14,17 @@
 #include "m_Do/m_Do_mtx.h"
 
 #if TARGET_PC
-#include <cstdio>
-#include <typeindex>
+#include "dusk/frame_interpolation.h"
+#include "dusk/game_clock.h"
+#include "dusk/logging.h"
+#include "helpers/gx_helper.h"
+
 #include "JSystem/JKernel/JKRHeap.h"
+
 #include "absl/container/flat_hash_map.h"
 #include "client/TracyScoped.hpp"
-#include "dusk/frame_interpolation.h"
-#include "helpers/gx_helper.h"
-#include "dusk/logging.h"
+#include <cstdio>
+#include <typeindex>
 
 static const void* getInterpKey(const void* base, int idx) {
     return reinterpret_cast<const void*>(reinterpret_cast<uintptr_t>(base) ^ idx);
@@ -2057,7 +2060,7 @@ void dDlst_list_c::wipeIn(f32 i_wipeSpeed) {
 
 void dDlst_list_c::calcWipe() {
     if (mWipe) {
-        mWipeRate += mWipeSpeed;
+        mWipeRate += mWipeSpeed IF_DUSK(* dusk::game_clock::original_frames());
         if (mWipeRate < 0.0f) {
             mWipeRate = 0.0f;
         } else if (mWipeRate > 1.0f) {

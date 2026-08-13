@@ -52,6 +52,7 @@
 #include "dusk/dusk.h"
 #include "helpers/endian.h"
 #include "dusk/frame_interpolation.h"
+#include "dusk/game_clock.h"
 #include "dusk/gfx.hpp"
 #include "helpers/gx_helper.h"
 #include "dusk/imgui/ImGuiConsole.hpp"
@@ -473,43 +474,30 @@ void darwFilter(GXColor matColor) {
 }
 
 void mDoGph_gInf_c::calcFade() {
-#if TARGET_PC
-    if (dusk::frame_interp::get_ui_tick_pending())
-#endif
-    {
-        if (mFade != 0) {
-            mFadeRate += mFadeSpeed;
+    if (mFade != 0) {
+        mFadeRate += mFadeSpeed IF_DUSK(* dusk::game_clock::original_frames());
 
-            if (mFadeRate < 0.0f) {
-                mFadeRate = 0.0f;
-                mFade = 0;
-            } else {
-                if (mFadeRate > 1.0f) {
-                    mFadeRate = 1.0f;
-                }
-            }
-            mFadeColor.a = 255.0f * mFadeRate;
+        if (mFadeRate < 0.0f) {
+            mFadeRate = 0.0f;
+            mFade = 0;
         } else {
-            if (dComIfG_getBrightness() != 255) {
-                mFadeColor.r = 0;
-                mFadeColor.g = 0;
-                mFadeColor.b = 0;
-                mFadeColor.a = 255 - dComIfG_getBrightness();
-            } else {
-                mFadeColor.a = 0;
+            if (mFadeRate > 1.0f) {
+                mFadeRate = 1.0f;
             }
+        }
+        mFadeColor.a = 255.0f * mFadeRate;
+    } else {
+        if (dComIfG_getBrightness() != 255) {
+            mFadeColor.r = 0;
+            mFadeColor.g = 0;
+            mFadeColor.b = 0;
+            mFadeColor.a = 255 - dComIfG_getBrightness();
+        } else {
+            mFadeColor.a = 0;
         }
     }
 
     if (mFadeColor.a != 0) {
-#ifdef TARGET_PC
-        if (dusk::frame_interp::is_enabled() && mFade != 0) {
-            const auto step = dusk::frame_interp::get_interpolation_step();
-            const auto progress = mFadeSpeed < 0.0f ? 1.0f - mFadeRate : mFadeRate;
-            const auto fade_amt = mFadeRate + mFadeSpeed * (step - 1.0f + progress);
-            mFadeColor.a = 255.0f * std::clamp(fade_amt, 0.0f, 1.0f);
-        }
-#endif
         darwFilter(mFadeColor);
     }
 }
@@ -2769,12 +2757,7 @@ int mDoGph_Painter() {
     #endif
 
     GXSetClipMode(GX_CLIP_ENABLE);
-#if TARGET_PC
-    if (dusk::frame_interp::get_ui_tick_pending())
-#endif
-    {
-        dDlst_list_c::calcWipe();
-    }
+    dDlst_list_c::calcWipe();
     j3dSys.reinitGX();
 
     ortho.setOrtho(mDoGph_gInf_c::getMinXF(), mDoGph_gInf_c::getMinYF(),

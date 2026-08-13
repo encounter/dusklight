@@ -4,6 +4,10 @@
 #include "JSystem/JGeometry.h"
 #include "JSystem/JUtility/TColor.h"
 
+#if TARGET_PC
+#include "global.h"
+#endif
+
 /**
 * @ingroup jsystem-jutility
 * 
@@ -32,7 +36,7 @@ public:
 
     /* 0x04 */ s32 mStatus;
     /* 0x08 */ u16 mDuration;
-    /* 0x0A */ u16 mTimer;
+    /* 0x0A */ DUSK_IF_ELSE(f32, u16) mTimer;
     /* 0x0C */ JUtility::TColor mColor;
     /* 0x10 */ JGeometry::TBox2<f32> mBox;
     /* 0x20 */ int mStatusTimer;

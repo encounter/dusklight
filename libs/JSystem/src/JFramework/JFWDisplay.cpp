@@ -217,10 +217,8 @@ void JFWDisplay::endGX() {
 
     if (mFader != NULL) {
         ortho.setPort();
-#ifdef TARGET_PC
-        if (dusk::frame_interp::get_ui_tick_pending()) {
-            mFader->advance();
-        }
+#if TARGET_PC
+        mFader->advance();
         if (mFader->getStatus() != JUTFader::Wait) {
             mFader->draw();
         }

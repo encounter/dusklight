@@ -9,8 +9,7 @@
 #include "JSystem/J2DGraph/J2DOrthoGraph.h"
 
 #ifdef TARGET_PC
-#include <algorithm>
-#include "dusk/frame_interpolation.h"
+#include "dusk/game_clock.h"
 #endif
 
 JUTFader::JUTFader(int x, int y, int width, int height, JUtility::TColor pColor)
@@ -39,13 +38,16 @@ void JUTFader::advance() {
 #if AVOID_UB
         if (mDuration == 0) {
             mStatus = Wait;
+            IF_DUSK(mColor.a = 0);
             break;
         }
 #endif
-        mColor.a = 0xFF - ((++mTimer * 0xFF) / mDuration);
+        IF_DUSK(mTimer += dusk::game_clock::original_frames());
+        mColor.a = 0xFF - ((IF_NOT_DUSK(++)mTimer * 0xFF) / mDuration);
 
         if (mTimer >= mDuration) {
             mStatus = Wait;
+            IF_DUSK(mColor.a = 0);
         }
 
         break;
@@ -53,13 +55,16 @@ void JUTFader::advance() {
 #if AVOID_UB
         if (mDuration == 0) {
             mStatus = None;
+            IF_DUSK(mColor.a = 0xFF);
             break;
         }
 #endif
-        mColor.a = ((++mTimer * 0xFF) / mDuration);
+        IF_DUSK(mTimer += dusk::game_clock::original_frames());
+        mColor.a = ((IF_NOT_DUSK(++)mTimer * 0xFF) / mDuration);
 
         if (mTimer >= mDuration) {
             mStatus = None;
+            IF_DUSK(mColor.a = 0xFF);
         }
 
         break;
@@ -73,19 +78,6 @@ void JUTFader::control() {
 
 void JUTFader::draw() {
     if (mColor.a != 0) {
-#ifdef TARGET_PC
-        if (dusk::frame_interp::is_enabled() && mDuration != 0) {
-            const auto step = dusk::frame_interp::get_interpolation_step();
-            const auto progress = static_cast<f32>(mTimer) / static_cast<f32>(mDuration);
-            const auto timer = mTimer - 1 + step + progress;
-            auto alpha = timer / mDuration;
-            if (mStatus == FadeIn) {
-                alpha = 1.0f - alpha;
-            }
-            alpha = std::clamp(alpha, 0.0f, 1.0f);
-            mColor.a = static_cast<u8>(alpha * 255.0f);
-        }
-#endif
         J2DOrthoGraph orthograph;
         orthograph.setColor(mColor);
         orthograph.fillBox(mBox);
@@ -93,7 +85,7 @@ void JUTFader::draw() {
 }
 
 bool JUTFader::startFadeIn(int duration) {
-    bool statusCheck = mStatus == 0;
+    bool statusCheck = DUSK_IF_ELSE(mStatus == None || mStatus == FadeOut, mStatus == 0);
 
     if (statusCheck) {
         mStatus = FadeIn;
@@ -105,7 +97,7 @@ bool JUTFader::startFadeIn(int duration) {
 }
 
 bool JUTFader::startFadeOut(int duration) {
-    bool statusCheck = mStatus == 1;
+    bool statusCheck = DUSK_IF_ELSE(mStatus == None || mStatus == Wait, mStatus == 1);
 
     if (statusCheck) {
         mStatus = FadeOut;
