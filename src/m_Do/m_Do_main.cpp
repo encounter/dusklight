@@ -295,7 +295,6 @@ void main01(void) {
         if (timing.separatePresentation) {
             if (timing.numSimTicks > 0) {
                 dusk::frame_interp::begin_frame(interpolationMode, true, 0.0f);
-                dusk::frame_interp::set_ui_tick_pending(true);
                 for (int i = 0; i < timing.numSimTicks; ++i) {
                     if (timing.interpolating) {
                         dusk::frame_interp::begin_sim_tick();
@@ -323,10 +322,8 @@ void main01(void) {
             if (timing.interpolating) {
                 dusk::frame_interp::end_presentation_camera();
             }
-            dusk::frame_interp::set_ui_tick_pending(false);
         } else {
             dusk::frame_interp::begin_frame(dusk::FrameInterpMode::Off, true, 0.0f);
-            dusk::frame_interp::set_ui_tick_pending(true);
             dusk::game_clock::begin_sim_tick();
 
             // Game Inputs

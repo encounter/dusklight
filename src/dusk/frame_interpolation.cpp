@@ -20,7 +20,6 @@ bool g_sync_presentation = false;
 
 float g_step = 0.0f;
 bool g_is_sim_frame = false;
-bool g_ui_tick_pending = false;
 uint64_t g_sim_tick_seq = 0;
 
 Recording g_current_recording;
@@ -184,15 +183,6 @@ bool presentation_sync_active() {
 
 float get_interpolation_step() {
     return presentation_sync_active() ? 1.0f : g_step;
-}
-
-void set_ui_tick_pending(bool value) {
-    if (g_ui_tick_pending == value) { return; }
-    g_ui_tick_pending = value;
-}
-
-bool get_ui_tick_pending() {
-    return g_enabled ? g_ui_tick_pending : true;
 }
 
 void record_final_mtx(Mtx m, const void* key) {

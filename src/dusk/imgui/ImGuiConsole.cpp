@@ -18,7 +18,6 @@
 #include "dusk/config.hpp"
 #include "dusk/data.hpp"
 #include "dusk/dusk.h"
-#include "dusk/frame_interpolation.h"
 #include "dusk/livesplit.h"
 #include "dusk/main.h"
 #include "dusk/presentation.hpp"
@@ -26,8 +25,6 @@
 #include "dusk/ui/ui.hpp"
 #include "f_pc/f_pc_manager.h"
 #include "f_pc/f_pc_name.h"
-#include "m_Do/m_Do_controller_pad.h"
-#include "m_Do/m_Do_main.h"
 #include "tracy/Tracy.hpp"
 
 #if _WIN32
@@ -263,13 +260,6 @@ namespace dusk {
         }
         previousTurboActive = turboActive;
         previousSlowActive = slowDown;
-
-        if (frame_interp::get_ui_tick_pending() && mDoMain::developmentMode == 1 && (mDoCPd_c::getHold(PAD_1) & (PAD_TRIGGER_R | PAD_TRIGGER_L)) == (PAD_TRIGGER_R | PAD_TRIGGER_L) && mDoCPd_c::getTrigY(PAD_1)) {
-            getTransientSettings().moveLinkActive = !getTransientSettings().moveLinkActive;
-        }
-        if (mDoMain::developmentMode != 1) {
-            getTransientSettings().moveLinkActive = false;
-        }
     }
 
     void ImGuiConsole::PreDraw() {

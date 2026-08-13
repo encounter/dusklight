@@ -1,11 +1,14 @@
 #include "dusk/game_clock.h"
 
+#include <dusk/frame_interpolation.h>
+
+#include "JSystem/J2DGraph/J2DAnimation.h"
+#include "JSystem/J2DGraph/J2DPane.h"
+
 #include <algorithm>
 #include <aurora/time.hpp>
 #include <chrono>
 #include <cmath>
-#include <dusk/frame_interpolation.h>
-#include <unordered_map>
 
 namespace dusk::game_clock {
 
@@ -22,8 +25,7 @@ native_clock::time_point s_previousNativeSample{};
 game_clock::time_point s_latestGameSample{};
 game_clock::time_point s_currentSnapshotTime{};
 game_clock::time_point s_pendingSimTime{};
-
-std::unordered_map<uintptr_t, game_clock::time_point> s_intervalLastSample;
+float s_presentationDtSeconds = kUiInitialDt;
 
 constexpr game_clock::duration kSimPeriodDuration =
     std::chrono::duration_cast<game_clock::duration>(std::chrono::duration<float>(kSimPeriod));
@@ -54,11 +56,13 @@ const FrameTiming& advance() {
     const auto nativeNow = native_clock::now();
     const auto gameNow = game_clock::now();
     const auto nativeFrameGap = nativeNow - s_previousNativeSample;
+    const auto gameFrameGap = gameNow - s_latestGameSample;
     s_previousNativeSample = nativeNow;
     s_latestGameSample = gameNow;
 
     auto& out = g_frameTiming;
-    out = {.dt = std::chrono::duration<float>().count()};
+    out = {.dt = std::chrono::duration<float>(gameFrameGap).count()};
+    s_presentationDtSeconds = out.dt;
 
     const float timeScale = aurora::time::scale();
     const bool interpolating =
@@ -119,18 +123,35 @@ float sample_interpolation_step() {
     return std::clamp(step, 0.0f, 1.0f);
 }
 
-float consume_interval(const void* consumer) {
-    const auto key = reinterpret_cast<uintptr_t>(consumer);
-    const auto now = s_simTickActive ? s_pendingSimTime : game_clock::now();
-    const float timeScale = aurora::time::scale();
-    float dt = kUiInitialDt * timeScale;
-    if (const auto it = s_intervalLastSample.find(key); it != s_intervalLastSample.end()) {
-        dt = std::chrono::duration<float>(now - it->second).count();
-        const float maximumDt = std::max(kUiMaximumDt * timeScale, kSimPeriod);
-        dt = std::min(dt, maximumDt);
+float ui_dt() {
+    if (s_simTickActive) {
+        return kSimPeriod;
     }
-    s_intervalLastSample[key] = now;
-    return dt;
+
+    const float maximumDt = kUiMaximumDt * aurora::time::scale();
+    return std::clamp(s_presentationDtSeconds, 0.0f, maximumDt);
+}
+
+void present_looping(float& frame, J2DAnmBase* anm, float speed) {
+    if (anm == nullptr) {
+        return;
+    }
+    advance_looping_frame(frame, speed, anm->getFrameMax());
+    anm->setFrame(frame);
+}
+
+void present_toward(float& frame, float target, J2DAnmTransform* anm, J2DPane* pane) {
+    if (anm == nullptr || frame == target) {
+        return;
+    }
+    if (pane != nullptr && pane->mTransform != anm) {
+        return;
+    }
+    advance_toward_frame(frame, target, 2.0f);
+    anm->setFrame(frame);
+    if (pane != nullptr) {
+        pane->animationTransform();
+    }
 }
 
 }  // namespace dusk::game_clock

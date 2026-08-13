@@ -32,10 +32,6 @@ bool presentation_sync_active();
 
 bool is_enabled();
 
-// TODO: These should be phased out as UI is progressively updated to use game_clock
-void set_ui_tick_pending(bool value);
-bool get_ui_tick_pending();
-
 bool is_sim_frame();
 
 void record_camera(::camera_process_class* cam, int camera_id);

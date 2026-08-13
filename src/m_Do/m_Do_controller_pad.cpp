@@ -130,6 +130,20 @@ void mDoCPd_c::read() {
         interface2++;
 #endif
     }
+
+#if TARGET_PC
+    auto& transient = dusk::getTransientSettings();
+    if (mDoMain::developmentMode != 1) {
+        transient.moveLinkActive = false;
+        return;
+    }
+
+    const int LRbits = PAD_TRIGGER_R | PAD_TRIGGER_L;
+    const bool heldLR = (getHold(PAD_1) & LRbits) == LRbits;
+    if (heldLR && getTrigY(PAD_1)) {
+        transient.moveLinkActive = !transient.moveLinkActive;
+    }
+#endif
 }
 
 void mDoCPd_c::convert(interface_of_controller_pad* pInterface, JUTGamePad* pPad) {
