@@ -5,6 +5,10 @@
 #include "JSystem/JKernel/JKRExpHeap.h"
 #include "m_Do/m_Do_ext.h"
 
+#if TARGET_PC
+#include "dusk/game_clock.h"
+#endif
+
 CPaneMgrAlpha::CPaneMgrAlpha() {}
 
 CPaneMgrAlpha::CPaneMgrAlpha(J2DScreen* p_screen, u64 tag, u8 flags, JKRExpHeap* p_heap) {
@@ -68,7 +72,7 @@ bool CPaneMgrAlpha::isVisible() {
     return mPane->isVisible();
 }
 
-f32 CPaneMgrAlpha::rateCalc(s16 maxTimer, s16 curTimer, u8 calcType) {
+f32 CPaneMgrAlpha::rateCalc(DUSK_IF_ELSE(f32, s16) maxTimer, DUSK_IF_ELSE(f32, s16) curTimer, u8 calcType) {
     if (maxTimer <= curTimer) {
         return 1.0f;
     }
@@ -107,7 +111,7 @@ f32 CPaneMgrAlpha::getAlphaRate() {
 
 bool CPaneMgrAlpha::alphaAnime(s16 timer, u8 startAlpha, u8 endAlpha, u8 calcType) {
     if (mAlphaTimer < timer - 1) {
-        mAlphaTimer++;
+        DUSK_IF_ELSE(mAlphaTimer += dusk::game_clock::original_frames(), mAlphaTimer++);
         f32 rate = rateCalc(timer, mAlphaTimer, calcType);
         setAlpha(startAlpha + rate * (f32)(endAlpha - startAlpha));
     } else {

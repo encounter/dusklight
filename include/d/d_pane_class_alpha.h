@@ -18,7 +18,7 @@ public:
     void show();
     void hide();
     bool isVisible();
-    f32 rateCalc(s16, s16, u8);
+    f32 rateCalc(DUSK_IF_ELSE(f32, s16), DUSK_IF_ELSE(f32, s16), u8);
     void setAlphaRate(f32);
     f32 getAlphaRate();
     bool alphaAnime(s16 timer, u8 startAlpha, u8 endAlpha, u8 calcType);
@@ -29,8 +29,8 @@ public:
 
     J2DPane* getPanePtr() { return mPane; }
     u8 getAlpha() { return getPanePtr()->getAlpha(); }
-    s16 getAlphaTimer() { return mAlphaTimer; }
-    void alphaAnimeStart(s16 start) { mAlphaTimer = start; }
+    DUSK_IF_ELSE(f32, s16) getAlphaTimer() { return mAlphaTimer; }
+    void alphaAnimeStart(DUSK_IF_ELSE(f32, s16) start) { mAlphaTimer = start; }
     u8 getInitAlpha() { return mInitAlpha; }
 
     /* 0x04 */ J2DPane* mPane;
@@ -38,7 +38,7 @@ public:
     /* 0x0C */ void* mpFirstStackAlpha;
     /* 0x10 */ u8* field_0x10;
     /* 0x14 */ s16 mChildPaneCount;
-    /* 0x16 */ s16 mAlphaTimer;
+    /* 0x16 */ DUSK_IF_ELSE(f32, s16) mAlphaTimer;
     /* 0x18 */ u8 mInitAlpha;
     /* 0x19 */ u8 mFlags;
 };

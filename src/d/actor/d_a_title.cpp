@@ -11,7 +11,6 @@
 #include "d/d_pane_class_alpha.h"
 #include "d/d_s_logo.h"
 #include "d/d_s_play.h"
-#include "dusk/version.hpp"
 #include "f_op/f_op_msg_mng.h"
 #include "f_op/f_op_overlap_mng.h"
 #include "f_op/f_op_scene_mng.h"
@@ -22,6 +21,7 @@
 #ifdef TARGET_PC
 #include "dusk/frame_interpolation.h"
 #include "dusk/settings.h"
+#include "dusk/version.hpp"
 #endif
 
 class daTit_HIO_c : public JORReflexible {

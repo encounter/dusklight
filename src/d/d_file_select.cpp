@@ -23,12 +23,12 @@
 #include "m_Do/m_Do_graphic.h"
 #include <cstring>
 
-#include "dusk/version.hpp"
-
 #if TARGET_PC
+#include "dusk/game_clock.h"
 #include "dusk/menu_pointer.h"
-#include "helpers/string.hpp"
 #include "dusk/mods/svc/save.hpp"
+#include "dusk/version.hpp"
+#include "helpers/string.hpp"
 
 namespace {
 constexpr u8 pointer_target(u8 group, u8 index) noexcept {
@@ -151,6 +151,7 @@ static dFs_HIO_c g_fsHIO;
 dFile_select_c::dFile_select_c(JKRArchive* i_archiveP) {
     mpArchive = i_archiveP;
     mpFileSelect3d = JKR_NEW dFile_select3D_c();
+    IF_DUSK(fileSel.mpOwner = this);
 }
 
 dFile_select_c::~dFile_select_c() {
@@ -392,21 +393,21 @@ void dFile_select_c::_move() {
 
     (this->*DataSelProc[mDataSelProc])();
 
+#if !TARGET_PC
     selFileWakuAnm();
     bookIconAnm();
     dataDelEffAnm();
     dataCopyEffAnm();
-
     fileSel.Scr->animation();
     mYnSel.ScrYn->animation();
     m3mSel.Scr3m->animation();
     mSelDt.ScrDt->animation();
-
     if (mCpSel.isShow) {
         selCopyFileWakuAnm();
         copyBookIconAnm();
         mCpSel.Scr->animation();
     }
+#endif
 
     mpFileWarning->_move();
     mpFileSelect3d->_move();
@@ -476,6 +477,15 @@ void dFile_select_c::errorMsgCheck() {
 #endif
 
 void dFile_select_c::selFileWakuAnm() {
+#if TARGET_PC
+    dusk::game_clock::present_looping(mSelFileBpkFrame, mFileSelBpk, 2.0f);
+    dusk::game_clock::present_looping(mSelFileBtk05Frame, mFileSel05Btk, 2.0f);
+    dusk::game_clock::present_looping(mYnSelBpkFrame, mYnSelBpk, 2.0f);
+    dusk::game_clock::present_looping(mYnSelBtkFrame, mYnSelBtk, 2.0f);
+    dusk::game_clock::present_looping(m3mBpkFrame, m3mBpk, 2.0f);
+    dusk::game_clock::present_looping(m3mBtkFrame, m3mBtk, 2.0f);
+    dusk::game_clock::present_looping(mSelDtBtkFrame, mSelDtBtk, 2.0f);
+#else
     mSelFileBpkFrame += 2;
     if (mSelFileBpkFrame >= mFileSelBpk->getFrameMax())
         mSelFileBpkFrame -= mFileSelBpk->getFrameMax();
@@ -510,9 +520,15 @@ void dFile_select_c::selFileWakuAnm() {
     if (mSelDtBtkFrame >= mSelDtBtk->getFrameMax())
         mSelDtBtkFrame -= mSelDtBtk->getFrameMax();
     mSelDtBtk->setFrame(mSelDtBtkFrame);
+#endif
 }
 
 void dFile_select_c::bookIconAnm() {
+#if TARGET_PC
+    dusk::game_clock::present_looping(mSelFileBookBpkFrame, mSelFileBookBpk, 2.0f);
+    dusk::game_clock::present_looping(mSelFileBookBtkFrame, mSelFileBookBtk, 2.0f);
+    dusk::game_clock::present_looping(mSelFileBookBrkFrame, mSelFileBookBrk, 2.0f);
+#else
     mSelFileBookBpkFrame += 2;
     if (mSelFileBookBpkFrame >= mSelFileBookBpk->getFrameMax())
         mSelFileBookBpkFrame -= mSelFileBookBpk->getFrameMax();
@@ -527,9 +543,14 @@ void dFile_select_c::bookIconAnm() {
     if (mSelFileBookBrkFrame >= mSelFileBookBrk->getFrameMax())
         mSelFileBookBrkFrame -= mSelFileBookBrk->getFrameMax();
     mSelFileBookBrk->setFrame(mSelFileBookBrkFrame);
+#endif
 }
 
 void dFile_select_c::selCopyFileWakuAnm() {
+#if TARGET_PC
+    dusk::game_clock::present_looping(mCpSelBpkFrame, mCpSelBpk, 2.0f);
+    dusk::game_clock::present_looping(mCpSel03BtkFrame, mCpSel03Btk, 2.0f);
+#else
     mCpSelBpkFrame += 2;
     if (mCpSelBpkFrame >= mCpSelBpk->getFrameMax())
         mCpSelBpkFrame -= mCpSelBpk->getFrameMax();
@@ -539,9 +560,15 @@ void dFile_select_c::selCopyFileWakuAnm() {
     if (mCpSel03BtkFrame >= mCpSel03Btk->getFrameMax())
         mCpSel03BtkFrame -= mCpSel03Btk->getFrameMax();
     mCpSel03Btk->setFrame(mCpSel03BtkFrame);
+#endif
 }
 
 void dFile_select_c::copyBookIconAnm() {
+#if TARGET_PC
+    dusk::game_clock::present_looping(mCpSelBookBpkFrame, mCpSelBookBpk, 2.0f);
+    dusk::game_clock::present_looping(mCpSelBookBtkFrame, mCpSelBookBtk, 2.0f);
+    dusk::game_clock::present_looping(mCpSelBookBrkFrame, mCpSelBookBrk, 2.0f);
+#else
     mCpSelBookBpkFrame += 2;
     if (mCpSelBookBpkFrame >= mCpSelBookBpk->getFrameMax())
         mCpSelBookBpkFrame -= mCpSelBookBpk->getFrameMax();
@@ -556,10 +583,15 @@ void dFile_select_c::copyBookIconAnm() {
     if (mCpSelBookBrkFrame >= mCpSelBookBrk->getFrameMax())
         mCpSelBookBrkFrame -= mCpSelBookBrk->getFrameMax();
     mCpSelBookBrk->setFrame(mCpSelBookBrkFrame);
+#endif
 }
 
 void dFile_select_c::dataDelEffAnm() {
     if (field_0x0208 != 0) {
+#if TARGET_PC
+        dusk::game_clock::present_looping(mCpDtEffBrkFrame, mCpDtEffBrk, 2.0f);
+        dusk::game_clock::present_looping(mDtEffBtkFrame, mDtEffBtk, 2.0f);
+#else
         mCpDtEffBrkFrame += 2;
         if (mCpDtEffBrkFrame >= mCpDtEffBrk->getFrameMax())
             mCpDtEffBrkFrame -= mCpDtEffBrk->getFrameMax();
@@ -569,11 +601,16 @@ void dFile_select_c::dataDelEffAnm() {
         if (mDtEffBtkFrame >= mDtEffBtk->getFrameMax())
             mDtEffBtkFrame -= mDtEffBtk->getFrameMax();
         mDtEffBtk->setFrame(mDtEffBtkFrame);
+#endif
     }
 }
 
 void dFile_select_c::dataCopyEffAnm() {
     if (field_0x0209 != 0) {
+#if TARGET_PC
+        dusk::game_clock::present_looping(mCpDtEffBrkFrame, mCpDtEffBrk, 2.0f);
+        dusk::game_clock::present_looping(mCpEffBtkFrame, mCpEffBtk, 2.0f);
+#else
         mCpDtEffBrkFrame += 2;
         if (mCpDtEffBrkFrame >= mCpDtEffBrk->getFrameMax())
             mCpDtEffBrkFrame -= mCpDtEffBrk->getFrameMax();
@@ -583,6 +620,7 @@ void dFile_select_c::dataCopyEffAnm() {
         if (mCpEffBtkFrame >= mCpEffBtk->getFrameMax())
             mCpEffBtkFrame -= mCpEffBtk->getFrameMax();
         mCpEffBtk->setFrame(mCpEffBtkFrame);
+#endif
     }
 }
 
@@ -601,6 +639,7 @@ void dFile_select_c::selectDataBaseMoveAnmInitSet(int i_frame, int i_frameMax) {
 bool dFile_select_c::selectDataBaseMoveAnm() {
     bool ret;
     if (mBaseMoveAnmFrame != mBaseMoveAnmFrameMax) {
+#if !TARGET_PC
         if (mBaseMoveAnmFrame < mBaseMoveAnmFrameMax) {
             mBaseMoveAnmFrame += 2;
             if (mBaseMoveAnmFrame > mBaseMoveAnmFrameMax)
@@ -613,6 +652,7 @@ bool dFile_select_c::selectDataBaseMoveAnm() {
 
         mBaseMoveAnm->setFrame(mBaseMoveAnmFrame);
         mBaseMovePane->getPanePtr()->animationTransform();
+#endif
         ret = false;
     } else {
         if (mBaseMoveAnmFrame == 33) {
@@ -752,6 +792,7 @@ void dFile_select_c::dataSelectInit() {
         isKetteiTxtDisp = ketteiTxtDispAnm();
 
         if (field_0x00e0[mSelectNum] != SelEndFrameTbl[mSelectNum]) {
+#if !TARGET_PC
             field_0x00e0[mSelectNum] += 2;
 
             if (field_0x00e0[mSelectNum] > SelEndFrameTbl[mSelectNum])
@@ -759,6 +800,7 @@ void dFile_select_c::dataSelectInit() {
 
             mBaseMoveAnm->setFrame(field_0x00e0[mSelectNum]);
             mSelFilePanes[mSelectNum]->getPanePtr()->animationTransform();
+#endif
             check = false;
         }
     }
@@ -1057,6 +1099,7 @@ bool dFile_select_c::selectDataMoveAnm() {
     bool ret;
 
     if (field_0x00e0[mSelectNum] != field_0x00ec) {
+#if !TARGET_PC
         if (field_0x00e0[mSelectNum] < field_0x00ec) {
             field_0x00e0[mSelectNum] += 2;
 
@@ -1076,6 +1119,7 @@ bool dFile_select_c::selectDataMoveAnm() {
             mSelFilePanes[i]->getPanePtr()->animationTransform();
         }
         mBaseSubPane->animationTransform();
+#endif
     }
 
     if (field_0x00e0[mSelectNum] == field_0x00ec) {
@@ -1132,6 +1176,7 @@ void dFile_select_c::dataSelectMoveAnime() {
         iVar6 = selectWakuAlpahAnm(mLastSelectNum);
 
         if (field_0x00e0[mLastSelectNum] != SelStartFrameTbl[mLastSelectNum]) {
+#if !TARGET_PC
             field_0x00e0[mLastSelectNum] -= 2;
 
             if (field_0x00e0[mLastSelectNum] < SelStartFrameTbl[mLastSelectNum])
@@ -1139,6 +1184,7 @@ void dFile_select_c::dataSelectMoveAnime() {
 
             field_0x0088->setFrame(field_0x00e0[mLastSelectNum]);
             mSelFilePanes[mLastSelectNum]->getPanePtr()->animationTransform();
+#endif
             bVar1 = false;
         }
     }
@@ -1150,6 +1196,7 @@ void dFile_select_c::dataSelectMoveAnime() {
         iVar5 = mSelFilePane_Book_l[mSelectNum]->alphaAnime(g_fsHIO.base_effect_appear_frames, 0, 0xff, 1);
 
         if (field_0x00e0[mSelectNum] != SelEndFrameTbl[mSelectNum]) {
+#if !TARGET_PC
             field_0x00e0[mSelectNum] += 2;
 
             if (field_0x00e0[mSelectNum] > SelEndFrameTbl[mSelectNum])
@@ -1157,6 +1204,7 @@ void dFile_select_c::dataSelectMoveAnime() {
 
             mBaseMoveAnm->setFrame(field_0x00e0[mSelectNum]);
             mSelFilePanes[mSelectNum]->getPanePtr()->animationTransform();
+#endif
             bVar2 = false;
         }
     }
@@ -1451,6 +1499,7 @@ bool dFile_select_c::menuMoveAnm() {
     bool ret;
 
     if (field_0x0358 != field_0x035c) {
+#if !TARGET_PC
         if (field_0x0358 < field_0x035c) {
             field_0x0358 += 2;
 
@@ -1465,6 +1514,7 @@ bool dFile_select_c::menuMoveAnm() {
 
         m3mBck->setFrame(field_0x0358);
         m3mMenuPane->animationTransform();
+#endif
         ret = false;
     } else {
         m3mMenuPane->setAnimation((J2DAnmTransform*)NULL);
@@ -1524,6 +1574,7 @@ void dFile_select_c::menuSelectMoveAnm() {
     if (mSelectMenuNum != 0xFF &&
         field_0x034c[mSelectMenuNum] != MenuSelStartFrameTbl[mSelectMenuNum])
     {
+#if !TARGET_PC
         if (field_0x034c[mSelectMenuNum] > MenuSelStartFrameTbl[mSelectMenuNum]) {
             field_0x034c[mSelectMenuNum] -= 2;
 
@@ -1538,6 +1589,7 @@ void dFile_select_c::menuSelectMoveAnm() {
 
         m3mBck->setFrame(field_0x034c[mSelectMenuNum]);
         m3mSelPane[mSelectMenuNum]->getPanePtr()->animationTransform();
+#endif
         tmp1 = false;
     }
 
@@ -1546,6 +1598,7 @@ void dFile_select_c::menuSelectMoveAnm() {
 
     if (mLastSelectMenuNum != 0xFF) {
         if (field_0x034c[mLastSelectMenuNum] != MenuSelEndFrameTbl[mLastSelectMenuNum]) {
+#if !TARGET_PC
             if (field_0x034c[mLastSelectMenuNum] < MenuSelEndFrameTbl[mLastSelectMenuNum]) {
                 field_0x034c[mLastSelectMenuNum] += 2;
 
@@ -1560,6 +1613,7 @@ void dFile_select_c::menuSelectMoveAnm() {
             }
             m3mBck2->setFrame(field_0x034c[mLastSelectMenuNum]);
             m3mSelPane[mLastSelectMenuNum]->getPanePtr()->animationTransform();
+#endif
             tmp2 = false;
         }
 
@@ -1681,12 +1735,12 @@ void dFile_select_c::nameToDataSelectMove() {
 }
 
 void dFile_select_c::nameInputFade() {
-    mFadeTimer--;
+    IF_NOT_DUSK(mFadeTimer--);
 
-    #if PLATFORM_GCN
+#if !TARGET_PC && PLATFORM_GCN
     u8 alpha = (1.0f - (mFadeTimer / 15.0f)) * 255.0f;
     mpFadePict->setAlpha(alpha);
-    #endif
+#endif
 
     if (mFadeTimer == 0) {
         char name[32];
@@ -1709,12 +1763,12 @@ void dFile_select_c::nameInputFade() {
 
 void dFile_select_c::nameInput2Move() {
     if (!mDoRst::isReset()) {
-        mFadeTimer--;
+        IF_NOT_DUSK(mFadeTimer--);
 
-        #if PLATFORM_GCN
+#if !TARGET_PC && PLATFORM_GCN
         u8 alpha = (mFadeTimer / 15.0f) * 255.0f;
         mpFadePict->setAlpha(alpha);
-        #endif
+#endif
 
         if (mFadeTimer == 0) {
             mpName->showIcon();
@@ -1756,12 +1810,12 @@ void dFile_select_c::nameInput2() {
 }
 
 void dFile_select_c::backNameInputMove0() {
-    mFadeTimer--;
+    IF_NOT_DUSK(mFadeTimer--);
 
-    #if PLATFORM_GCN
+#if !TARGET_PC && PLATFORM_GCN
     u8 alpha = (1.0f - (mFadeTimer / 15.0f)) * 255.0f;
     mpFadePict->setAlpha(alpha);
-    #endif
+#endif
 
     if (mFadeTimer == 0) {
         headerTxtSet(901, 1, 1);
@@ -1782,12 +1836,12 @@ void dFile_select_c::backNameInputMove0() {
 
 void dFile_select_c::backNameInputMove() {
     if (!mDoRst::isReset()) {
-        mFadeTimer--;
+        IF_NOT_DUSK(mFadeTimer--);
 
-        #if PLATFORM_GCN
+#if !TARGET_PC && PLATFORM_GCN
         u8 alpha = (mFadeTimer / 15.0f) * 255.0f;
         mpFadePict->setAlpha(alpha);
-        #endif
+#endif
 
         if (mFadeTimer == 0) {
             modoruTxtChange(1);
@@ -2035,12 +2089,14 @@ void dFile_select_c::copyDataToSelectMoveAnm() {
         iVar7 = mCpSelPane_book[field_0x026c]->alphaAnime(g_fsHIO.base_effect_appear_frames, 0xff, 0, 1);
         iVar6 = copySelectWakuAlpahAnm(field_0x026c);
         if (field_0x02b4[field_0x026c] != 109) {
+#if !TARGET_PC
             field_0x02b4[field_0x026c] += 2;
             if (field_0x02b4[field_0x026c] > 109) {
                 field_0x02b4[field_0x026c] = 109;
             }
             mCpSelBck2->setFrame(field_0x02b4[field_0x026c]);
             mCpSelPane[field_0x026c]->getPanePtr()->animationTransform();
+#endif
             bVar1 = false;
         }
     }
@@ -2050,12 +2106,14 @@ void dFile_select_c::copyDataToSelectMoveAnm() {
     if (field_0x026b != 0xff) {
         iVar5 = mCpSelPane_book[field_0x026b]->alphaAnime(g_fsHIO.base_effect_appear_frames, 0, 0xff, 1);
         if (field_0x02b4[field_0x026b] != 99) {
+#if !TARGET_PC
             field_0x02b4[field_0x026b] -= 2;
             if (field_0x02b4[field_0x026b] < 99) {
                 field_0x02b4[field_0x026b] = 99;
             }
             mCpSelBck->setFrame(field_0x02b4[field_0x026b]);
             mCpSelPane[field_0x026b]->getPanePtr()->animationTransform();
+#endif
             bVar2 = false;
         }
     }
@@ -2210,6 +2268,7 @@ void dFile_select_c::yesnoMenuMoveAnmInitSet(int param_1, int param_2) {
 bool dFile_select_c::yesnoMenuMoveAnm() {
     bool rv;
     if (field_0x0100 != field_0x0104) {
+#if !TARGET_PC
         if (field_0x0100 < field_0x0104) {
             field_0x0100 += 2;
             if (field_0x0100 > field_0x0104) {
@@ -2225,6 +2284,7 @@ bool dFile_select_c::yesnoMenuMoveAnm() {
         mYnSelBck3->setFrame(field_0x0100);
         mYnSelPane[0]->getPanePtr()->animationTransform();
         mYnSelPane[1]->getPanePtr()->animationTransform();
+#endif
         rv = false;
     } else {
         mYnSelPane[0]->getPanePtr()->setAnimation((J2DAnmTransform*)NULL);
@@ -2288,6 +2348,7 @@ bool dFile_select_c::yesnoSelectMoveAnm() {
     bool bVar1 = true;
 
     if (field_0x0269 != 0xff && field_0x00f8[field_0x0269] != YnSelStartFrameTbl[field_0x0269]) {
+#if !TARGET_PC
         if (field_0x00f8[field_0x0269] < YnSelStartFrameTbl[field_0x0269]) {
             field_0x00f8[field_0x0269] += 2;
             if (field_0x00f8[field_0x0269] > YnSelStartFrameTbl[field_0x0269]) {
@@ -2302,11 +2363,13 @@ bool dFile_select_c::yesnoSelectMoveAnm() {
 
         mYnSelBck->setFrame(field_0x00f8[field_0x0269]);
         mYnSelPane[field_0x0269]->getPanePtr()->animationTransform();
+#endif
         bVar1 = false;
     }
 
     bool bVar2 = true;
     if (field_0x0268 != 0xff && field_0x00f8[field_0x0268] != YnSelEndFrameTbl[field_0x0268]) {
+#if !TARGET_PC
         if (field_0x00f8[field_0x0268] < YnSelEndFrameTbl[field_0x0268]) {
             field_0x00f8[field_0x0268] += 2;
             if (field_0x00f8[field_0x0268] > YnSelEndFrameTbl[field_0x0268]) {
@@ -2321,6 +2384,7 @@ bool dFile_select_c::yesnoSelectMoveAnm() {
 
         mYnSelBck2->setFrame(field_0x00f8[field_0x0268]);
         mYnSelPane[field_0x0268]->getPanePtr()->animationTransform();
+#endif
         bVar2 = false;
     }
 
@@ -3733,6 +3797,10 @@ void dFile_select_c::screenSet3Menu() {
 
     m3mMenuPane = m3mSel.Scr3m->search(MULTI_CHAR('wmenu_n'));
     m3mMenuPane->setAnimation(m3mBck);
+#if TARGET_PC
+    field_0x0358 = 799;
+    field_0x035c = 799;
+#endif
     m3mBck->setFrame(799.0f);
     m3mMenuPane->animationTransform();
 
@@ -4315,13 +4383,154 @@ void dFile_select_c::fileSelectWide() {
         break;
     }
 }
+
+void dFile_select_c::presentLayoutAnims() {
+    dusk::game_clock::present_toward(mBaseMoveAnmFrame, (f32)mBaseMoveAnmFrameMax, mBaseMoveAnm, mBaseMovePane != NULL ? mBaseMovePane->getPanePtr() : NULL);
+
+    if (mBaseSubPane != NULL && mBaseSubPane->mTransform == mBaseMoveAnm && mSelectNum != 0xFF) {
+        if (field_0x00e0[mSelectNum] != field_0x00ec) {
+            dusk::game_clock::present_toward(field_0x00e0[mSelectNum], (f32)field_0x00ec, mBaseMoveAnm);
+            for (int i = 0; i < 3; i++) {
+                J2DPane* pane = mSelFilePanes[i]->getPanePtr();
+                if (pane != NULL && pane->mTransform != NULL) {
+                    pane->animationTransform();
+                }
+            }
+            mBaseSubPane->animationTransform();
+        }
+    } else {
+        for (int i = 0; i < 3; i++) {
+            J2DPane* pane = mSelFilePanes[i]->getPanePtr();
+            if (pane == NULL) {
+                continue;
+            }
+            if (pane->mTransform == mBaseMoveAnm) {
+                dusk::game_clock::present_toward(field_0x00e0[i], (f32)SelEndFrameTbl[i], mBaseMoveAnm, pane);
+            } else if (pane->mTransform == field_0x0088) {
+                dusk::game_clock::present_toward(field_0x00e0[i], (f32)SelStartFrameTbl[i], field_0x0088, pane);
+            }
+        }
+    }
+
+    dusk::game_clock::present_toward(field_0x0358, (f32)field_0x035c, m3mBck, m3mMenuPane);
+
+    for (int i = 0; i < 3; i++) {
+        J2DPane* pane = m3mSelPane[i]->getPanePtr();
+        if (pane == NULL) {
+            continue;
+        }
+        if (pane->mTransform == m3mBck) {
+            dusk::game_clock::present_toward(field_0x034c[i], (f32)MenuSelStartFrameTbl[i], m3mBck, pane);
+        } else if (pane->mTransform == m3mBck2) {
+            dusk::game_clock::present_toward(field_0x034c[i], (f32)MenuSelEndFrameTbl[i], m3mBck2, pane);
+        }
+    }
+
+    if (field_0x0100 != field_0x0104) {
+        J2DPane* yn0 = mYnSelPane[0]->getPanePtr();
+        J2DPane* yn1 = mYnSelPane[1]->getPanePtr();
+        if ((yn0 != NULL && yn0->mTransform == mYnSelBck3) ||
+            (yn1 != NULL && yn1->mTransform == mYnSelBck3))
+        {
+            dusk::game_clock::present_toward(field_0x0100, (f32)field_0x0104, mYnSelBck3);
+            if (yn0 != NULL && yn0->mTransform == mYnSelBck3) {
+                yn0->animationTransform();
+            }
+            if (yn1 != NULL && yn1->mTransform == mYnSelBck3) {
+                yn1->animationTransform();
+            }
+        }
+    }
+
+    for (int i = 0; i < 2; i++) {
+        J2DPane* pane = mYnSelPane[i]->getPanePtr();
+        if (pane == NULL) {
+            continue;
+        }
+        if (pane->mTransform == mYnSelBck) {
+            dusk::game_clock::present_toward(field_0x00f8[i], (f32)YnSelStartFrameTbl[i], mYnSelBck, pane);
+        } else if (pane->mTransform == mYnSelBck2) {
+            dusk::game_clock::present_toward(field_0x00f8[i], (f32)YnSelEndFrameTbl[i], mYnSelBck2, pane);
+        }
+    }
+
+    for (int i = 0; i < 2; i++) {
+        if (mCpSelPane[i] == NULL) {
+            continue;
+        }
+        J2DPane* pane = mCpSelPane[i]->getPanePtr();
+        if (pane == NULL) {
+            continue;
+        }
+        if (pane->mTransform == mCpSelBck) {
+            dusk::game_clock::present_toward(field_0x02b4[i], 99.0f, mCpSelBck, pane);
+        } else if (pane->mTransform == mCpSelBck2) {
+            dusk::game_clock::present_toward(field_0x02b4[i], 109.0f, mCpSelBck2, pane);
+        }
+    }
+
+    dusk::game_clock::present_toward(field_0x0130, (f32)field_0x0134, field_0x0090, mErrorMsgPane);
+
+    if (mBaseSubPane != NULL && mBaseSubPane->mTransform == field_0x009c) {
+        dusk::game_clock::present_toward(field_0x0110, (f32)field_0x0114, field_0x009c, mBaseSubPane);
+    }
+
+    dusk::game_clock::present_toward(field_0x0120, (f32)field_0x0124, field_0x0094, mNameBasePane);
+}
+
+void dFile_select_c::presentNameInputFade() {
+#if PLATFORM_GCN
+    bool fadeOut;
+    switch (mDataSelProc) {
+    case DATASELPROC_NAME_INPUT_FADE:
+    case DATASELPROC_BACK_NAME_INPUT_MOVE0:
+        fadeOut = true;
+        break;
+    case DATASELPROC_NAME_INPUT2_MOVE:
+    case DATASELPROC_BACK_NAME_INPUT_MOVE:
+        if (mDoRst::isReset()) {
+            return;
+        }
+        fadeOut = false;
+        break;
+    default:
+        return;
+    }
+
+    mFadeTimer -= dusk::game_clock::original_frames();
+    if (mFadeTimer < 0.f) {
+        mFadeTimer = 0.f;
+    }
+
+    f32 t = mFadeTimer / 15.0f;
+    u8 alpha = fadeOut ? (1.0f - t) * 255.0f : t * 255.0f;
+    mpFadePict->setAlpha(alpha);
+#else
+    (void)dt;
+#endif
+}
+
+void dFile_select_c::presentAnims() {
+    presentNameInputFade();
+    selFileWakuAnm();
+    bookIconAnm();
+    dataDelEffAnm();
+    dataCopyEffAnm();
+    fileSel.Scr->animation();
+    mYnSel.ScrYn->animation();
+    m3mSel.Scr3m->animation();
+    mSelDt.ScrDt->animation();
+    if (mCpSel.isShow) {
+        selCopyFileWakuAnm();
+        copyBookIconAnm();
+        mCpSel.Scr->animation();
+    }
+    presentLayoutAnims();
+    fileSelectWide();
+}
 #endif
 
 void dFile_select_c::_draw() {
-    #if TARGET_PC
-    fileSelectWide();
-    #endif
-
     if (!mHasDrawn) {
         dComIfGd_set2DOpa(&fileSel);
 
@@ -4363,6 +4572,11 @@ void dFile_select_c::_draw() {
 }
 
 void dDlst_FileSel_c::draw() {
+#if TARGET_PC
+    if (mpOwner != NULL) {
+        mpOwner->presentAnims();
+    }
+#endif
     J2DGrafContext* graf = dComIfGp_getCurrentGrafPort();
     Scr->draw(0.0f, 0.0f, graf);
 }
@@ -4424,6 +4638,7 @@ void dFile_select_c::errorMoveAnmInitSet(int param_1, int param_2) {
 bool dFile_select_c::errorMoveAnm() {
     bool ret;
     if (field_0x0130 != field_0x0134) {
+#if !TARGET_PC
         if (field_0x0130 < field_0x0134) {
             field_0x0130 += 2;
 
@@ -4438,6 +4653,7 @@ bool dFile_select_c::errorMoveAnm() {
 
         field_0x0090->setFrame(field_0x0130);
         mErrorMsgPane->animationTransform();
+#endif
         ret = false;
     } else {
         mErrorMsgPane->setAnimation((J2DAnmTransform*)NULL);
@@ -5716,6 +5932,7 @@ bool dFile_select_c::fileInfoScaleAnm() {
     bool ret;
 
     if (field_0x0110 != field_0x0114) {
+#if !TARGET_PC
         if (field_0x0110 < field_0x0114) {
             field_0x0110 += 2;
 
@@ -5730,6 +5947,7 @@ bool dFile_select_c::fileInfoScaleAnm() {
 
         field_0x009c->setFrame(field_0x0110);
         mBaseSubPane->animationTransform();
+#endif
         ret = false;
     }
 
@@ -5758,6 +5976,7 @@ void dFile_select_c::nameMoveAnmInitSet(int param_1, int param_2) {
 bool dFile_select_c::nameMoveAnm() {
     bool ret;
     if (field_0x0120 != field_0x0124) {
+#if !TARGET_PC
         if (field_0x0120 < field_0x0124) {
             field_0x0120 += 2;
 
@@ -5773,6 +5992,7 @@ bool dFile_select_c::nameMoveAnm() {
         }
         field_0x0094->setFrame(field_0x0120);
         mNameBasePane->animationTransform();
+#endif
         ret = false;
     } else {
         mNameBasePane->setAnimation((J2DAnmTransform*)0);

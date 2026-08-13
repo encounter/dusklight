@@ -8,14 +8,17 @@
 #include "m_Do/m_Do_controller_pad.h"
 #include <cstdio>
 #include <cstring>
-
 #include "JSystem/J2DGraph/J2DAnmLoader.h"
-#include "dusk/version.hpp"
 #include "f_op/f_op_msg_mng.h"
+
+#if TARGET_PC
+#include "dusk/game_clock.h"
+#include "dusk/version.hpp"
 
 static bool isPalOrJpn() {
     return dusk::version::isRegionPal() || dusk::version::isRegionJpn();
 }
+#endif
 
 #if TARGET_PC
 #define SJIS_MOJI(wmoji) ((static_cast<u16>(static_cast<u8>((wmoji)[0])) << 8) | static_cast<u8>((wmoji)[1]))
@@ -194,6 +197,7 @@ dNm_HIO_c::dNm_HIO_c() {
 
 dName_c::dName_c(J2DPane* pane) {
     nameIn.field_0xc = pane;
+    IF_DUSK(nameIn.mpOwner = this);
     _create();
     init();
 }
@@ -432,7 +436,7 @@ void dName_c::_move() {
     }
     #endif
 
-    cursorAnm();
+    IF_NOT_DUSK(cursorAnm());
 }
 
 int dName_c::nameCheck() {
@@ -477,6 +481,10 @@ void dName_c::playNameSet(int nameLength) {
 }
 
 void dName_c::cursorAnm() {
+#if TARGET_PC
+    dusk::game_clock::present_looping(mCurColAnmF, mCursorColorKey, 2.0f);
+    dusk::game_clock::present_looping(mCurTexAnmF, mCursorTexKey, 2.0f);
+#else
     mCurColAnmF += 2;
     if (mCurColAnmF >= mCursorColorKey->getFrameMax()) {
         mCurColAnmF -= mCursorColorKey->getFrameMax();
@@ -488,6 +496,7 @@ void dName_c::cursorAnm() {
         mCurTexAnmF -= mCursorTexKey->getFrameMax();
     }
     mCursorTexKey->setFrame(mCurTexAnmF);
+#endif
 
     nameIn.NameInScr->animation();
 }
@@ -1595,6 +1604,10 @@ void dName_c::nameWide() {
             break;
     }
 }
+
+void dName_c::presentLayoutAnims() {
+    cursorAnm();
+}
 #endif
 
 void dName_c::_draw() {
@@ -2074,6 +2087,11 @@ s32 dName_c::getMenuPosIdx(u8 selPos) {
 }
 
 void dDlst_NameIN_c::draw() {
+#if TARGET_PC
+    if (mpOwner != NULL) {
+        mpOwner->presentLayoutAnims();
+    }
+#endif
     if (field_0xc != NULL) {
         Mtx m;
         MtxP global_mtx = (MtxP)&field_0xc->getGlbMtx()[0][0];  // fake match?

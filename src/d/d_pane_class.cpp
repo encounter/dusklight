@@ -13,6 +13,10 @@
 #include "m_Do/m_Do_ext.h"
 #include "m_Do/m_Do_graphic.h"
 
+#if TARGET_PC
+#include "dusk/game_clock.h"
+#endif
+
 CPaneMgr::CPaneMgr() {
     mpFirstStackAlpha = NULL;
     mpFirstStackSize = NULL;
@@ -271,7 +275,7 @@ void CPaneMgr::paneScale(f32 x, f32 y) {
 
 bool CPaneMgr::scaleAnime(s16 param_0, f32 param_1, f32 param_2, u8 param_3) {
     if (mScaleAnime < param_0 - 1) {
-        mScaleAnime++;
+        DUSK_IF_ELSE(mScaleAnime += dusk::game_clock::original_frames(), mScaleAnime++);
         f32 rate = rateCalc(param_0, mScaleAnime, param_3);
         f32 tmp = param_1 + rate * (param_2 - param_1);
         getPanePtr()->scale(mInitScale.x * tmp, mInitScale.y * tmp);

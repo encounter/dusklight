@@ -51,9 +51,13 @@ public:
     /* 0x10 */ u8 field_0x10;
 };
 
+IF_DUSK(class dName_c);
+
 class dDlst_NameIN_c : public dDlst_base_c {
 public:
-    dDlst_NameIN_c() {}
+    dDlst_NameIN_c() {
+        IF_DUSK(mpOwner = NULL);
+    }
 
     virtual void draw();
     virtual ~dDlst_NameIN_c() {}
@@ -62,6 +66,9 @@ public:
     /* 0x08 */ JUTFont* font;
     /* 0x0C */ J2DPane* field_0xc;
     /* 0x10 */ J2DPane* field_0x10;
+#if TARGET_PC
+    dName_c* mpOwner;
+#endif
 };
 
 class ChrInfo_c {
@@ -141,6 +148,7 @@ public:
 
     #if TARGET_PC
     void nameWide();
+    void presentLayoutAnims();
     #endif
 
     void _draw();
@@ -164,9 +172,9 @@ private:
     /* 0x00C */ dDlst_NameIN_c nameIn;
     /* 0x020 */ dSelect_cursor_c* mSelIcon;
     /* 0x024 */ J2DAnmColorKey* mCursorColorKey;
-    /* 0x028 */ int mCurColAnmF;
+    /* 0x028 */ DUSK_IF_ELSE(f32, int) mCurColAnmF;
     /* 0x02C */ J2DAnmTextureSRTKey* mCursorTexKey;
-    /* 0x030 */ int mCurTexAnmF;
+    /* 0x030 */ DUSK_IF_ELSE(f32, int) mCurTexAnmF;
     /* 0x034 */ CPaneMgrAlpha* mNameCursor[8];
     /* 0x054 */ TEXT_SPAN mNameText[8];
     /* 0x074 */ CPaneMgr* mMojiIcon[65];

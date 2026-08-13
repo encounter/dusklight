@@ -107,7 +107,7 @@ private:
     /* 0x5C */ JUtility::TColor mInitBlack;
     /* 0x60 */ s16 field_0x60;
     /* 0x62 */ s16 field_0x62;
-    /* 0x64 */ s16 mScaleAnime;
+    /* 0x64 */ DUSK_IF_ELSE(f32, s16) mScaleAnime;
     /* 0x66 */ s16 field_0x66;
     /* 0x68 */ s16 field_0x68;
     /* 0x6A */ s16 mColorAnime;
