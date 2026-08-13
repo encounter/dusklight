@@ -13,9 +13,9 @@
 #include "m_Do/m_Do_lib.h"
 #include <cstring>
 
-#include "dusk/version.hpp"
 #if TARGET_PC
-#include "dusk/frame_interpolation.h"
+#include "dusk/game_clock.h"
+#include "dusk/version.hpp"
 #endif
 
 static void vectle_calc(DOUBLE_POS* i_pos, cXyz* o_out) {
@@ -6207,12 +6207,7 @@ static void dKyr_evil_draw2(Mtx drawMtx, u8** tex) {
         dKyr_set_btitex(&texobj, (ResTIMG*)tex[1]);
 #endif
 
-#if TARGET_PC
-        if (dusk::frame_interp::get_ui_tick_pending())
-#endif
-        {
-            rot += 0.7f;
-        }
+        rot += 0.7f IF_DUSK(* dusk::game_clock::original_frames());
         MTXRotRad(rotMtx, 'Z', DEG_TO_RAD(rot));
         MTXConcat(camMtx, rotMtx, camMtx);
 
@@ -6451,12 +6446,7 @@ void dKyr_evil_draw(Mtx drawMtx, u8** tex) {
         dKyr_set_btitex(&texobj, (ResTIMG*)tex[0]);
 #endif
 
-#if TARGET_PC
-        if (dusk::frame_interp::get_ui_tick_pending())
-#endif
-        {
-            rot += 1.0f;
-        }
+        rot += 1.0f IF_DUSK(* dusk::game_clock::original_frames());
         MTXRotRad(rotMtx, 'Z', DEG_TO_RAD(rot));
         MTXConcat(camMtx, rotMtx, camMtx);
 
