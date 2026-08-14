@@ -29,6 +29,9 @@ void J3DModel::initialize() {
 
     MTXIdentity(mBaseTransformMtx);
     MTXIdentity(mInternalView);
+#if TARGET_PC
+    MTXIdentity(mPresentationBase);
+#endif
 
     mMtxBuffer = NULL;
     mMatPacket = NULL;
@@ -103,13 +106,32 @@ s32 J3DModel::entryModelData(J3DModelData* pModelData, u32 mdlFlags, u32 mtxNum)
 #if TARGET_PC
 void J3DModel::interp_callback(void* pUserWork) {
     J3DModel* i_this = static_cast<J3DModel*>(pUserWork);
+    dusk::frame_interp::begin_model_interpolation(i_this);
     i_this->calcMaterial();
     i_this->diff();
+    dusk::frame_interp::end_model_interpolation(i_this);
 }
 
 void J3DModel::setAnmMtx(int jointNo, Mtx m) {
     mMtxBuffer->setAnmMtx(jointNo, m);
     dusk::frame_interp::record_final_mtx(mMtxBuffer->getAnmMtx(jointNo));
+}
+
+void J3DModel::calc_presentation_base_mtx() {
+    Mtx identity;
+    MTXIdentity(identity);
+    J3DCalcViewBaseMtx(identity, mBaseScale, mBaseTransformMtx, mPresentationBase);
+    dusk::frame_interp::record_final_mtx(mPresentationBase);
+    prepare_presentation_view();
+}
+
+void J3DModel::prepare_presentation_view() {
+    Mtx replacement;
+    MtxP presentationBase = mPresentationBase;
+    if (dusk::frame_interp::lookup_replacement(mPresentationBase, replacement)) {
+        presentationBase = replacement;
+    }
+    MTXConcat(j3dSys.getViewMtx(), presentationBase, mInternalView);
 }
 #endif
 
@@ -503,8 +525,11 @@ void J3DModel::entry() {
     }
 
 #if TARGET_PC
-    if (mModelData->needsInterpCallBack())
+    if (mModelData->needsInterpCallBack() ||
+        dusk::frame_interp::has_model_interpolation_callbacks(this))
+    {
         dusk::frame_interp::add_interpolation_callback(&J3DModel::interp_callback, this);
+    }
 #endif
 }
 
@@ -514,18 +539,20 @@ void J3DModel::viewCalc() {
 
     if (getModelData()->checkFlag(0x10)) {
         if (getMtxCalcMode() == 2) {
+#if TARGET_PC
+            calc_presentation_base_mtx();
+#else
             J3DCalcViewBaseMtx(j3dSys.getViewMtx(), mBaseScale, mBaseTransformMtx,
                                (MtxP)&mInternalView);
-#ifdef TARGET_PC
-            dusk::frame_interp::record_final_mtx(mInternalView);
 #endif
         }
     } else if (isCpuSkinningOn()) {
         if (getMtxCalcMode() == 2) {
+#if TARGET_PC
+            calc_presentation_base_mtx();
+#else
             J3DCalcViewBaseMtx(j3dSys.getViewMtx(), mBaseScale, mBaseTransformMtx,
                                (MtxP)&mInternalView);
-#ifdef TARGET_PC
-            dusk::frame_interp::record_final_mtx(mInternalView);
 #endif
         }
     } else if (checkFlag(J3DMdlFlag_SkinPosCpu)) {
@@ -546,15 +573,6 @@ void J3DModel::viewCalc() {
         DCStoreRangeNoSync(getDrawMtxPtr(), mModelData->getDrawMtxNum() * sizeof(Mtx));
         DCStoreRange(getNrmMtxPtr(), mModelData->getDrawMtxNum() * sizeof(Mtx33));
     }
-
-#ifdef TARGET_PC
-    Mtx* drawMtx = getDrawMtxPtr();
-    if (drawMtx != J3DMtxBuffer::sNoUseDrawMtxPtr) {
-        for (u16 i = 0; i < mModelData->getDrawMtxNum(); ++i) {
-            dusk::frame_interp::record_final_mtx(drawMtx[i]);
-        }
-    }
-#endif
 
     prepareShapePackets();
 }

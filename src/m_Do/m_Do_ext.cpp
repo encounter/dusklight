@@ -3646,12 +3646,22 @@ void mDoExt_cylinderMPacket::draw() {
     GXSetCullMode(GX_CULL_BACK);
     GXSetClipMode(GX_CLIP_ENABLE);
 
+#if TARGET_PC
+    Mtx modelViewMtx;
+    cMtx_concat(j3dSys.getViewMtx(), mMatrix, modelViewMtx);
+    GXLoadPosMtxImm(modelViewMtx, 0);
+
+    Mtx normalMtx;
+    cMtx_inverseTranspose(modelViewMtx, normalMtx);
+    GXLoadNrmMtxImm(normalMtx, 0);
+#else
     cMtx_concat(j3dSys.getViewMtx(), mMatrix, mMatrix);
 
     GXLoadPosMtxImm(mMatrix, 0);
     cMtx_inverseTranspose(mMatrix, mMatrix);
 
     GXLoadNrmMtxImm(mMatrix, 0);
+#endif
     GXSetCurrentMtx(0);
 
     GXDrawCylinder(8);

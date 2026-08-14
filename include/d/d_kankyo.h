@@ -229,9 +229,13 @@ public:
     void setLightTevColorType(J3DModel* model_p, dKy_tevstr_c* tevstr_p) {
         setLightTevColorType(model_p->getModelData(), tevstr_p);
     }
+#if TARGET_PC
+    void setLightTevColorType_MAJI(J3DModel* model_p, dKy_tevstr_c* tevstr_p);
+#else
     void setLightTevColorType_MAJI(J3DModel* model_p, dKy_tevstr_c* tevstr_p) {
         setLightTevColorType_MAJI(model_p->getModelData(), tevstr_p);
     }
+#endif
 
 public:
     /* 0x0000 */  // vtable

@@ -1,7 +1,5 @@
 #pragma once
 
-#include "settings.h"
-
 #include "SSystem/SComponent/c_angle.h"
 #include "SSystem/SComponent/c_sxyz.h"
 #include "SSystem/SComponent/c_xyz.h"
@@ -14,16 +12,71 @@
 #include <stdint.h>
 
 class camera_process_class;
+class fopAc_ac_c;
+class J3DModel;
 class view_class;
 
 #ifdef __cplusplus
 namespace dusk::frame_interp {
 
+enum class CameraInterpolationKind {
+    Unavailable,
+    Authoritative,
+    Previous,
+    Linear,
+    Orbit,
+    SemanticOrbit,
+};
+
+enum class CameraInterpolationFallbackReason {
+    None,
+    MissingSnapshots,
+    IncompatibleCamera,
+    UnsupportedAlgorithm,
+    MissingTarget,
+    TargetChanged,
+    TargetPoseUnavailable,
+};
+
+struct CameraInterpolationDiagnostics {
+    CameraInterpolationKind kind = CameraInterpolationKind::Unavailable;
+    float step = 0.0f;
+    float previousRadius = 0.0f;
+    float currentRadius = 0.0f;
+    float presentedRadius = 0.0f;
+    float linearRadius = 0.0f;
+    float linearRadiusError = 0.0f;
+    float maxLinearRadiusError = 0.0f;
+    float cameraFrames = 0.0f;
+    float collisionCorrection = 0.0f;
+    float maxCollisionCorrection = 0.0f;
+    uint64_t simTickSeq = 0;
+    uint64_t collisionHitCount = 0;
+    int algorithm = -1;
+    int mode = -1;
+    int type = -1;
+    int style = -1;
+    CameraInterpolationFallbackReason fallbackReason =
+        CameraInterpolationFallbackReason::MissingSnapshots;
+    bool compatibleRig = false;
+    bool actorAnchored = false;
+    bool collisionHit = false;
+    bool rebased = false;
+    bool valid = false;
+};
+
+struct ActorPresentationPose {
+    cXyz position{};
+    cXyz attentionPosition{};
+    cXyz eyePosition{};
+    csXyz shapeAngle{};
+};
+
 void begin_record();
 void end_record();
 void begin_sim_tick();
 uint64_t sim_tick_seq();
-void begin_frame(FrameInterpMode mode, bool is_sim_frame, float step);
+void begin_frame(float step);
 void interpolate();
 float get_interpolation_step();
 
@@ -32,10 +85,20 @@ bool presentation_sync_active();
 
 bool is_enabled();
 
+// TODO: These should be phased out as UI is progressively updated to use game_clock
+bool get_ui_tick_pending();
+
 bool is_sim_frame();
 
 void record_camera(::camera_process_class* cam, int camera_id);
+void reset_camera();
 void interp_view(::view_class* view);
+const CameraInterpolationDiagnostics& camera_interpolation_diagnostics();
+
+void capture_actor_pose(::fopAc_ac_c* actor);
+void erase_actor_pose(::fopAc_ac_c* actor);
+bool sample_actor_pose(const ::fopAc_ac_c* actor, float step, ActorPresentationPose* pose);
+size_t recorded_actor_pose_count();
 void record_final_mtx(Mtx m, const void *key);
 void record_final_mtx(Mtx m);
 
@@ -44,6 +107,11 @@ bool lookup_concat_replacement(const void* lhs, const void* rhs, Mtx out);
 
 typedef void (*InterpolationCallBack)(void* pUserWork);
 void add_interpolation_callback(InterpolationCallBack pCallBack, void* pUserWork);
+void add_model_interpolation_callbacks(::J3DModel* model, InterpolationCallBack before,
+                                       InterpolationCallBack after, void* pUserWork);
+bool has_model_interpolation_callbacks(const ::J3DModel* model);
+void begin_model_interpolation(::J3DModel* model);
+void end_model_interpolation(::J3DModel* model);
 
 void begin_presentation_camera();
 void end_presentation_camera();

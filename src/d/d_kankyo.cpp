@@ -33,6 +33,7 @@
 #include <cstdlib>
 #include <cstring>
 #if TARGET_PC
+#include <absl/container/flat_hash_map.h>
 #include "dusk/imgui/ImGuiBloomWindow.hpp"
 #include "dusk/settings.h"
 #include "dusk/frame_interpolation.h"
@@ -120,6 +121,310 @@ static LightStatus lightStatusData[8];
 static u16 lightMask = 0x0001;
 
 static LightStatus* lightStatusPt = lightStatusData;
+
+#if TARGET_PC
+// Keep environment-light simulation state at its original cadence. These sidecars retain only the
+// spatial inputs needed to rebuild view-space lights after the presentation camera is installed.
+enum class presentation_primary_light_space {
+    world,
+    actor_camera,
+    camera_eye,
+};
+
+struct presentation_primary_light_sample {
+    cXyz worldPosition{};
+    cXyz actorPosition{};
+    cXyz cameraResidual{};
+    presentation_primary_light_space space = presentation_primary_light_space::world;
+    bool valid = false;
+};
+
+struct presentation_room_light_sample {
+    cXyz worldPosition{};
+    cXyz worldDirection{};
+    cXyz cameraOffset{};
+    bool cameraRelative = false;
+    bool valid = false;
+};
+
+struct presentation_lighting_snapshot {
+    presentation_primary_light_sample primary{};
+    presentation_room_light_sample roomLights[6]{};
+    bool discontinuous = false;
+};
+
+struct presentation_lighting_history {
+    presentation_lighting_snapshot previous{};
+    presentation_lighting_snapshot current{};
+    uint64_t simTickSeq = 0;
+};
+
+struct presentation_model_lighting_binding {
+    dKy_tevstr_c* tevstr = nullptr;
+    J3DLightInfo savedPrimary{};
+    J3DLightInfo savedRoomLights[6]{};
+    bool applied = false;
+};
+
+static absl::flat_hash_map<dKy_tevstr_c*, presentation_lighting_history>
+    s_presentationLightingHistory;
+static absl::flat_hash_map<J3DModel*, presentation_model_lighting_binding>
+    s_presentationLightingBindings;
+static uint64_t s_presentationLightingTick = 0;
+static uint64_t s_presentationLightingEpoch = 0;
+static bool s_presentationLightingInitialized = false;
+
+static bool prepare_presentation_lighting_tick() {
+    if (!dusk::frame_interp::is_enabled() || !dusk::frame_interp::is_sim_frame()) {
+        return false;
+    }
+
+    const uint64_t tick = dusk::frame_interp::sim_tick_seq();
+    const uint64_t epoch = dusk::game_clock::g_frameTiming.presentationEpoch;
+    if (!s_presentationLightingInitialized || epoch != s_presentationLightingEpoch) {
+        s_presentationLightingHistory.clear();
+        s_presentationLightingBindings.clear();
+        s_presentationLightingEpoch = epoch;
+        s_presentationLightingTick = tick;
+        s_presentationLightingInitialized = true;
+    }
+
+    if (tick != s_presentationLightingTick) {
+        s_presentationLightingBindings.clear();
+        for (auto it = s_presentationLightingHistory.begin();
+             it != s_presentationLightingHistory.end();)
+        {
+            if (it->second.simTickSeq + 1 < tick) {
+                auto stale = it++;
+                s_presentationLightingHistory.erase(stale);
+            } else {
+                ++it;
+            }
+        }
+        s_presentationLightingTick = tick;
+    }
+    return true;
+}
+
+static presentation_lighting_history& get_presentation_lighting_history(
+    dKy_tevstr_c* tevstr)
+{
+    const uint64_t tick = dusk::frame_interp::sim_tick_seq();
+    auto& history = s_presentationLightingHistory[tevstr];
+    if (history.simTickSeq != tick) {
+        if (history.simTickSeq + 1 == tick && history.current.primary.valid) {
+            history.previous = history.current;
+        } else {
+            history.previous = presentation_lighting_snapshot{};
+        }
+        history.current = presentation_lighting_snapshot{};
+        history.simTickSeq = tick;
+    }
+    return history;
+}
+
+static cXyz presentation_camera_forward(const view_class& view) {
+    cXyz center = view.lookat.center;
+    cXyz eye = view.lookat.eye;
+    cXyz forward;
+    dKyr_get_vectle_calc(&center, &eye, &forward);
+    return forward;
+}
+
+static void record_presentation_primary_light(dKy_tevstr_c* tevstr, const cXyz& actorPosition,
+                                              bool cameraRelative, u8 initTimer) {
+    if (!prepare_presentation_lighting_tick()) {
+        return;
+    }
+
+    auto& snapshot = get_presentation_lighting_history(tevstr).current;
+    auto& sample = snapshot.primary;
+    sample = presentation_primary_light_sample{};
+    sample.valid = true;
+    sample.worldPosition = tevstr->field_0x32c;
+    sample.actorPosition = actorPosition;
+    snapshot.discontinuous = snapshot.discontinuous || initTimer != 0;
+
+    if (!cameraRelative) {
+        return;
+    }
+
+    view_class* view = dComIfGd_getView();
+    if (view == nullptr) {
+        return;
+    }
+
+    const cXyz forward = presentation_camera_forward(*view);
+    cXyz cameraPosition;
+    if (tevstr->Type >= 1 && tevstr->Type <= 9) {
+        sample.space = presentation_primary_light_space::camera_eye;
+        cameraPosition = view->lookat.eye + forward * 180.0f;
+    } else {
+        sample.space = presentation_primary_light_space::actor_camera;
+        cameraPosition = actorPosition + forward * 500.0f;
+        cameraPosition.y += 40.0f;
+    }
+    sample.cameraResidual = sample.worldPosition - cameraPosition;
+}
+
+static void capture_presentation_room_lights(dKy_tevstr_c* tevstr) {
+    auto& snapshot = get_presentation_lighting_history(tevstr).current;
+    if (!snapshot.primary.valid) {
+        snapshot.primary.worldPosition = tevstr->field_0x32c;
+        snapshot.primary.valid = true;
+    }
+
+    MtxP viewMtx = j3dSys.getViewMtx();
+    view_class* view = dComIfGd_getView();
+    if (viewMtx == nullptr || view == nullptr) {
+        return;
+    }
+
+    Mtx inverseView;
+    cMtx_inverse(viewMtx, inverseView);
+    const cXyz moonPosition = view->lookat.eye + g_env_light.moon_pos;
+    for (int i = 0; i < 6; ++i) {
+        J3DLightInfo* light = tevstr->mLights[i].getLightInfo();
+        auto& sample = snapshot.roomLights[i];
+        cMtx_multVec(inverseView, &light->mLightPosition, &sample.worldPosition);
+        cMtx_multVecSR(inverseView, &light->mLightDirection, &sample.worldDirection);
+        sample.cameraRelative =
+            i == 1 && dKy_SunMoon_Light_Check() && sample.worldPosition.abs(moonPosition) < 1.0f;
+        if (sample.cameraRelative) {
+            sample.cameraOffset = sample.worldPosition - view->lookat.eye;
+        }
+        sample.valid = true;
+    }
+}
+
+static cXyz sample_presentation_value(const cXyz& previous, const cXyz& current, bool interpolate,
+                                     f32 step) {
+    if (!interpolate) {
+        return current;
+    }
+    cXyz result;
+    dusk::frame_interp::lerp(result, previous, current, step);
+    return result;
+}
+
+static cXyz sample_presentation_primary_light(const presentation_lighting_history& history,
+                                              const view_class& view, f32 step) {
+    const auto& current = history.current.primary;
+    const auto& previous = history.previous.primary;
+    const bool interpolate = previous.valid && !history.current.discontinuous &&
+                             previous.space == current.space;
+
+    if (current.space == presentation_primary_light_space::world) {
+        return sample_presentation_value(previous.worldPosition, current.worldPosition, interpolate,
+                                         step);
+    }
+
+    const cXyz forward = presentation_camera_forward(view);
+    const cXyz residual = sample_presentation_value(previous.cameraResidual,
+                                                    current.cameraResidual, interpolate, step);
+    if (current.space == presentation_primary_light_space::camera_eye) {
+        return view.lookat.eye + forward * 180.0f + residual;
+    }
+
+    const cXyz actorPosition = sample_presentation_value(previous.actorPosition,
+                                                         current.actorPosition, interpolate, step);
+    cXyz lightPosition = actorPosition + forward * 500.0f + residual;
+    lightPosition.y += 40.0f;
+    return lightPosition;
+}
+
+static void apply_presentation_lighting(void* userWork) {
+    J3DModel* model = static_cast<J3DModel*>(userWork);
+    auto bindingIt = s_presentationLightingBindings.find(model);
+    if (bindingIt == s_presentationLightingBindings.end() || bindingIt->second.tevstr == nullptr) {
+        return;
+    }
+
+    auto& binding = bindingIt->second;
+    dKy_tevstr_c* tevstr = binding.tevstr;
+    auto historyIt = s_presentationLightingHistory.find(tevstr);
+    view_class* view = dComIfGd_getView();
+    MtxP viewMtx = j3dSys.getViewMtx();
+    if (historyIt == s_presentationLightingHistory.end() || view == nullptr || viewMtx == nullptr ||
+        !historyIt->second.current.primary.valid)
+    {
+        return;
+    }
+
+    // The paired model callback restores these values immediately after J3D emits its differed
+    // display list, keeping presentation state out of the next simulation tick.
+    binding.savedPrimary = *tevstr->mLightObj.getLightInfo();
+    for (int i = 0; i < 6; ++i) {
+        binding.savedRoomLights[i] = *tevstr->mLights[i].getLightInfo();
+    }
+    binding.applied = true;
+
+    const f32 step = dusk::frame_interp::get_interpolation_step();
+    const auto& history = historyIt->second;
+    cXyz primaryWorld = sample_presentation_primary_light(history, *view, step);
+    cMtx_multVec(viewMtx, &primaryWorld,
+                 &tevstr->mLightObj.getLightInfo()->mLightPosition);
+
+    for (int i = 0; i < 6; ++i) {
+        const auto& current = history.current.roomLights[i];
+        if (!current.valid) {
+            continue;
+        }
+
+        const auto& previous = history.previous.roomLights[i];
+        const bool interpolate = previous.valid && !history.current.discontinuous &&
+                                 previous.cameraRelative == current.cameraRelative;
+        cXyz worldPosition = sample_presentation_value(previous.worldPosition,
+                                                       current.worldPosition, interpolate, step);
+        if (current.cameraRelative) {
+            const cXyz cameraOffset = sample_presentation_value(previous.cameraOffset,
+                                                                current.cameraOffset, interpolate,
+                                                                step);
+            worldPosition = view->lookat.eye + cameraOffset;
+        }
+        cXyz worldDirection = sample_presentation_value(previous.worldDirection,
+                                                        current.worldDirection, interpolate, step);
+        if (!worldDirection.normalizeRS()) {
+            worldDirection = current.worldDirection;
+        }
+
+        J3DLightInfo* light = tevstr->mLights[i].getLightInfo();
+        cMtx_multVec(viewMtx, &worldPosition, &light->mLightPosition);
+        cMtx_multVecSR(viewMtx, &worldDirection, &light->mLightDirection);
+    }
+}
+
+static void restore_presentation_lighting(void* userWork) {
+    J3DModel* model = static_cast<J3DModel*>(userWork);
+    auto bindingIt = s_presentationLightingBindings.find(model);
+    if (bindingIt == s_presentationLightingBindings.end() || !bindingIt->second.applied ||
+        bindingIt->second.tevstr == nullptr)
+    {
+        return;
+    }
+
+    auto& binding = bindingIt->second;
+    dKy_tevstr_c* tevstr = binding.tevstr;
+    *tevstr->mLightObj.getLightInfo() = binding.savedPrimary;
+    for (int i = 0; i < 6; ++i) {
+        *tevstr->mLights[i].getLightInfo() = binding.savedRoomLights[i];
+    }
+    binding.applied = false;
+}
+
+static void schedule_presentation_lighting(J3DModel* model, dKy_tevstr_c* tevstr) {
+    if (model == nullptr || tevstr == nullptr || !prepare_presentation_lighting_tick()) {
+        return;
+    }
+
+    capture_presentation_room_lights(tevstr);
+    auto& binding = s_presentationLightingBindings[model];
+    binding.tevstr = tevstr;
+    binding.applied = false;
+    dusk::frame_interp::add_model_interpolation_callbacks(
+        model, &apply_presentation_lighting, &restore_presentation_lighting, model);
+}
+#endif
 
 void dKy_WolfPowerup_AmbCol(GXColorS10* in_col_p) {
     JUT_ASSERT(185, in_col_p != NULL);
@@ -3669,6 +3974,10 @@ void dScnKy_env_light_c::settingTevStruct_plightcol_plus(cXyz* pos_p, dKy_tevstr
         light_info->mDistAtten.x = 1.0f;
         light_info->mDistAtten.y = 0.0f;
         light_info->mDistAtten.z = 0.0f;
+
+#if TARGET_PC
+        record_presentation_primary_light(tevstr_p, *pos_p, sp40 != 0, init_timer);
+#endif
     }
 }
 
@@ -4566,6 +4875,14 @@ void dScnKy_env_light_c::setLightTevColorType_MAJI(J3DModelData* modelData_p,
         }
     }
 }
+
+#if TARGET_PC
+void dScnKy_env_light_c::setLightTevColorType_MAJI(J3DModel* model_p,
+                                                   dKy_tevstr_c* tevstr_p) {
+    setLightTevColorType_MAJI(model_p->getModelData(), tevstr_p);
+    schedule_presentation_lighting(model_p, tevstr_p);
+}
+#endif
 
 void dScnKy_env_light_c::CalcTevColor() {
     fopAc_ac_c* player_p = dComIfGp_getPlayer(0);

@@ -15,6 +15,10 @@
 
 #include "helpers/string.hpp"
 
+#if TARGET_PC
+#include "dusk/frame_interpolation.h"
+#endif
+
 #ifdef __MWERKS__
 #define LOAD_4BYTE_STRING_LITERAL(x) (*(u32*)(x))
 #else
@@ -2407,6 +2411,9 @@ bool dCamera_c::tactEvCamera() {
             }
 
             if (tact_p->field_0x0 < 20) {
+#if TARGET_PC
+                dusk::frame_interp::request_presentation_sync();
+#endif
                 tact_p->field_0x0 = 20;
             }
 
@@ -2419,11 +2426,19 @@ bool dCamera_c::tactEvCamera() {
 
         case 3:
             if (tact_p->field_0x0 < 22) {
+#if TARGET_PC
+                dusk::frame_interp::request_presentation_sync();
+#endif
                 tact_p->field_0x0 = 22;
             }
             break;
 
         case 1:
+#if TARGET_PC
+            if (tact_p->field_0x0 != 0) {
+                dusk::frame_interp::request_presentation_sync();
+            }
+#endif
             tact_p->field_0x0 = 0;
             break;
 

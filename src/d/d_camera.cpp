@@ -11578,6 +11578,12 @@ static int init_phase2(camera_class* i_this) {
 
     JKR_NEW_ARGS (body) dCamera_c(i_this);
 
+#if TARGET_PC
+    if (body->CameraID() == 0) {
+        dusk::frame_interp::reset_camera();
+    }
+#endif
+
     f32 var_f31 = 0.0f;
     f32 var_f30 = 160000.0f;
 
@@ -11632,6 +11638,9 @@ static int camera_delete(camera_process_class* i_this) {
     dCamera_c* camera = &i_this->mCamera;
 
     if (camera->CameraID() == 0) {
+#if TARGET_PC
+        dusk::frame_interp::reset_camera();
+#endif
 #if DEBUG
         dDbgCamera.Finish();
 #endif

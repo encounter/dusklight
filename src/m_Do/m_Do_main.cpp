@@ -291,10 +291,9 @@ void main01(void) {
         dusk::ui::update();
 
         const auto timing = dusk::game_clock::advance();
-        const auto interpolationMode = dusk::getSettings().game.enableFrameInterpolation.getValue();
         if (timing.separatePresentation) {
             if (timing.numSimTicks > 0) {
-                dusk::frame_interp::begin_frame(interpolationMode, true, 0.0f);
+                dusk::frame_interp::begin_frame(0.0f);
                 for (int i = 0; i < timing.numSimTicks; ++i) {
                     if (timing.interpolating) {
                         dusk::frame_interp::begin_sim_tick();
@@ -311,7 +310,7 @@ void main01(void) {
 
             const float interpolationStep =
                 timing.interpolating ? dusk::game_clock::sample_interpolation_step() : 1.0f;
-            dusk::frame_interp::begin_frame(interpolationMode, false, interpolationStep);
+            dusk::frame_interp::begin_frame(interpolationStep);
             if (timing.interpolating) {
                 dusk::frame_interp::interpolate();
                 dusk::frame_interp::begin_presentation_camera();
@@ -323,7 +322,7 @@ void main01(void) {
                 dusk::frame_interp::end_presentation_camera();
             }
         } else {
-            dusk::frame_interp::begin_frame(dusk::FrameInterpMode::Off, true, 0.0f);
+            dusk::frame_interp::begin_frame(0.0f);
             dusk::game_clock::begin_sim_tick();
 
             // Game Inputs

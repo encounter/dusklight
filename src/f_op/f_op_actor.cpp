@@ -19,6 +19,10 @@
 #include "c/c_dylink.h"
 #include "m_Do/m_Do_printf.h"
 
+#if TARGET_PC
+#include "dusk/frame_interpolation.h"
+#endif
+
 #if DEBUG
 class print_error_check_c {
 public:
@@ -372,6 +376,10 @@ static int fopAc_Execute(void* i_this) {
     fapGm_HIO_c::stopCpuTimer(message);
     #endif
 
+#if TARGET_PC
+    dusk::frame_interp::capture_actor_pose(actor);
+#endif
+
     return ret;
 }
 
@@ -413,6 +421,9 @@ static int fopAc_Delete(void* i_this) {
     #endif
 
     if (ret == TRUE) {
+#if TARGET_PC
+        dusk::frame_interp::erase_actor_pose(actor);
+#endif
         fopAcTg_ActorQTo(&actor->actor_tag);
         fopDwTg_DrawQTo(&actor->draw_tag);
         fopAcM_DeleteHeap((fopAc_ac_c*) i_this);

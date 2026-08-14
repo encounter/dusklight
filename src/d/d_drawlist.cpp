@@ -1364,6 +1364,16 @@ bool dDlst_shadowReal_c::add(J3DModel* i_model) {
     return true;
 }
 
+#if TARGET_PC
+static MtxP get_simple_shadow_mtx(Mtx worldMtx, const void* key, Mtx storage) {
+    if (!dusk::frame_interp::lookup_replacement(key, storage)) {
+        cMtx_copy(worldMtx, storage);
+    }
+    cMtx_concat(j3dSys.getViewMtx(), storage, storage);
+    return storage;
+}
+#endif
+
 void dDlst_shadowSimple_c::draw() {
     static GXColor l_color = {0, 0, 0, 64};
     l_color.a = mAlpha;
@@ -1371,31 +1381,23 @@ void dDlst_shadowSimple_c::draw() {
     GXSetTevColor(GX_TEVREG0, l_color);
     GXClearVtxDesc();
     GXSetVtxDesc(GX_VA_POS, GX_INDEX8);
-#ifdef TARGET_PC
-    Mtx volume_mtx;
-    if (dusk::frame_interp::lookup_replacement(mVolumeMtxKey, volume_mtx)) {
-        cMtx_concat(j3dSys.getViewMtx(), volume_mtx, volume_mtx);
-        GXLoadPosMtxImm(volume_mtx, GX_PNMTX0);
-    } else
+#if TARGET_PC
+    Mtx volumeMtx;
+    GXLoadPosMtxImm(get_simple_shadow_mtx(mVolumeMtx, mVolumeMtxKey, volumeMtx), GX_PNMTX0);
+#else
+    GXLoadPosMtxImm(mVolumeMtx, GX_PNMTX0);
 #endif
-    {
-        GXLoadPosMtxImm(mVolumeMtx, GX_PNMTX0);
-    }
     GXSetCurrentMtx(GX_PNMTX0);
     GXCallDisplayList(l_frontMat, 0x40);
     GXCallDisplayList(l_shadowVolumeDL, 0x40);
     GXCallDisplayList(l_backSubMat, 0x20);
     GXCallDisplayList(l_shadowVolumeDL, 0x40);
-#ifdef TARGET_PC
-    Mtx shadow_mtx;
-    if (dusk::frame_interp::lookup_replacement(mMtxKey, shadow_mtx)) {
-        cMtx_concat(j3dSys.getViewMtx(), shadow_mtx, shadow_mtx);
-        GXLoadPosMtxImm(shadow_mtx, GX_PNMTX1);
-    } else
+#if TARGET_PC
+    Mtx shadowMtx;
+    GXLoadPosMtxImm(get_simple_shadow_mtx(mMtx, mMtxKey, shadowMtx), GX_PNMTX1);
+#else
+    GXLoadPosMtxImm(mMtx, GX_PNMTX1);
 #endif
-    {
-        GXLoadPosMtxImm(mMtx, GX_PNMTX1);
-    }
     GXSetCurrentMtx(GX_PNMTX1);
 
     if (mpTexObj != NULL) {
@@ -1451,8 +1453,10 @@ void dDlst_shadowSimple_c::set(cXyz* param_0, f32 param_1, f32 param_2, cXyz* pa
 #if TARGET_PC
     mVolumeMtxKey = getInterpKey(param_0, 0x1);
     dusk::frame_interp::record_final_mtx(mDoMtx_stack_c::get(), mVolumeMtxKey);
-#endif
+    cMtx_copy(mDoMtx_stack_c::get(), mVolumeMtx);
+#else
     cMtx_concat(j3dSys.getViewMtx(), mDoMtx_stack_c::get(), mVolumeMtx);
+#endif
     f32 f31 = JMAFastSqrt(1.0f - param_3->x * param_3->x);
     f32 f29;
     f32 f28;
@@ -1477,11 +1481,13 @@ void dDlst_shadowSimple_c::set(cXyz* param_0, f32 param_1, f32 param_2, cXyz* pa
     mDoMtx_stack_c::get()[2][3] = param_0->z;
     mDoMtx_stack_c::YrotM(param_4);
     mDoMtx_stack_c::scaleM(param_2, 1.0f, param_2 * param_5);
-#ifdef TARGET_PC
+#if TARGET_PC
     mMtxKey = getInterpKey(param_0, 0x2);
     dusk::frame_interp::record_final_mtx(mDoMtx_stack_c::get(), mMtxKey);
-#endif
+    cMtx_copy(mDoMtx_stack_c::get(), mMtx);
+#else
     cMtx_concat(j3dSys.getViewMtx(), mDoMtx_stack_c::get(), mMtx);
+#endif
     mpTexObj = param_6;
 }
 

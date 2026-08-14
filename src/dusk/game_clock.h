@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cmath>
+#include <cstdint>
 
 class J2DAnmBase;
 class J2DAnmTransform;
@@ -25,6 +26,8 @@ struct FrameTiming {
     bool separatePresentation;
     // Number of simulation ticks to run
     int numSimTicks;
+    // Changes whenever presentation history must be discarded and re-anchored.
+    uint64_t presentationEpoch;
 };
 extern FrameTiming g_frameTiming;
 
@@ -33,6 +36,7 @@ void reset();
 const FrameTiming& advance();
 void begin_sim_tick();
 void commit_sim_tick();
+bool is_sim_tick_active();
 float sample_interpolation_step();
 
 inline void advance_looping_frame(float& frame, float speed, float max) {
