@@ -152,6 +152,12 @@ public:
     constexpr f32 getButtonZAlpha() const {
         return mButtonZAlpha;
     }
+    void applyLightDropVesselLayout(f32 i_posX, f32 i_posY, f32 i_vesselScale, f32 i_alpha);
+    void applyButtonATalkLayout(f32 i_posX, f32 i_posY, f32 i_textPosX, f32 i_textPosY, f32 i_scale,
+                                bool i_talkA);
+    void applyButtonBTalkLayout(bool i_human, f32 i_posX, f32 i_posY, f32 i_textPosX, f32 i_textPosY,
+                                f32 i_scale, u8 i_action);
+    void presentMidonaZDim();
 #endif
 
 private:
@@ -282,10 +288,10 @@ private:
     /* 0x738 */ f32 field_0x738;
     /* 0x73C */ f32 field_0x73c;
     /* 0x740 */ u16 field_0x740;
-    /* 0x742 */ s16 field_0x742[3];
+    /* 0x742 */ DUSK_IF_ELSE(f32, s16) field_0x742[3];
     /* 0x748 */ u8 field_0x748[0xC];
     /* 0x756 */ u16 field_0x754;
-    /* 0x756 */ s16 field_0x756;
+    /* 0x756 */ DUSK_IF_ELSE(f32, s16) field_0x756;
     /* 0x758 */ u8 field_0x758;
     /* 0x759 */ u8 field_0x759;
     /* 0x75A */ u8 field_0x75a;
@@ -364,6 +370,10 @@ private:
     /* 0x858 */ GXColor mButtonZTextColor;
     /* 0x85C */ GXColor mButtonXYTextColor;
     /* 0x860 */ u8 field_0x860[2];
+#if TARGET_PC
+    f32 mButtonZAlphaTarget;
+    f32 mButtonZDimTarget;
+#endif
 };
 
 #endif /* D_METER_D_METER2_DRAW_H */

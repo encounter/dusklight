@@ -25,6 +25,7 @@
 #include <cstring>
 
 #if TARGET_PC
+#include "dusk/game_clock.h"
 #include "dusk/memory.h"
 #include "dusk/settings.h"
 
@@ -33,6 +34,16 @@ namespace {
 // Reads the user HUD scale setting, clamped to a safe range.
 f32 dGetUserHudScale() {
     return std::clamp(dusk::getSettings().game.hudScale.getValue(), 0.5f, 2.0f);
+}
+
+void presentAddCalc2(f32* value, f32 target, f32 scale, f32 maxStep, f32 snap) {
+    if (*value == target) {
+        return;
+    }
+    cLib_addCalc2(value, target, scale, maxStep * dusk::game_clock::original_frames());
+    if ((f32)fabs(*value - target) < snap) {
+        *value = target;
+    }
 }
 
 }  // namespace
@@ -132,6 +143,9 @@ int dMeter2_c::_create() {
         mButtonATalkPosY[i] = 0.0f;
     }
     field_0x144 = 1.0f;
+    IF_DUSK(mButtonAScaleTarget = 1.0f);
+    IF_DUSK(mButtonATalkPosXTarget[0] = mButtonATalkPosXTarget[1] = 0.0f);
+    IF_DUSK(mButtonATalkPosYTarget[0] = mButtonATalkPosYTarget[1] = 0.0f);
 
     mAStatus = dComIfGp_getAStatus();
     field_0x1c6 = 0;
@@ -142,6 +156,9 @@ int dMeter2_c::_create() {
         field_0x150[i] = 0.0f;
     }
     field_0x158 = 1.0f;
+    IF_DUSK(mButtonBScaleTarget = 1.0f);
+    IF_DUSK(mButtonBTalkPosXTarget[0] = mButtonBTalkPosXTarget[1] = 0.0f);
+    IF_DUSK(mButtonBTalkPosYTarget[0] = mButtonBTalkPosYTarget[1] = 0.0f);
 
     field_0x1e4 = 0;
     mEquipSword = dComIfGs_getSelectEquipSword();
@@ -178,6 +195,7 @@ int dMeter2_c::_create() {
     field_0x1e1 = 0;
     field_0x1b4 = 0;
     field_0x15c = 0.0f;
+    IF_DUSK(mButtonCrossPosYTarget = 0.0f);
 
     for (int i = 0; i < 4; i++) {
         field_0x160[i] = 0.0f;
@@ -199,6 +217,13 @@ int dMeter2_c::_create() {
     field_0x19a = 0;
 
     mpMeterDraw = JKR_NEW dMeter2Draw_c(mpHeap);
+
+#if TARGET_PC
+    mVesselPosX = mVesselPosXTarget = g_drawHIO.mLightDrop.mVesselPosX;
+    mVesselPosY = mVesselPosYTarget = g_drawHIO.mLightDrop.mVesselPosY;
+    mVesselScale = mVesselScaleTarget = g_drawHIO.mLightDrop.mVesselScale;
+    mVesselAlpha = mVesselAlphaTarget = g_drawHIO.mLightDrop.mVesselAlpha[0];
+#endif
 
     field_0x130 = mpMeterDraw->getNowLightDropRateCalc();
     mpHeap->getTotalFreeSize();
@@ -1001,6 +1026,12 @@ void dMeter2_c::moveLightDrop() {
         alpha = g_drawHIO.mLightDrop.mVesselAlpha[0];
     }
 
+    IF_DUSK(mVesselPosXTarget = pos_x);
+    IF_DUSK(mVesselPosYTarget = pos_y);
+    IF_DUSK(mVesselScaleTarget = scale);
+    IF_DUSK(mVesselAlphaTarget = alpha);
+
+#if !TARGET_PC
     if (mVesselPosX != pos_x) {
         cLib_addCalc2(&mVesselPosX, pos_x, 1.0f, 10.0f);
         draw_lightdrop = true;
@@ -1032,6 +1063,7 @@ void dMeter2_c::moveLightDrop() {
             mVesselAlpha = alpha;
         }
     }
+#endif
 
     if (draw_lightdrop == true) {
         mpMeterDraw->drawLightDrop(mLightDropNum, mNeedLightDropNum, mVesselPosX, mVesselPosY,
@@ -1383,6 +1415,13 @@ void dMeter2_c::moveButtonA() {
         var_f31 = 1.0f;
     }
 
+    IF_DUSK(mButtonATalkPosXTarget[0] = pos_x[0]);
+    IF_DUSK(mButtonATalkPosXTarget[1] = pos_x[1]);
+    IF_DUSK(mButtonATalkPosYTarget[0] = pos_y[0]);
+    IF_DUSK(mButtonATalkPosYTarget[1] = pos_y[1]);
+    IF_DUSK(mButtonAScaleTarget = var_f31);
+
+#if !TARGET_PC
     for (int i = 0; i < 2; i++) {
         if (mButtonATalkPosX[i] != pos_x[i]) {
             cLib_addCalc2(&mButtonATalkPosX[i], pos_x[i], 1.0f, 10.0f);
@@ -1408,6 +1447,7 @@ void dMeter2_c::moveButtonA() {
             field_0x144 = var_f31;
         }
     }
+#endif
 
     if (field_0x200 != dMsgObject_isTalkNowCheck()) {
         field_0x200 = dMsgObject_isTalkNowCheck();
@@ -1588,6 +1628,13 @@ void dMeter2_c::moveButtonB() {
         draw_buttonB = true;
     }
 
+    IF_DUSK(mButtonBTalkPosXTarget[0] = pos_x[0]);
+    IF_DUSK(mButtonBTalkPosXTarget[1] = pos_x[1]);
+    IF_DUSK(mButtonBTalkPosYTarget[0] = pos_y[0]);
+    IF_DUSK(mButtonBTalkPosYTarget[1] = pos_y[1]);
+    IF_DUSK(mButtonBScaleTarget = var_f31);
+
+#if !TARGET_PC
     for (int i = 0; i < 2; i++) {
         if (field_0x148[i] != pos_x[i]) {
             cLib_addCalc2(&field_0x148[i], pos_x[i], 1.0f, 10.0f);
@@ -1613,6 +1660,7 @@ void dMeter2_c::moveButtonB() {
             field_0x158 = var_f31;
         }
     }
+#endif
 
     if (g_drawHIO.mItemScaleAdjustON && field_0x4bc != g_drawHIO.mItemScalePercent) {
         field_0x4bc = g_drawHIO.mItemScalePercent;
@@ -2176,21 +2224,25 @@ void dMeter2_c::moveButtonCross() {
         temp_f1 = (temp_f31 - mpMeterDraw->getButtonCrossParentInitTransY()) - 15.0f;
 
         if (mpMap->isDispPosInsideFlg()) {
+#if !TARGET_PC
             if (field_0x1b4 < g_drawHIO.mButtonCrossMoveFrame) {
                 field_0x1b4++;
                 draw_cross = true;
             } else {
                 field_0x1b4 = g_drawHIO.mButtonCrossMoveFrame;
             }
+#endif
 
             var_f31 = mButtonCrossONPosY + temp_f1;
         } else {
+#if !TARGET_PC
             if (field_0x1b4 > 0) {
                 field_0x1b4--;
                 draw_cross = true;
             } else {
                 field_0x1b4 = 0;
             }
+#endif
 
             var_f31 = mButtonCrossOFFPosY;
         }
@@ -2198,6 +2250,8 @@ void dMeter2_c::moveButtonCross() {
 
     temp_f30 = mButtonCrossOFFPosX + (((f32)field_0x1b4 / (f32)g_drawHIO.mButtonCrossMoveFrame) *
                                      (mButtonCrossONPosX - mButtonCrossOFFPosX));
+    IF_DUSK(mButtonCrossPosYTarget = var_f31);
+#if !TARGET_PC
     if (field_0x15c != var_f31) {
         cLib_addCalc2(&field_0x15c, var_f31, 0.5f, 50.0f);
         if ((f32)fabs(field_0x15c - var_f31) < 0.5f) {
@@ -2205,6 +2259,7 @@ void dMeter2_c::moveButtonCross() {
         }
         draw_cross = true;
     }
+#endif
 
     if (draw_cross == true) {
         mpMeterDraw->drawButtonCross(temp_f30, field_0x15c);
@@ -3106,6 +3161,75 @@ int dMeter2_c::isPachinkoEquip() {
 
     return 0;
 }
+
+#if TARGET_PC
+void dMeter2_c::presentHudChases() {
+    if (mpMeterDraw == NULL) {
+        return;
+    }
+
+    bool apply_vessel = mVesselPosX != mVesselPosXTarget || mVesselPosY != mVesselPosYTarget ||
+                        mVesselScale != mVesselScaleTarget || mVesselAlpha != mVesselAlphaTarget;
+    presentAddCalc2(&mVesselPosX, mVesselPosXTarget, 1.0f, 10.0f, 0.1f);
+    presentAddCalc2(&mVesselPosY, mVesselPosYTarget, 1.0f, 10.0f, 0.1f);
+    presentAddCalc2(&mVesselScale, mVesselScaleTarget, 0.2f, 1.0f, 0.1f);
+    presentAddCalc2(&mVesselAlpha, mVesselAlphaTarget, 0.2f, 1.0f, 0.1f);
+    if (apply_vessel) {
+        mpMeterDraw->applyLightDropVesselLayout(mVesselPosX, mVesselPosY, mVesselScale, mVesselAlpha);
+    }
+
+    bool apply_a = mButtonATalkPosX[0] != mButtonATalkPosXTarget[0] ||
+                   mButtonATalkPosX[1] != mButtonATalkPosXTarget[1] ||
+                   mButtonATalkPosY[0] != mButtonATalkPosYTarget[0] ||
+                   mButtonATalkPosY[1] != mButtonATalkPosYTarget[1] ||
+                   field_0x144 != mButtonAScaleTarget;
+    presentAddCalc2(&mButtonATalkPosX[0], mButtonATalkPosXTarget[0], 1.0f, 10.0f, 0.1f);
+    presentAddCalc2(&mButtonATalkPosX[1], mButtonATalkPosXTarget[1], 1.0f, 10.0f, 0.1f);
+    presentAddCalc2(&mButtonATalkPosY[0], mButtonATalkPosYTarget[0], 1.0f, 10.0f, 0.1f);
+    presentAddCalc2(&mButtonATalkPosY[1], mButtonATalkPosYTarget[1], 1.0f, 10.0f, 0.1f);
+    presentAddCalc2(&field_0x144, mButtonAScaleTarget, 1.0f, 10.0f, 0.01f);
+    if (apply_a) {
+        const bool talk_a = ((mStatus & 0x100) || daPy_getPlayerActorClass()->checkHawkWait() ||
+                             daPy_getPlayerActorClass()->checkGrassWhistle()) != false;
+        mpMeterDraw->applyButtonATalkLayout(mButtonATalkPosX[0], mButtonATalkPosY[0],
+                                            mButtonATalkPosX[1], mButtonATalkPosY[1], field_0x144,
+                                            talk_a);
+    }
+
+    bool apply_b = field_0x148[0] != mButtonBTalkPosXTarget[0] ||
+                   field_0x148[1] != mButtonBTalkPosXTarget[1] ||
+                   field_0x150[0] != mButtonBTalkPosYTarget[0] ||
+                   field_0x150[1] != mButtonBTalkPosYTarget[1] ||
+                   field_0x158 != mButtonBScaleTarget;
+    presentAddCalc2(&field_0x148[0], mButtonBTalkPosXTarget[0], 1.0f, 10.0f, 0.1f);
+    presentAddCalc2(&field_0x148[1], mButtonBTalkPosXTarget[1], 1.0f, 10.0f, 0.1f);
+    presentAddCalc2(&field_0x150[0], mButtonBTalkPosYTarget[0], 1.0f, 10.0f, 0.1f);
+    presentAddCalc2(&field_0x150[1], mButtonBTalkPosYTarget[1], 1.0f, 10.0f, 0.1f);
+    presentAddCalc2(&field_0x158, mButtonBScaleTarget, 1.0f, 10.0f, 0.01f);
+    if (apply_b) {
+        mpMeterDraw->applyButtonBTalkLayout(field_0x128 == 0, field_0x148[0], field_0x150[0],
+                                            field_0x148[1], field_0x150[1], field_0x158, mAStatus);
+    }
+
+    bool apply_cross = field_0x15c != mButtonCrossPosYTarget;
+    if (mpMap != NULL) {
+        const f32 cross_target =
+            mpMap->isDispPosInsideFlg() ? (f32)g_drawHIO.mButtonCrossMoveFrame : 0.0f;
+        if (field_0x1b4 != cross_target) {
+            apply_cross = true;
+            dusk::game_clock::advance_toward_frame(field_0x1b4, cross_target, 1.0f);
+        }
+    }
+    presentAddCalc2(&field_0x15c, mButtonCrossPosYTarget, 0.5f, 50.0f, 0.5f);
+    if (apply_cross) {
+        const f32 pos_x =
+            mButtonCrossOFFPosX +
+            (((f32)field_0x1b4 / (f32)g_drawHIO.mButtonCrossMoveFrame) *
+             (mButtonCrossONPosX - mButtonCrossOFFPosX));
+        mpMeterDraw->drawButtonCross(pos_x, field_0x15c);
+    }
+}
+#endif
 
 static int dMeter2_Draw(dMeter2_c* i_this) {
     return i_this->_draw();

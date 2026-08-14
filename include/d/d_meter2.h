@@ -94,6 +94,9 @@ public:
     void offRupeeSoundBit(int bit) { mRupeeSound &= ~(1 << bit); }
     bool isRupeeSoundBit(int bit) { return mRupeeSound & (1 << bit); }
     dMeter2Draw_c* getMeterDrawPtr() { return mpMeterDraw; }
+#if TARGET_PC
+    void presentHudChases();
+#endif
     s16 getNowLifeGauge() { return mNowLifeGauge; }
     u8 getSubContents() { return mSubContentType; }
     u16 getSubContentsStringType() { return mSubContentsStringType; }
@@ -141,7 +144,7 @@ private:
     /* 0x1AC */ int field_0x1ac;
     /* 0x1B0 */ s16 mRupeeNum;
     /* 0x1B2 */ s16 mKeyNum;
-    /* 0x1B4 */ s16 field_0x1b4;
+    /* 0x1B4 */ DUSK_IF_ELSE(f32, s16) field_0x1b4;
     /* 0x1B6 */ u16 mSubContentsStringType;
     /* 0x1B8 */ u16 field_0x1b8[5];
     /* 0x1C2 */ u8 mLightDropNum;
@@ -300,6 +303,19 @@ private:
     /* 0x460 */ u8 field_0x460[0x4bc - 0x460];
     /* 0x4BC */ u8 field_0x4bc;
     /* 0x4BC */ u8 field_0x4bd;
+#if TARGET_PC
+    f32 mVesselPosXTarget;
+    f32 mVesselPosYTarget;
+    f32 mVesselScaleTarget;
+    f32 mVesselAlphaTarget;
+    f32 mButtonATalkPosXTarget[2];
+    f32 mButtonATalkPosYTarget[2];
+    f32 mButtonAScaleTarget;
+    f32 mButtonBTalkPosXTarget[2];
+    f32 mButtonBTalkPosYTarget[2];
+    f32 mButtonBScaleTarget;
+    f32 mButtonCrossPosYTarget;
+#endif
 };
 
 #endif /* D_METER_D_METER2_H */

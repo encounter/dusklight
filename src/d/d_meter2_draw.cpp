@@ -20,14 +20,14 @@
 #include "d/d_msg_class.h"
 #include "d/d_msg_object.h"
 #include "d/d_pane_class.h"
-#include "dusk/frame_interpolation.h"
 #include <cstring>
 
-#include "dusk/version.hpp"
-
 #if TARGET_PC
+#include "d/d_meter2.h"
+#include "dusk/game_clock.h"
 #include "dusk/settings.h"
 #include "dusk/ui/icon_provider.hpp"
+#include "dusk/version.hpp"
 #include <algorithm>
 
 namespace {
@@ -55,6 +55,16 @@ void dAnchorHudScale(CPaneMgr* i_pane, HudCorner i_corner, f32* io_x, f32* io_y,
         (i_corner == HudCorner::BottomLeft || i_corner == HudCorner::BottomRight) ? 1.0f : -1.0f;
     *io_x += dirX * i_pane->getInitSizeX() * half * i_pull;
     *io_y += dirY * i_pane->getInitSizeY() * half;
+}
+
+void presentAddCalc2(f32* value, f32 target, f32 scale, f32 maxStep, f32 snap) {
+    if (*value == target) {
+        return;
+    }
+    cLib_addCalc2(value, target, scale, maxStep * dusk::game_clock::original_frames());
+    if (fabsf(*value - target) < snap) {
+        *value = target;
+    }
 }
 
 }  // namespace
@@ -681,6 +691,11 @@ void dMeter2Draw_c::draw() {
     graf_ctx->setup2D();
 
 #if TARGET_PC
+    presentMidonaZDim();
+    if (dMeter2_c* meter = dMeter2Info_getMeterClass()) {
+        meter->presentHudChases();
+    }
+
     const bool touchControlsEnabled = dusk::getSettings().game.enableTouchControls;
     if (touchControlsEnabled) {
         mpButtonParent->hide();
@@ -755,40 +770,36 @@ void dMeter2Draw_c::draw() {
         if (field_0x756 >= 0) {
             var_f29 = g_drawHIO.mLightDrop.mDropPikariAnimSpeed_Completed;
             int temp_r5_2 = g_drawHIO.mLightDrop.mPikariInterval * 15;
-#ifdef TARGET_PC
-            // FRAME INTERP NOTE: Set even if not advancing
-            var_f28 = g_drawHIO.mLightDrop.mPikariScaleComplete;
-            if (dusk::frame_interp::get_ui_tick_pending())
-#endif
-            {
-                if (field_0x756 <= temp_r5_2) {
-                    int temp_r4 = (field_0x756 % g_drawHIO.mLightDrop.mPikariInterval);
-                    int temp_r3_5 = field_0x756 / g_drawHIO.mLightDrop.mPikariInterval;
+            IF_DUSK(var_f28 = g_drawHIO.mLightDrop.mPikariScaleComplete);
 
-                    if (temp_r4 == 0 && field_0x62c[temp_r3_5] == 0.0f) {
-                        field_0x62c[temp_r3_5] = 18.0f;
+            IF_DUSK(const f32 frames = dusk::game_clock::original_frames());
+            if (field_0x756 <= temp_r5_2) {
+                int temp_r4 = (IF_DUSK((int))field_0x756 % g_drawHIO.mLightDrop.mPikariInterval);
+                int temp_r3_5 = IF_DUSK((int))field_0x756 / g_drawHIO.mLightDrop.mPikariInterval;
+
+                if (temp_r4 == 0 && field_0x62c[temp_r3_5] == 0.0f) {
+                    field_0x62c[temp_r3_5] = 18.0f;
+                }
+
+                var_f28 = g_drawHIO.mLightDrop.mPikariScaleComplete;
+                DUSK_IF_ELSE(field_0x756 += frames, field_0x756++);
+            } else {
+                int temp_r5_3 = temp_r5_2 + 1;
+
+                if (DUSK_IF_ELSE(field_0x756 < temp_r5_3 + 1.0f, field_0x756 == temp_r5_3)) {
+                    if (field_0x62c[15] == 0.0f) {
+                        DUSK_IF_ELSE(field_0x756 += frames, field_0x756++);
                     }
-
                     var_f28 = g_drawHIO.mLightDrop.mPikariScaleComplete;
-                    field_0x756++;
-                } else {
-                    int temp_r5_3 = temp_r5_2 + 1;
-
-                    if (field_0x756 == temp_r5_3) {
-                        if (field_0x62c[15] == 0.0f) {
-                            field_0x756++;
-                        }
-                        var_f28 = g_drawHIO.mLightDrop.mPikariScaleComplete;
-                    } else if (field_0x756 >= g_drawHIO.mLightDrop.field_0x54 + temp_r5_3) {
-                        for (int i = 0; i < 16; i++) {
-                            field_0x62c[i] = 18.0f - var_f29;
-                            field_0x66c[i] = 18.0f - g_drawHIO.mLightDrop.mPikariLoopAnimSpeed;
-                        }
-
-                        field_0x756 = -1;
-                    } else {
-                        field_0x756++;
+                } else if (field_0x756 >= g_drawHIO.mLightDrop.field_0x54 + temp_r5_3) {
+                    for (int i = 0; i < 16; i++) {
+                        field_0x62c[i] = 18.0f - var_f29;
+                        field_0x66c[i] = 18.0f - g_drawHIO.mLightDrop.mPikariLoopAnimSpeed;
                     }
+
+                    field_0x756 = -1;
+                } else {
+                    DUSK_IF_ELSE(field_0x756 += frames, field_0x756++);
                 }
             }
         }
@@ -1273,6 +1284,8 @@ void dMeter2Draw_c::initButton() {
     JUT_ASSERT(0, mpButtonMidona != NULL);
     mButtonZAlpha = 0.0f;
     field_0x724 = 0.0f;
+    IF_DUSK(mButtonZAlphaTarget = 0.0f);
+    IF_DUSK(mButtonZDimTarget = 0.0f);
     field_0x738 = 0.0f;
     field_0x740 = 0;
 
@@ -1414,7 +1427,7 @@ void dMeter2Draw_c::playOxygenBpkAnimation(J2DAnmColor* i_bpk) {
     if (i_bpk == NULL || mpMagicMeter->getAlpha() == 0) {
         mpKanteraScreen->search(MULTI_CHAR('mm_00'))->setAnimation((J2DAnmColor*)NULL);
     } else {
-        field_0x558++;
+        DUSK_IF_ELSE(field_0x558 += dusk::game_clock::original_frames(), field_0x558++);
         if (field_0x558 >= i_bpk->getFrameMax()) {
             field_0x558 -= i_bpk->getFrameMax();
         }
@@ -1464,24 +1477,19 @@ void dMeter2Draw_c::drawPikari(f32 i_posX, f32 i_posY, f32* i_framep, f32 i_scal
     if (param_9 != 3 && param_9 != 4 && param_9 != 5 && dMsgObject_isTalkNowCheck()) {
         *i_framep = 0.0f;
     } else {
-#ifdef TARGET_PC
-        if (dusk::frame_interp::get_ui_tick_pending())
-#endif
-        {
-            *i_framep += param_8;
-            if (*i_framep > var_f31) {
-                if (param_9 == 1 || param_9 == 2 || param_9 == 3) {
-                    *i_framep = 18.0f;
-                } else {
-                    *i_framep = 0.0f;
-                }
+        *i_framep += param_8 IF_DUSK(* dusk::game_clock::original_frames());
+        if (*i_framep > var_f31) {
+            if (param_9 == 1 || param_9 == 2 || param_9 == 3) {
+                *i_framep = 18.0f;
+            } else {
+                *i_framep = 0.0f;
             }
+        }
 
-            if (*i_framep == 18.0f && param_9 == 1) {
-                mDoAud_seStart(Z2SE_NAVI_BLINK, NULL, 0, 0);
-            } else if (*i_framep == 18.0f && param_9 == 2) {
-                mDoAud_seStart(Z2SE_SY_ITEM_COMBINE_ICON, NULL, 0, 0);
-            }
+        if (*i_framep == 18.0f && param_9 == 1) {
+            mDoAud_seStart(Z2SE_NAVI_BLINK, NULL, 0, 0);
+        } else if (*i_framep == 18.0f && param_9 == 2) {
+            mDoAud_seStart(Z2SE_SY_ITEM_COMBINE_ICON, NULL, 0, 0);
         }
 
         playPikariBckAnimation(*i_framep);
@@ -1868,7 +1876,7 @@ void dMeter2Draw_c::setAlphaKanteraAnimeMin() {
     if (field_0x742[1] <= 0) {
         mMeterAlphaRate[1] = 0.0f;
     } else {
-        field_0x742[1]--;
+        DUSK_IF_ELSE(field_0x742[1] -= dusk::game_clock::original_frames(), field_0x742[1]--);
         if (field_0x742[1] < 0) {
             field_0x742[1] = 0;
         }
@@ -1881,7 +1889,7 @@ void dMeter2Draw_c::setAlphaKanteraAnimeMax() {
     if (field_0x742[1] >= 5) {
         mMeterAlphaRate[1] = g_drawHIO.mParentAlpha;
     } else {
-        field_0x742[1]++;
+        DUSK_IF_ELSE(field_0x742[1] += dusk::game_clock::original_frames(), field_0x742[1]++);
         if (field_0x742[1] > 5) {
             field_0x742[1] = 5;
         }
@@ -1946,7 +1954,7 @@ void dMeter2Draw_c::setAlphaOxygenAnimeMin() {
     if (field_0x742[2] <= 0) {
         mMeterAlphaRate[2] = 0.0f;
     } else {
-        field_0x742[2]--;
+        DUSK_IF_ELSE(field_0x742[2] -= dusk::game_clock::original_frames(), field_0x742[2]--);
         if (field_0x742[2] < 0) {
             field_0x742[2] = 0;
         }
@@ -1959,7 +1967,7 @@ void dMeter2Draw_c::setAlphaOxygenAnimeMax() {
     if (field_0x742[2] >= 5) {
         mMeterAlphaRate[2] = g_drawHIO.mParentAlpha;
     } else {
-        field_0x742[2]++;
+        DUSK_IF_ELSE(field_0x742[2] += dusk::game_clock::original_frames(), field_0x742[2]++);
         if (field_0x742[2] > 5) {
             field_0x742[2] = 5;
         }
@@ -2079,9 +2087,8 @@ void dMeter2Draw_c::setAlphaLightDropAnimeMax() {
     if (dMeter2Info_getLightDropGetFlag(dComIfGp_getStartStageDarkArea()) > 1 &&
         dMeter2Info_getLightDropGetFlag(dComIfGp_getStartStageDarkArea()) != 0xFF)
     {
-        if (mpLightDropParent->getAlphaTimer() == 0) {
-            Z2GetAudioMgr()->seStart(Z2SE_SY_LIGHT_POT_EQUIP, NULL, 0, 0, 1.0f, 1.0f, -1.0f, -1.0f,
-                                     0);
+        if (mpLightDropParent->getAlphaTimer() DUSK_IF_ELSE(<=, ==) 0) {
+            Z2GetAudioMgr()->seStart(Z2SE_SY_LIGHT_POT_EQUIP, NULL, 0, 0, 1.0f, 1.0f, -1.0f, -1.0f, 0);
         }
 
         if (temp_f31 != mpLightDropParent->getAlphaRate()) {
@@ -2111,7 +2118,7 @@ void dMeter2Draw_c::setAlphaLightDropAnimeMax() {
                                  mLightDropVesselScale * field_0x6f8);
 #endif
 
-        if (g_drawHIO.mLightDrop.mDropGetScaleAnimFrameNum == mpLightDropParent->getAlphaTimer()) {
+        if (g_drawHIO.mLightDrop.mDropGetScaleAnimFrameNum DUSK_IF_ELSE(<, ==) mpLightDropParent->getAlphaTimer()) {
             dMeter2Info_setLightDropGetFlag(dComIfGp_getStartStageDarkArea(), 0xFF);
         }
     } else if (temp_f31 != mpLightDropParent->getAlphaRate()) {
@@ -3118,7 +3125,7 @@ void dMeter2Draw_c::setAlphaButtonAnimeMax() {
         }
     }
 
-    if (mpButtonParent->getAlphaTimer() == 5) {
+    if (mpButtonParent->getAlphaTimer() DUSK_IF_ELSE(>=, ==) 5) {
         if (dMeter2Info_getLightDropGetFlag(dComIfGp_getStartStageDarkArea()) == 1) {
             dMeter2Info_setLightDropGetFlag(dComIfGp_getStartStageDarkArea(), 2);
         }
@@ -3309,6 +3316,7 @@ void dMeter2Draw_c::setButtonIconMidonaAlpha(u32 param_0) {
             }
 
             mButtonZAlpha = var_f29;
+            IF_DUSK(mButtonZAlphaTarget = var_f29);
             var_r31 = 0;
         }
 
@@ -3317,6 +3325,8 @@ void dMeter2Draw_c::setButtonIconMidonaAlpha(u32 param_0) {
                 field_0x738 = 0.0f;
             }
 
+            IF_DUSK(mButtonZAlphaTarget = var_f29);
+#if !TARGET_PC
             if (mButtonZAlpha != var_f29) {
                 cLib_addCalc2(&mButtonZAlpha, var_f29, 0.4f, 0.5f);
 
@@ -3324,11 +3334,13 @@ void dMeter2Draw_c::setButtonIconMidonaAlpha(u32 param_0) {
                     mButtonZAlpha = var_f29;
                 }
             }
+#endif
         }
 
         mpButtonMidona->setAlpha(temp_f30 * (255.0f * mButtonZAlpha * temp_f31));
     } else {
         mButtonZAlpha = 0.0f;
+        IF_DUSK(mButtonZAlphaTarget = 0.0f);
     }
 
     f32 var_f29_2 =
@@ -3342,6 +3354,8 @@ void dMeter2Draw_c::setButtonIconMidonaAlpha(u32 param_0) {
         var_f29_2 = (f32)g_drawHIO.mButtonXYBaseDimAlpha / 255.0f;
     }
 
+    IF_DUSK(mButtonZDimTarget = var_f29_2);
+#if !TARGET_PC
     if (field_0x724 != var_f29_2) {
         cLib_addCalc2(&field_0x724, var_f29_2, 0.4f, 0.5f);
 
@@ -3349,6 +3363,7 @@ void dMeter2Draw_c::setButtonIconMidonaAlpha(u32 param_0) {
             field_0x724 = var_f29_2;
         }
     }
+#endif
 
     mpButtonXY[2]->setAlpha(255.0f * field_0x724 * temp_f30_2);
 
@@ -3356,6 +3371,97 @@ void dMeter2Draw_c::setButtonIconMidonaAlpha(u32 param_0) {
     dusk::ui::update_midna_icon_texture(mpButtonMidona != NULL ? mpButtonMidona->getPanePtr() : NULL);
 #endif
 }
+
+#if TARGET_PC
+void dMeter2Draw_c::applyLightDropVesselLayout(f32 i_posX, f32 i_posY, f32 i_vesselScale, f32 i_alpha) {
+    field_0x6fc = i_alpha;
+    mLightDropVesselScale = i_vesselScale;
+    const f32 lightDropScale = mLightDropVesselScale * field_0x6f8 * dGetUserHudScale();
+    mpLightDropParent->scale(lightDropScale, lightDropScale);
+
+    f32 lightDropPosX = i_posX;
+    f32 lightDropPosY = i_posY;
+    dAnchorHudScale(mpLightDropParent, HudCorner::TopRight, &lightDropPosX, &lightDropPosY);
+    mpLightDropParent->paneTrans(lightDropPosX, lightDropPosY);
+}
+
+void dMeter2Draw_c::applyButtonATalkLayout(f32 i_posX, f32 i_posY, f32 i_textPosX, f32 i_textPosY, f32 i_scale, bool i_talkA) {
+    f32 var_f31 = g_drawHIO.mButtonAScale;
+    f32 var_f30 = g_drawHIO.mButtonATextScale;
+
+    if (isBButtonShow(false)) {
+        var_f31 = g_drawHIO.mButtonATalkScale[0];
+        var_f30 = g_drawHIO.mButtonATalkScale[1];
+    } else if (i_talkA) {
+        var_f31 = g_drawHIO.mButtonATalkAScale;
+        var_f30 = g_drawHIO.mButtonATextTalkAScale;
+    }
+
+    mpButtonA->scale(var_f31 * i_scale, var_f31 * i_scale);
+    mpButtonA->paneTrans(i_posX, i_posY);
+    mpTextA->scale(var_f30 * i_scale, var_f30 * i_scale);
+    mpTextA->paneTrans(g_drawHIO.mButtonATextPosX + i_textPosX, g_drawHIO.mButtonATextPosY + i_textPosY);
+}
+
+void dMeter2Draw_c::applyButtonBTalkLayout(bool i_human, f32 i_posX, f32 i_posY, f32 i_textPosX, f32 i_textPosY, f32 i_scale, u8 i_action) {
+    int var_r31 = 0;
+    f32 var_f31 = g_drawHIO.mButtonBScale;
+    f32 var_f30 = g_drawHIO.mButtonBFontScale;
+
+    if (isBButtonShow(true)) {
+        var_f31 = g_drawHIO.mButtonBTalkScale[0];
+        var_f30 = g_drawHIO.mButtonBTalkScale[1];
+    }
+
+    if (i_action == 0x26 || i_action == 0x2E) {
+        var_r31 = 1;
+        switch (dComIfGs_getSelectEquipSword()) {
+        case dItemNo_WOOD_STICK_e:
+        case dItemNo_SWORD_e:
+        case dItemNo_MASTER_SWORD_e:
+        case dItemNo_LIGHT_SWORD_e:
+            break;
+        default:
+            var_r31 = 0;
+            break;
+        }
+    } else if (i_human == true && i_action == 0x4F) {
+        var_r31 = 2;
+    }
+
+    field_0x730 = var_f31 * i_scale;
+    mpButtonB->scale(field_0x730 * field_0x734, field_0x730 * field_0x734);
+    mpButtonB->paneTrans(g_drawHIO.mButtonBPosX + i_posX, g_drawHIO.mButtonBPosY + i_posY);
+
+    field_0x728 = g_drawHIO.mButtonBItemScale[var_r31] * i_scale;
+    mpItemB->scale(field_0x728 * field_0x734, field_0x728 * field_0x734);
+    mpItemB->paneTrans(field_0x6dc + (g_drawHIO.mButtonBItemPosX[var_r31] + i_posX), field_0x6e0 + (g_drawHIO.mButtonBItemPosY[var_r31] + i_posY));
+
+    field_0x72c = g_drawHIO.mItemBBaseScale[0] * i_scale;
+    mpLightB->scale(field_0x72c * field_0x734, field_0x72c * field_0x734);
+    mpLightB->paneTrans(g_drawHIO.mItemBBasePosX[0] + i_posX, g_drawHIO.mItemBBasePosY[0] + i_posY);
+
+    mpTextB->scale(var_f30 * i_scale, var_f30 * i_scale);
+    mpTextB->paneTrans(g_drawHIO.mButtonBFontPosX + i_textPosX, g_drawHIO.mButtonBFontPosY + i_textPosY);
+}
+
+void dMeter2Draw_c::presentMidonaZDim() {
+    const bool moving_midna = mButtonZAlpha != mButtonZAlphaTarget;
+    const bool moving_z = field_0x724 != mButtonZDimTarget;
+    presentAddCalc2(&mButtonZAlpha, mButtonZAlphaTarget, 0.4f, 0.5f, 0.1f);
+    presentAddCalc2(&field_0x724, mButtonZDimTarget, 0.4f, 0.5f, 0.1f);
+
+    if (moving_midna && mpButtonMidona->isVisible()) {
+        const f32 temp_f30 = g_drawHIO.mMidnaIconAlpha * (g_drawHIO.mParentAlpha * g_drawHIO.mMainHUDButtonsAlpha);
+        const f32 temp_f31 = mpButtonParent->getAlphaRate();
+        mpButtonMidona->setAlpha(temp_f30 * (255.0f * mButtonZAlpha * temp_f31));
+    }
+
+    if (moving_z) {
+        mpButtonXY[2]->setAlpha(255.0f * field_0x724 * mpButtonParent->getAlphaRate());
+    }
+}
+#endif
 
 void dMeter2Draw_c::setButtonIconAlpha(int i_no, u8 unused0, u32 unused1, bool unused2) {
     JUT_ASSERT(0, i_no < SELECT_MAX_e);
@@ -3601,7 +3707,7 @@ void dMeter2Draw_c::changeTextureItemXY(int i_no, u8 i_itemNo) {
 
 void dMeter2Draw_c::setAlphaAnimeMin(CPaneMgrAlpha* i_pane, s16 i_min) {
     f32 alpha_rate = i_pane->getAlphaRate();
-    s16 alpha_timer = i_pane->getAlphaTimer();
+    DUSK_IF_ELSE(f32, s16) alpha_timer = i_pane->getAlphaTimer();
     if (alpha_timer > i_min) {
         alpha_timer = i_min;
     }
@@ -3611,7 +3717,7 @@ void dMeter2Draw_c::setAlphaAnimeMin(CPaneMgrAlpha* i_pane, s16 i_min) {
             i_pane->setAlphaRate(0.0f);
         }
     } else {
-        alpha_timer--;
+        DUSK_IF_ELSE(alpha_timer -= dusk::game_clock::original_frames(), alpha_timer--);
         if (alpha_timer < 0) {
             alpha_timer = 0;
         }
@@ -3623,14 +3729,14 @@ void dMeter2Draw_c::setAlphaAnimeMin(CPaneMgrAlpha* i_pane, s16 i_min) {
 
 void dMeter2Draw_c::setAlphaAnimeMax(CPaneMgrAlpha* i_pane, s16 i_max) {
     f32 alpha_rate = i_pane->getAlphaRate();
-    s16 alpha_timer = i_pane->getAlphaTimer();
+    DUSK_IF_ELSE(f32, s16) alpha_timer = i_pane->getAlphaTimer();
 
     if (alpha_timer >= i_max) {
         if (i_pane->getAlphaRate() != alpha_rate) {
             i_pane->setAlphaRate(alpha_rate);
         }
     } else {
-        alpha_timer++;
+        DUSK_IF_ELSE(alpha_timer += dusk::game_clock::original_frames(), alpha_timer++);
         if (alpha_timer > i_max) {
             alpha_timer = i_max;
         }

@@ -19,7 +19,7 @@
 #include <cstring>
 
 #if TARGET_PC
-#include "dusk/frame_interpolation.h"
+#include "dusk/game_clock.h"
 #include "dusk/version.hpp"
 #include "helpers/string.hpp"
 #endif
@@ -230,6 +230,7 @@ int dMeterButton_c::_execute(u32 i_flags, bool i_drawA, bool i_drawB, bool i_dra
         }
     }
 
+#if !TARGET_PC
     for (int i = 0; i < 2; i++) {
         if (field_0x2f4[i] != 0.0f) {
             field_0x2fc[i] = field_0x2f4[i];
@@ -243,12 +244,30 @@ int dMeterButton_c::_execute(u32 i_flags, bool i_drawA, bool i_drawB, bool i_dra
 
         trans_button(i, field_0x2fc[i]);
     }
+#endif
     return 1;
 }
 
 void dMeterButton_c::draw() {
     J2DGrafContext* graf_ctx = dComIfGp_getCurrentGrafPort();
     graf_ctx->setup2D();
+
+#if TARGET_PC
+    for (int i = 0; i < 2; i++) {
+        if (field_0x2f4[i] != 0.0f) {
+            field_0x2fc[i] = field_0x2f4[i];
+        } else if (field_0x2fc[i] != field_0x2f4[i]) {
+            cLib_addCalc2(&field_0x2fc[i], field_0x2f4[i], 1.0f,
+                          10.0f * dusk::game_clock::original_frames());
+
+            if (std::fabs(field_0x2fc[i] - field_0x2f4[i]) < 0.1f) {
+                field_0x2fc[i] = field_0x2f4[i];
+            }
+        }
+
+        trans_button(i, field_0x2fc[i]);
+    }
+#endif
 
     mpButtonScreen->draw(0.0f, 0.0f, graf_ctx);
     if (field_0x00c != NULL) {
@@ -296,11 +315,10 @@ void dMeterButton_c::draw() {
 
             s16 temp_r6 = g_drawHIO.mEmpButton.mRepeatHitFrameNum;
             s16 temp_r6_2 = g_drawHIO.mEmpButton.mRepeatHitFrameNum / 2;
-            IF_DUSK_BLOCK(dusk::frame_interp::get_ui_tick_pending())
-            field_0x4b8[i]++;
+            DUSK_IF_ELSE(field_0x4b8[i] += dusk::game_clock::original_frames(), field_0x4b8[i]++);
 
             if (field_0x4b8[i] >= temp_r6) {
-                field_0x4b8[i] = 0;
+                DUSK_IF_ELSE(field_0x4b8[i] -= temp_r6, field_0x4b8[i] = 0);
 
                 if (field_0x4bc[i] == 0) {
                     field_0x4bc[i] = 1;
@@ -308,7 +326,6 @@ void dMeterButton_c::draw() {
                     field_0x4bc[i] = 0;
                 }
             }
-            IF_DUSK_BLOCK_END
 
             f32 var_f2;
             if (temp_r6_2 < field_0x4b8[i]) {
@@ -380,18 +397,8 @@ void dMeterButton_c::draw() {
             }
 
             if (var_r3) {
-#if TARGET_PC
-                if (dusk::frame_interp::get_ui_tick_pending()) {
-                    mWasListen[i] = var_r22;
-                    mWasRepeat[i] = var_r23;
-                } else {
-                    var_r22 = mWasListen[i];
-                    var_r23 = mWasRepeat[i];
-                }
-#endif
                 if (var_r22) {
-                    if (field_0x2e8[i] == 18.0f IF_DUSK(&& dusk::frame_interp::get_ui_tick_pending()))
-                    {
+                    if (field_0x2e8[i] == 18.0f) {
                         mDoAud_seStart(Z2SE_SY_HINT_BUTTON_BLINK, NULL, 0, 0);
                     }
 
