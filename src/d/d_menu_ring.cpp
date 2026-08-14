@@ -32,11 +32,11 @@
 #include "dusk/version.hpp"
 
 #if TARGET_PC
-#include "dusk/frame_interpolation.h"
 #include "dusk/game_clock.h"
 #include "dusk/menu_pointer.h"
 #include "dusk/settings.h"
 #include "dusk/ui/touch_controls.hpp"
+#include <cmath>
 #endif
 
 typedef void (dMenu_Ring_c::*initFunc)();
@@ -192,22 +192,12 @@ dMenu_Ring_c::dMenu_Ring_c(JKRExpHeap* i_heap, STControl* i_stick, CSTControl* i
         break;
     }
 #if TARGET_PC
-    mCursorInterpPrevX = 0.0f;
-    mCursorInterpPrevY = 0.0f;
-    mCursorInterpCurrX = 0.0f;
-    mCursorInterpCurrY = 0.0f;
-    mCursorInterpPrevAngle = 0;
-    mCursorInterpCurrAngle = 0;
-    mCursorInterpPrevAngular = false;
-    mCursorInterpCurrAngular = false;
-    mCursorInterpInit = false;
     mPointerTouchPressHoveredCurrent = false;
+    mOpenCloseDir = 0;
+    mPresenting = false;
 #endif
     for (int i = 0; i < 4; i++) {
         field_0x674[i] = 0;
-#if TARGET_PC
-        mSelectItemSlideElapsed[i] = 0.0f;
-#endif
         field_0x518[i] = 0.0f;
         field_0x528[i] = 0.0f;
         field_0x538[i] = 0.0f;
@@ -690,6 +680,22 @@ void dMenu_Ring_c::_draw() {
     J2DGrafContext* grafPort = dComIfGp_getCurrentGrafPort();
     grafPort->setup2D();
     if (mDrawFlag == 0) {
+#if TARGET_PC
+        mPresenting = true;
+        if (mOpenCloseDir > 0) {
+            isOpen();
+        } else if (mOpenCloseDir < 0) {
+            isClose();
+        }
+        if (mStatus == STATUS_MOVE) {
+            const u8 oldStatus = mStatus;
+            stick_move_proc();
+            if (mStatus != oldStatus) {
+                (this->*stick_init[mStatus])();
+            }
+        }
+        mPresenting = false;
+#endif
         mpSpotParent->setAlphaRate(mAlphaRate * g_ringHIO.mOverlayAlpha);
         mpSpotScreen->draw(0.0f, 0.0f, grafPort);
         if (mRingItemNameScale != g_ringHIO.mItemNameScale) {
@@ -739,71 +745,7 @@ void dMenu_Ring_c::_draw() {
     } else {
         drawSelectItem();
         drawItem2();
-#if TARGET_PC
-        f32 simX = 0.0f;
-        f32 simY = 0.0f;
-        bool restoreSimPos = false;
-        if (dusk::frame_interp::is_enabled() && mAlphaRate >= 1.0f) {
-            simX = mpDrawCursor->getPositionX();
-            simY = mpDrawCursor->getPositionY();
-
-            const bool isAngular = (mStatus == STATUS_MOVE) && !mDirectSelectActive;
-
-            if (dusk::frame_interp::get_ui_tick_pending()) {
-                mCursorInterpPrevX = mCursorInterpCurrX;
-                mCursorInterpPrevY = mCursorInterpCurrY;
-                mCursorInterpPrevAngle = mCursorInterpCurrAngle;
-                mCursorInterpPrevAngular = mCursorInterpCurrAngular;
-
-                mCursorInterpCurrX = simX;
-                mCursorInterpCurrY = simY;
-                mCursorInterpCurrAngle = field_0x66e;
-                mCursorInterpCurrAngular = isAngular;
-
-                // reset prev = curr for first render pass or 
-                // when angle modes prev/curr differ
-                // to prevent arrival jitter
-                if (!mCursorInterpInit ||
-                    mCursorInterpPrevAngular != mCursorInterpCurrAngular) {
-                    mCursorInterpPrevX = mCursorInterpCurrX;
-                    mCursorInterpPrevY = mCursorInterpCurrY;
-                    mCursorInterpPrevAngle = mCursorInterpCurrAngle;
-                    mCursorInterpPrevAngular = mCursorInterpCurrAngular;
-                    mCursorInterpInit = true;
-                }
-            }
-            if (mCursorInterpInit) {
-                const f32 step = dusk::frame_interp::get_interpolation_step();
-                if (mCursorInterpPrevAngular && mCursorInterpCurrAngular) {
-                    const s16 delta = mCursorInterpCurrAngle - mCursorInterpPrevAngle;
-                    const s16 lerpedAngle = mCursorInterpPrevAngle + (s16)(delta * step);
-
-                    // yoinked from stick_move_proc()
-                    const f32 x = g_ringHIO.mItemRingPosX + FB_WIDTH_BASE / 2 +
-                                  mRingRadiusH * cM_ssin(lerpedAngle);
-                    const f32 y = g_ringHIO.mItemRingPosY + FB_HEIGHT_BASE / 2 +
-                                  mRingRadiusV * cM_scos(lerpedAngle);
-                    mpDrawCursor->setPos(x, y);
-                } else {
-                    mpDrawCursor->setPos(
-                        mCursorInterpPrevX + (mCursorInterpCurrX - mCursorInterpPrevX) * step,
-                        mCursorInterpPrevY + (mCursorInterpCurrY - mCursorInterpPrevY) * step
-                    );
-                }
-                restoreSimPos = true;
-            }
-        } else {
-            mCursorInterpInit = false;
-        }
-#endif
         mpDrawCursor->draw();
-#if TARGET_PC
-        // prevents offsetting at destination on the next frame
-        // since stick_wait_proc doesn't call setPos and we clobbered mPositionX/Y
-        if (restoreSimPos) {
-            mpDrawCursor->setPos(simX, simY);
-        }
-#endif
         mpItemExplain->trans(mCenterPosX, mCenterPosY);
         mpItemExplain->draw((J2DOrthoGraph*)grafPort);
         drawFlag0();
@@ -816,10 +758,13 @@ void dMenu_Ring_c::setKanteraPos(f32 i_posX, f32 i_posY) {
 
 bool dMenu_Ring_c::isOpen() {
     bool opened = false;
-    if (mOpenCloseFrames == 0) {
+    if (mOpenCloseFrames == 0 IF_DUSK(&& !mPresenting)) {
         dMeter2Info_set2DVibrationM();
     }
-    mOpenCloseFrames++;
+    IF_DUSK(mOpenCloseDir = 1);
+    IF_DUSK_BLOCK(mPresenting)
+    DUSK_IF_ELSE(mOpenCloseFrames += dusk::game_clock::original_frames(), mOpenCloseFrames++);
+    IF_DUSK_BLOCK_END
     mAlphaRate = (f32)mOpenCloseFrames / (f32)g_ringHIO.mOpenFrames;
     if (mRingOrigin == 0) {
         mCenterPosX = 0.0f;
@@ -837,11 +782,12 @@ bool dMenu_Ring_c::isOpen() {
     if (mOpenCloseFrames >= g_ringHIO.mOpenFrames) { 
         // Opening is finished, set to g_ringHIO.mCloseFrames as a
         // preparation for when the player closes the item wheel
-        mOpenCloseFrames = g_ringHIO.mCloseFrames;
+        mOpenCloseFrames = DUSK_IF_ELSE(mPresenting ? g_ringHIO.mOpenFrames : g_ringHIO.mCloseFrames, g_ringHIO.mCloseFrames);
         mAlphaRate = 1.0f;
         mCenterPosX = 0.0f;
         mCenterPosY = 0.0f;
         opened = true;
+        IF_DUSK(mOpenCloseDir = 0);
     }
     setScale();
     mpDrawCursor->setPos(mItemSlotPosX[SLOT_0] + mCenterPosX, mItemSlotPosY[SLOT_0] + mCenterPosY);
@@ -881,7 +827,10 @@ bool dMenu_Ring_c::isClose() {
     if (field_0x674[0] != 0 || field_0x674[1] != 0 || field_0x674[2] != 0 || field_0x674[3] != 0) {
         return 0;
     }
-    mOpenCloseFrames--;
+    IF_DUSK(mOpenCloseDir = -1);
+    IF_DUSK_BLOCK(mPresenting)
+    DUSK_IF_ELSE(mOpenCloseFrames -= dusk::game_clock::original_frames(), mOpenCloseFrames--);
+    IF_DUSK_BLOCK_END
     mAlphaRate = (f32)mOpenCloseFrames / (f32)g_ringHIO.mCloseFrames;
     if (mOpenCloseFrames <= 0) {
         for (int i = 0; i < 4; i++) {
@@ -889,6 +838,7 @@ bool dMenu_Ring_c::isClose() {
         }
         mOpenCloseFrames = 0;
         mAlphaRate = 0.0f;
+        IF_DUSK(mOpenCloseDir = 0);
     } else {
         closed = false;
     }
@@ -1206,9 +1156,6 @@ void dMenu_Ring_c::setJumpItem(bool i_useVibrationM) {
             field_0x6b8[0] != dComIfGs_getMixItemIndex(0))
         {
             field_0x674[0] = 1;
-#if TARGET_PC
-            mSelectItemSlideElapsed[0] = 0.0f;
-#endif
         }
     } else if (field_0x6b3 == 1) {
         field_0x538[0] = g_ringHIO.mUnselectItemScale;
@@ -1217,9 +1164,6 @@ void dMenu_Ring_c::setJumpItem(bool i_useVibrationM) {
             field_0x6b8[1] != dComIfGs_getMixItemIndex(1))
         {
             field_0x674[1] = 1;
-#if TARGET_PC
-            mSelectItemSlideElapsed[1] = 0.0f;
-#endif
         }
     }
     if (field_0x674[0] == 1) {
@@ -1679,7 +1623,11 @@ void dMenu_Ring_c::stick_move_proc() {
     if (mDirectSelectActive) {
         cXyz target;
         target.set(mItemSlotPosX[mCurrentSlot], 0.0f, mItemSlotPosY[mCurrentSlot]);
-        cLib_addCalcPosXZ(&mDirectSelectCursorPos, target, 1.0f, 70.0f, 1.0f);
+        IF_DUSK_BLOCK(mPresenting)
+        cLib_addCalcPosXZ(&mDirectSelectCursorPos, target, 1.0f,
+                          70.0f IF_DUSK(* dusk::game_clock::original_frames()),
+                          1.0f IF_DUSK(* dusk::game_clock::original_frames()));
+        IF_DUSK_BLOCK_END
         cXyz sub = mDirectSelectCursorPos - target;
         if (sub.abs() < 0.5f) {
             mDirectSelectCursorPos.set(target);
@@ -1699,7 +1647,20 @@ void dMenu_Ring_c::stick_move_proc() {
         }
     } else {
         if (field_0x6d3 == 0xff) {
-            cLib_addCalcAngleS(&field_0x66e, field_0x670, 4, 0x7FFF, mCursorSpeed);
+            IF_DUSK_BLOCK(mPresenting)
+#if TARGET_PC
+            const f32 frames = dusk::game_clock::original_frames();
+            const f32 diff = (s16)(field_0x670 - field_0x66e);
+            const f32 minStep = (f32)mCursorSpeed * frames;
+            const f32 keep = std::pow(0.75f, frames);
+            if (std::fabs(diff * (1.0f - keep)) > minStep) {
+                field_0x66e = field_0x670 - (s16)std::lround(diff * keep);
+            } else {
+                cLib_chaseAngleS(&field_0x66e, field_0x670, (s16)std::lround(minStep));
+            }
+#endif
+            IF_NOT_DUSK((cLib_addCalcAngleS(&field_0x66e, field_0x670, 4, 0x7FFF, mCursorSpeed)));
+            IF_DUSK_BLOCK_END
         } else {
             if (field_0x6d3 == 0) {
                 field_0x66e = -0x2007;
@@ -1796,15 +1757,7 @@ void dMenu_Ring_c::setSelectItem(int i_idx, u8 i_itemNo) {
 void dMenu_Ring_c::drawSelectItem() {
     for (int i = 0; i < 4; i++) {
         if (field_0x674[i] != 0) {
-#if TARGET_PC
-            mSelectItemSlideElapsed[i] += dusk::game_clock::consume_interval(this);
-            const f32 u = std::min(mSelectItemSlideElapsed[i] / (dusk::game_clock::kSimPeriod * 10.0f), 1.0f);
-            if (u >= 1.0f) {
-                setSelectItemForce(i);
-            } else {
-#else
             if (field_0x674[i] < 10) {
-#endif
 #if TARGET_PC
                 f32 initSizeX;
                 f32 initSizeY;
@@ -1840,11 +1793,7 @@ void dMenu_Ring_c::drawSelectItem() {
                     dMeter2Info_getMeterItemPanePtr(i)->mPane, true, 0);
 #endif
 
-#if TARGET_PC
-                f32 fVar14 = 0.1f + 0.8f * u;
-#else
                 f32 fVar14 = field_0x674[i] / 10.0f;
-#endif
                 if (field_0x6cd != 0xff) {
                     fVar14 = 1.0f - fVar14;
                 }
@@ -1865,11 +1814,9 @@ void dMenu_Ring_c::drawSelectItem() {
                                                     0);
                     }
                 }
-#if !TARGET_PC
-                field_0x674[i]++;
+                DUSK_IF_ELSE(field_0x674[i] += dusk::game_clock::original_frames(), field_0x674[i]++);
             } else {
                 setSelectItemForce(i);
-#endif
             }
         }
     }
@@ -1880,9 +1827,6 @@ void dMenu_Ring_c::setSelectItemForce(int i_idx) {
         if (field_0x674[i_idx] != 0) {
             dComIfGs_setSelectItemIndex(i_idx, field_0x6b4[i_idx]);
             field_0x674[i_idx] = 0;
-#if TARGET_PC
-            mSelectItemSlideElapsed[i_idx] = 0.0f;
-#endif
         }
     } else if (field_0x674[i_idx] != 0) {
         for (int i = 0; i < 2; i++) {
@@ -1890,9 +1834,6 @@ void dMenu_Ring_c::setSelectItemForce(int i_idx) {
             dComIfGs_setSelectItemIndex(i, field_0x6b4[i]);
         }
         field_0x674[i_idx] = 0;
-#if TARGET_PC
-        mSelectItemSlideElapsed[i_idx] = 0.0f;
-#endif
     }
 }
 

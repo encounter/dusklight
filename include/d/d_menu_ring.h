@@ -155,14 +155,14 @@ private:
     /* 0x62C */ u32 mPlayerIsWolf;
     /* 0x630 */ u32 mNameStringID;
     /* 0x634 */ s32 field_0x634;
-    /* 0x638 */ s16 mOpenCloseFrames;
+    /* 0x638 */ DUSK_IF_ELSE(f32, s16) mOpenCloseFrames;
     /* 0x63A */ s16 field_0x63a;  // just gets set to zero in some functions. Unused
     /* 0x63C */ s16 field_0x63c;  // unused
     /* 0x63E */ s16 field_0x63e[MAX_ITEM_SLOTS];
     /* 0x66E */ s16 field_0x66e;
     /* 0x670 */ s16 field_0x670;
     /* 0x672 */ s16 mWaitFrames;
-    /* 0x674 */ s16 field_0x674[4];
+    /* 0x674 */ DUSK_IF_ELSE(f32, s16) field_0x674[4];
     /* 0x67C */ u16 field_0x67c;
     /* 0x67E */ s16 field_0x67e;
     /* 0x680 */ s16 mCursorSpeed;
@@ -208,17 +208,9 @@ private:
     /* 0x6D2 */ u8 field_0x6d2;
     /* 0x6D3 */ u8 field_0x6d3;
 #if TARGET_PC
-    f32 mSelectItemSlideElapsed[4];
-    f32 mCursorInterpPrevX;
-    f32 mCursorInterpPrevY;
-    f32 mCursorInterpCurrX;
-    f32 mCursorInterpCurrY;
-    s16 mCursorInterpPrevAngle;
-    s16 mCursorInterpCurrAngle;
-    bool mCursorInterpPrevAngular;
-    bool mCursorInterpCurrAngular;
-    bool mCursorInterpInit;
     bool mPointerTouchPressHoveredCurrent;
+    bool mPresenting;
+    s8 mOpenCloseDir;
 #endif
 };
 
