@@ -8,7 +8,7 @@
 #include "f_op/f_op_msg_mng.h"
 
 #if TARGET_PC
-#include "dusk/frame_interpolation.h"
+#include "dusk/game_clock.h"
 #include "dusk/version.hpp"
 #endif
 
@@ -312,19 +312,11 @@ void COutFont_c::setAlphaRatio(f32 i_ratio) {
 }
 
 void COutFont_c::draw(J2DTextBox* i_textbox, f32 param_1, f32 param_2, f32 param_3) {
-    s16 sp256[70];
+    DUSK_IF_ELSE(f32, s16) sp256[70];
 
     for (int i = 0; i < 70; i++) {
         sp256[i] = field_0x1b4[i];
     }
-
-#if TARGET_PC
-    if (dusk::frame_interp::get_ui_tick_pending()) {
-        for (int i = 0; i < 70; i++) {
-            sp256[i] = -1;
-        }
-    }
-#endif
 
     for (int i = 0; i < 35; i++) {
         u8 type = mpOfs[i]->getType();
@@ -413,10 +405,10 @@ void COutFont_c::draw(J2DTextBox* i_textbox, f32 param_1, f32 param_2, f32 param
                 }
                 case 9:
                     if (sp256[type] == field_0x1b4[type]) {
-                        field_0x1b4[type]++;
+                        DUSK_IF_ELSE(field_0x1b4[type] += dusk::game_clock::original_frames(), field_0x1b4[type]++);
 
                         if (field_0x1b4[type] >= 80) {
-                            field_0x1b4[type] = 0;
+                            DUSK_IF_ELSE(field_0x1b4[type] -= 80, field_0x1b4[type] = 0);
                         }
                         setBlendAnime(mpPane[type], field_0x1b4[type]);
                     }
@@ -433,10 +425,10 @@ void COutFont_c::draw(J2DTextBox* i_textbox, f32 param_1, f32 param_2, f32 param
                     break;
                 case 14:
                     if (sp256[type] == field_0x1b4[type]) {
-                        field_0x1b4[type]++;
+                        DUSK_IF_ELSE(field_0x1b4[type] += dusk::game_clock::original_frames(), field_0x1b4[type]++);
 
                         if (field_0x1b4[type] >= 20) {
-                            field_0x1b4[type] = 0;
+                            DUSK_IF_ELSE(field_0x1b4[type] -= 20, field_0x1b4[type] = 0);
                         }
                         setBlendAnime(mpPane[type], field_0x1b4[type]);
                     }
@@ -444,10 +436,10 @@ void COutFont_c::draw(J2DTextBox* i_textbox, f32 param_1, f32 param_2, f32 param
                     break;
                 case 15:
                     if (sp256[type] == field_0x1b4[type]) {
-                        field_0x1b4[type]++;
+                        DUSK_IF_ELSE(field_0x1b4[type] += dusk::game_clock::original_frames(), field_0x1b4[type]++);
 
                         if (field_0x1b4[type] >= 20) {
-                            field_0x1b4[type] = 0;
+                            DUSK_IF_ELSE(field_0x1b4[type] -= 20, field_0x1b4[type] = 0);
                         }
                         setBlendAnime(mpPane[type], field_0x1b4[type]);
                     }
@@ -455,10 +447,10 @@ void COutFont_c::draw(J2DTextBox* i_textbox, f32 param_1, f32 param_2, f32 param
                     break;
                 case 16:
                     if (sp256[type] == field_0x1b4[type]) {
-                        field_0x1b4[type]++;
+                        DUSK_IF_ELSE(field_0x1b4[type] += dusk::game_clock::original_frames(), field_0x1b4[type]++);
 
                         if (field_0x1b4[type] >= 20) {
-                            field_0x1b4[type] = 0;
+                            DUSK_IF_ELSE(field_0x1b4[type] -= 20, field_0x1b4[type] = 0);
                         }
                         setBlendAnime(mpPane[type], field_0x1b4[type]);
                     }
@@ -466,10 +458,10 @@ void COutFont_c::draw(J2DTextBox* i_textbox, f32 param_1, f32 param_2, f32 param
                     break;
                 case 17:
                     if (sp256[type] == field_0x1b4[type]) {
-                        field_0x1b4[type]++;
+                        DUSK_IF_ELSE(field_0x1b4[type] += dusk::game_clock::original_frames(), field_0x1b4[type]++);
 
                         if (field_0x1b4[type] >= 20) {
-                            field_0x1b4[type] = 0;
+                            DUSK_IF_ELSE(field_0x1b4[type] -= 20, field_0x1b4[type] = 0);
                         }
                         setBlendAnime(mpPane[type], field_0x1b4[type]);
                     }
@@ -477,10 +469,10 @@ void COutFont_c::draw(J2DTextBox* i_textbox, f32 param_1, f32 param_2, f32 param
                     break;
                 case 18:
                     if (sp256[type] == field_0x1b4[type]) {
-                        field_0x1b4[type]++;
+                        DUSK_IF_ELSE(field_0x1b4[type] += dusk::game_clock::original_frames(), field_0x1b4[type]++);
 
                         if (field_0x1b4[type] >= 40) {
-                            field_0x1b4[type] = 0;
+                            DUSK_IF_ELSE(field_0x1b4[type] -= 40, field_0x1b4[type] = 0);
                         }
                         setBlendAnime(mpPane[type], field_0x1b4[type]);
                     }
@@ -493,10 +485,10 @@ void COutFont_c::draw(J2DTextBox* i_textbox, f32 param_1, f32 param_2, f32 param
                     break;
                 case 19:
                     if (sp256[type] == field_0x1b4[type]) {
-                        field_0x1b4[type]++;
+                        DUSK_IF_ELSE(field_0x1b4[type] += dusk::game_clock::original_frames(), field_0x1b4[type]++);
 
                         if (field_0x1b4[type] >= 40) {
-                            field_0x1b4[type] = 0;
+                            DUSK_IF_ELSE(field_0x1b4[type] -= 40, field_0x1b4[type] = 0);
                         }
                         setBlendAnime(mpPane[type], field_0x1b4[type]);
                     }
@@ -528,12 +520,10 @@ void COutFont_c::draw(J2DTextBox* i_textbox, f32 param_1, f32 param_2, f32 param
                 case 20:
                 case 21:
                 case 22:
-                    IF_DUSK_BLOCK(dusk::frame_interp::get_ui_tick_pending())
-                    field_0x1b4[type]++;
+                    DUSK_IF_ELSE(field_0x1b4[type] += dusk::game_clock::original_frames(), field_0x1b4[type]++);
                     if (field_0x1b4[type] >= 28) {
-                        field_0x1b4[type] = 0;
+                        DUSK_IF_ELSE(field_0x1b4[type] -= 28, field_0x1b4[type] = 0);
                     }
-                    IF_DUSK_BLOCK_END
 
                     mpPane[type]->rotate(0.5f * sizeX, 0.5f * sizeY, ROTATE_Z,
                                          (360.0f * (f32)field_0x1b4[type]) / 28.0f);
@@ -541,7 +531,7 @@ void COutFont_c::draw(J2DTextBox* i_textbox, f32 param_1, f32 param_2, f32 param
                     break;
                 case 25:  // some issues in here, 2020
                     if (sp256[type] == field_0x1b4[type]) {
-                        field_0x1b4[type]++;
+                        DUSK_IF_ELSE(field_0x1b4[type] += dusk::game_clock::original_frames(), field_0x1b4[type]++);
 
                         if (field_0x1b4[type] >= 18) {
                             field_0x1b4[type] -= 18;
@@ -622,10 +612,10 @@ void COutFont_c::draw(J2DTextBox* i_textbox, f32 param_1, f32 param_2, f32 param
                 case 67:
                 case 68:
                     if (sp256[type] == field_0x1b4[type]) {
-                        field_0x1b4[type]++;
+                        DUSK_IF_ELSE(field_0x1b4[type] += dusk::game_clock::original_frames(), field_0x1b4[type]++);
 
                         if (field_0x1b4[type] >= 40) {
-                            field_0x1b4[type] = 0;
+                            DUSK_IF_ELSE(field_0x1b4[type] -= 40, field_0x1b4[type] = 0);
                         }
                         setBlendAnime(mpPane[type], field_0x1b4[type]);
                     }
@@ -642,10 +632,10 @@ void COutFont_c::draw(J2DTextBox* i_textbox, f32 param_1, f32 param_2, f32 param
                 case 59:
                 case 60:
                     if (sp256[type] == field_0x1b4[type]) {
-                        field_0x1b4[type]++;
+                        DUSK_IF_ELSE(field_0x1b4[type] += dusk::game_clock::original_frames(), field_0x1b4[type]++);
 
                         if (field_0x1b4[type] >= 40) {
-                            field_0x1b4[type] = 0;
+                            DUSK_IF_ELSE(field_0x1b4[type] -= 40, field_0x1b4[type] = 0);
                         }
                         setBlendAnime(mpPane[type], field_0x1b4[type]);
                     }
@@ -653,10 +643,10 @@ void COutFont_c::draw(J2DTextBox* i_textbox, f32 param_1, f32 param_2, f32 param
                     break;
                 case 62:
                     if (sp256[type] == field_0x1b4[type]) {
-                        field_0x1b4[type]++;
+                        DUSK_IF_ELSE(field_0x1b4[type] += dusk::game_clock::original_frames(), field_0x1b4[type]++);
 
                         if (field_0x1b4[type] >= 10) {
-                            field_0x1b4[type] = 0;
+                            DUSK_IF_ELSE(field_0x1b4[type] -= 10, field_0x1b4[type] = 0);
                         }
 
                         if (field_0x1b4[type] < 5) {

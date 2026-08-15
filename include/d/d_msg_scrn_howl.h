@@ -90,7 +90,7 @@ struct dMsgScrnHowl_c : public dMsgScrnBase_c {
     /* 0x212E */ s16 field_0x212e;
     /* 0x2130 */ s16 field_0x2130;
     /* 0x2132 */ s16 field_0x2132;
-    /* 0x2134 */ s16 field_0x2134;
+    /* 0x2134 */ DUSK_IF_ELSE(f32, s16) field_0x2134;
     /* 0x2136 */ s16 field_0x2136;
     /* 0x2138 */ u16 field_0x2138;
     /* 0x213A */ u8 field_0x213a[30];

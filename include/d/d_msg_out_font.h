@@ -3,6 +3,10 @@
 
 #include <types.h>
 
+#if TARGET_PC
+#include "global.h"
+#endif
+
 class J2DPicture;
 class J2DTextBox;
 
@@ -59,7 +63,7 @@ private:
     /* 0x1A8 */ f32 mAlphaRatio;
     /* 0x1AC */ f32 field_0x1ac;
     /* 0x1B0 */ f32 field_0x1b0;
-    /* 0x1B4 */ s16 field_0x1b4[70];
+    /* 0x1B4 */ DUSK_IF_ELSE(f32, s16) field_0x1b4[70];
     /* 0x240 */ bool field_0x240;
     /* 0x241 */ u8 mRupeeColor;
     /* 0x242 */ u8 field_0x242;

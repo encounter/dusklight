@@ -21,7 +21,7 @@
 #include "m_Do/m_Do_graphic.h"
 
 #if TARGET_PC
-#include "dusk/frame_interpolation.h"
+#include "dusk/game_clock.h"
 #include "dusk/settings.h"
 #endif
 
@@ -597,14 +597,13 @@ void dMsgScrnHowl_c::drawWave() {
                 f18 = local_64;
             } else {
 #if TARGET_PC
-                if (dusk::frame_interp::get_ui_tick_pending())
-#endif
-                {
-                    field_0x2134++;
-                    if (field_0x2134 > 30) {
-                        field_0x2134 = 0;
-                    }
+                dusk::game_clock::advance_looping_frame(field_0x2134, 1.0f, 31.0f);
+#else
+                field_0x2134++;
+                if (field_0x2134 > 30) {
+                    field_0x2134 = 0;
                 }
+#endif
                 if (field_0x2134 < 15) {
                     local_dc = field_0x2134 / 15.0f;
                 } else {

@@ -7,6 +7,7 @@
 #include "d/d_pane_class.h"
 
 #if TARGET_PC
+#include "dusk/game_clock.h"
 #include "dusk/settings.h"
 #endif
 
@@ -73,6 +74,17 @@ void dMsgScrnArrow_c::draw() {
     if (dusk::getSettings().game.recordingMode) {
         return;
     }
+    const bool arwVisible = mpArw_c->isVisible();
+    const bool dotVisible = mpDot_c->isVisible();
+    if (arwVisible) {
+        dusk::game_clock::present_looping(mBckFrame, mpBck, 1.0f);
+        dusk::game_clock::present_looping(mBpkFrame, mpBpk, 1.0f);
+    } else if (dotVisible) {
+        dusk::game_clock::present_looping(mBpkFrame, mpBpk, 1.0f);
+    }
+    if (arwVisible || dotVisible) {
+        mpScreen->animation();
+    }
 #endif
     J2DGrafContext* graf_ctx = dComIfGp_getCurrentGrafPort();
     mpScreen->draw(0.0f, 0.0f, graf_ctx);
@@ -103,6 +115,7 @@ void dMsgScrnArrow_c::arwAnimeMove() {
         mpDot_c->hide();
     }
 
+#if !TARGET_PC
     mBckFrame += 1.0f;
     if (mBckFrame >= (f32)mpBck->getFrameMax()) {
         mBckFrame -= (f32)mpBck->getFrameMax();
@@ -116,6 +129,7 @@ void dMsgScrnArrow_c::arwAnimeMove() {
     mpBpk->setFrame(mBpkFrame);
 
     mpScreen->animation();
+#endif
 }
 
 void dMsgScrnArrow_c::dotAnimeInit() {
@@ -136,6 +150,7 @@ void dMsgScrnArrow_c::dotAnimeMove() {
         mpDot_c->show();
     }
 
+#if !TARGET_PC
     mBpkFrame += 1.0f;
     if (mBpkFrame >= (f32)mpBpk->getFrameMax()) {
         mBpkFrame -= (f32)mpBpk->getFrameMax();
@@ -143,4 +158,5 @@ void dMsgScrnArrow_c::dotAnimeMove() {
 
     mpBpk->setFrame(mBpkFrame);
     mpScreen->animation();
+#endif
 }
