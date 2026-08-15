@@ -415,6 +415,12 @@ void dRenderingMap_c::makeResTIMG(ResTIMG* p_image, u16 width, u16 height, u8* p
 }
 
 void dRenderingMap_c::renderingMap() {
+#if TARGET_PC
+    const auto* map = static_cast<const dRenderingFDAmap_c*>(this);
+    if (map->mTexWidth == 0 || map->mTexHeight == 0) {
+        return;
+    }
+#endif
     preRenderingMap();
     if (isDrawPath()) {
         preDrawPath();
