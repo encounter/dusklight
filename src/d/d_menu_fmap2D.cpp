@@ -17,15 +17,14 @@
 #include "d/d_msg_scrn_explain.h"
 #include "m_Do/m_Do_graphic.h"
 #include "d/actor/d_a_midna.h"
-#if TARGET_PC
-#include "dusk/frame_interpolation.h"
-#include "dusk/ui/touch_controls.hpp"
-#endif
 #include <cstring>
 
+#if TARGET_PC
+#include "dusk/frame_interpolation.h"
+#include "dusk/game_clock.h"
+#include "dusk/ui/touch_controls.hpp"
 #include "dusk/version.hpp"
 
-#if TARGET_PC
 void dMenu_Fmap2DBack_c::fMapBackWide() {
     mpBaseScreen->scale(mDoGph_gInf_c::hudAspectScaleUp, 1.0f);
     mpBaseScreen->translate(mDoGph_gInf_c::getSafeMinXF(), 0.0f);
@@ -360,13 +359,8 @@ void dMenu_Fmap2DBack_c::draw() {
         scrollAreaDraw();
     }
 
-#ifdef TARGET_PC
-    if (dusk::frame_interp::get_ui_tick_pending())
-#endif
-    {
-        blinkMove(30);
-        moveLightDropAnime();
-    }
+    blinkMove(30);
+    moveLightDropAnime();
     setCenterPosX(field_0x11dc, 1);
     drawIcon(mTransX, mTransZ, mAlphaRate, field_0xfa8 * mSpotTextureFadeAlpha);
 
@@ -401,15 +395,10 @@ void dMenu_Fmap2DBack_c::draw() {
                         (mArrowPos3DZ + control_ypos + fVar3) - fVar5, &mArrowPos2DX,
                         &mArrowPos2DY);
 
-#ifdef TARGET_PC
-        if (dusk::frame_interp::get_ui_tick_pending())
-#endif
-        {
-            field_0x11e0 -= g_fmapHIO.mCursorSpeed;
+        field_0x11e0 -= g_fmapHIO.mCursorSpeed IF_DUSK(* dusk::game_clock::original_frames());
 
-            if (field_0x11e0 < 0.0f) {
-                field_0x11e0 += 360.0f;
-            }
+        if (field_0x11e0 < 0.0f) {
+            field_0x11e0 += 360.0f;
         }
 
         mpPointParent->getPanePtr()->rotate(mpPointParent->getSizeX() / 2.0f,
@@ -1870,19 +1859,15 @@ void dMenu_Fmap2DBack_c::calcBlink() {
                                  t * (g_fmapHIO.mMapBlink[i + 1].mUnselectedRegion.mBlinkSpeed -
                                       g_fmapHIO.mMapBlink[i].mUnselectedRegion.mBlinkSpeed);
 
-#if TARGET_PC
-    if (dusk::frame_interp::get_ui_tick_pending())
-#endif
-    {
-        field_0x1218++;
-        if (field_0x1218 >= selected_blink_speed) {
-            field_0x1218 = 0;
-        }
+    IF_DUSK(const f32 frames = dusk::game_clock::original_frames());
+    DUSK_IF_ELSE(field_0x1218 += frames, field_0x1218++);
+    if (field_0x1218 >= selected_blink_speed) {
+        field_0x1218 = 0;
+    }
 
-        field_0x121a++;
-        if (field_0x121a >= unselected_blink_speed) {
-            field_0x121a = 0;
-        }
+    DUSK_IF_ELSE(field_0x121a += frames, field_0x121a++);
+    if (field_0x121a >= unselected_blink_speed) {
+        field_0x121a = 0;
     }
 
     f32 t_selected = 0.0f;

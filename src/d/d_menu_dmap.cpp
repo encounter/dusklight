@@ -31,6 +31,7 @@
 
 #if TARGET_PC
 #include "dusk/frame_interpolation.h"
+#include "dusk/game_clock.h"
 #endif
 
 #if (PLATFORM_WII || PLATFORM_SHIELD)

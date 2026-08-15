@@ -6,6 +6,10 @@
 #include "d/d_select_cursor.h"
 #include "global.h"
 
+#if TARGET_PC
+#include "dusk/game_clock.h"
+#endif
+
 struct map_icon_size_t {
     f32 size_x;
     f32 size_y;
@@ -584,10 +588,17 @@ void dMenuMapCommon_c::setBlendRatio(u8 i_iconNo, f32 param_2, f32 param_3) {
 }
 
 void dMenuMapCommon_c::blinkMove(s16 param_1) {
+#if TARGET_PC
+    mBlinkTimer += dusk::game_clock::original_frames();
+    if (mBlinkTimer >= param_1) {
+        mBlinkTimer -= param_1 + 15;
+    }
+#else
     mBlinkTimer++;
     if (mBlinkTimer >= param_1) {
         S16_SUB(mBlinkTimer, param_1 + 15);
     }
+#endif
 
     if (mBlinkTimer < 0) {
         mBlinkAlpha = 1.0f;
@@ -610,7 +621,7 @@ void dMenuMapCommon_c::moveLightDropAnime() {
     u8 flash_start_alpha = g_fmapHIO.mMapIconHIO.mLightDropFlashStartAlphaOut[bVar6];
     u8 flash_end_alpha = g_fmapHIO.mMapIconHIO.mLightDropFlashEndAlphaOut[bVar6];
 
-    mLightDropFlashTimer++;
+    DUSK_IF_ELSE(mLightDropFlashTimer += dusk::game_clock::original_frames(), mLightDropFlashTimer++);
     if (mLightDropFlashTimer >= flash_frame_num) {
         mLightDropFlashTimer -= flash_frame_num;
     }
