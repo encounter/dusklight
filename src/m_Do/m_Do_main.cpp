@@ -313,13 +313,13 @@ void main01(void) {
             dusk::frame_interp::begin_frame(interpolationStep);
             if (timing.interpolating) {
                 dusk::frame_interp::interpolate();
-                dusk::frame_interp::begin_presentation_camera();
+                dusk::frame_interp::begin_presentation();
             }
 
             fpcM_DrawIterater((fpcM_DrawIteraterFunc)fpcM_Draw);
             cAPIGph_Painter();
             if (timing.interpolating) {
-                dusk::frame_interp::end_presentation_camera();
+                dusk::frame_interp::end_presentation();
             }
         } else {
             dusk::frame_interp::begin_frame(0.0f);

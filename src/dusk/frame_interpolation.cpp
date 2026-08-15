@@ -3,6 +3,8 @@
 #include "d/d_bg_s_lin_chk.h"
 #include "d/d_com_inf_game.h"
 #include "dusk/game_clock.h"
+#include "dusk/matrix_interpolation.h"
+#include "dusk/presentation_skeleton.h"
 #include "f_op/f_op_actor_mng.h"
 #include "f_op/f_op_camera_mng.h"
 #include "m_Do/m_Do_graphic.h"
@@ -16,19 +18,19 @@
 namespace {
 
 struct Recording {
-    absl::flat_hash_map<uintptr_t, Mtx> matrix_values;
+    absl::flat_hash_map<uintptr_t, dusk::matrix_interp::MatrixSample> matrix_values;
 };
 
-bool g_recording = false;
+bool s_recording = false;
 bool s_replacementsActive = false;
-bool g_sync_presentation = false;
+bool s_syncPresentation = false;
 
-float g_step = 0.0f;
-uint64_t g_sim_tick_seq = 0;
+float s_step = 0.0f;
+uint64_t s_simTickSeq = 0;
 uint64_t s_observedPresentationEpoch = 0;
 
-Recording g_current_recording;
-Recording g_previous_recording;
+Recording s_currentRecording;
+Recording s_previousRecording;
 
 absl::flat_hash_map<uintptr_t, Mtx> g_replacements;
 
@@ -36,69 +38,71 @@ struct CameraSnapshot {
     cXyz eye{};
     cXyz center{};
     cXyz up{};
-    s16 bank{};
-    f32 fovy{};
-    f32 aspect{};
-    f32 near_{};
-    f32 far_{};
-    int mode{};
-    int type{};
-    int style{};
-    int algorithm{-1};
-    int roomNo{};
-    const fopAc_ac_c* targetActor{};
-    fpc_ProcID targetActorId{fpcM_ERROR_PROCESS_ID_e};
+    s16 bank = 0;
+    f32 fovy = 0.f;
+    f32 aspect = 0.f;
+    f32 near_ = 0.f;
+    f32 far_ = 0.f;
+    int mode = 0;
+    int type = 0;
+    int style = 0;
+    int algorithm = -1;
+    int roomNo = 0;
+    const fopAc_ac_c* targetActor = nullptr;
+    fpc_ProcID targetActorId = fpcM_ERROR_PROCESS_ID_e;
     cXyz targetAttentionPosition{};
-    const fopAc_ac_c* secondaryTargetActor{};
-    fpc_ProcID secondaryTargetActorId{fpcM_ERROR_PROCESS_ID_e};
+    const fopAc_ac_c* secondaryTargetActor = nullptr;
+    fpc_ProcID secondaryTargetActorId = fpcM_ERROR_PROCESS_ID_e;
     cXyz secondaryTargetAttentionPosition{};
-    u32 collisionFlags{};
-    f32 gazeBackMargin{};
-    bool active{};
-    bool wideZoom{};
-    bool valid{};
+    u32 collisionFlags = 0;
+    f32 gazeBackMargin = 0.f;
+    bool active = false;
+    bool wideZoom = false;
+    bool valid = false;
 };
 
-CameraSnapshot s_cam_prev{};
-CameraSnapshot s_cam_curr{};
-const camera_process_class* s_camera_owner = nullptr;
-dusk::frame_interp::CameraInterpolationDiagnostics s_camera_diagnostics{};
-f32 s_max_linear_radius_error = 0.0f;
-f32 s_max_collision_correction = 0.0f;
-uint64_t s_collision_hit_count = 0;
+CameraSnapshot s_camPrev{};
+CameraSnapshot s_camCurr{};
+const camera_process_class* s_cameraOwner = nullptr;
+dusk::frame_interp::CameraInterpolationDiagnostics s_cameraDiagnostics{};
+f32 s_maxLinearRadiusError = 0.0f;
+f32 s_maxCollisionCorrection = 0.0f;
+uint64_t s_collisionHitCount = 0;
 
 struct PresentationIntervalState {
-    uint64_t simTickSeq{};
-    f32 lastStep{};
-    bool valid{};
+    uint64_t simTickSeq = 0;
+    f32 lastStep = 0.f;
+    bool valid = false;
 };
 
-PresentationIntervalState s_presentation_interval{};
+PresentationIntervalState s_presentationInterval{};
 
 struct ActorPoseSnapshot {
     cXyz position{};
     cXyz attentionPosition{};
     cXyz eyePosition{};
     csXyz shapeAngle{};
-    s8 roomNo{};
+    s8 roomNo = 0;
 };
 
 struct ActorPoseRecord {
-    fpc_ProcID processId{fpcM_ERROR_PROCESS_ID_e};
+    fpc_ProcID processId = fpcM_ERROR_PROCESS_ID_e;
     ActorPoseSnapshot previous{};
     ActorPoseSnapshot current{};
-    bool previousValid{};
-    bool currentValid{};
-    bool discontinuous{};
+    bool previousValid = false;
+    bool currentValid = false;
+    bool discontinuous = false;
 };
 
-absl::flat_hash_map<uintptr_t, ActorPoseRecord> s_actor_poses;
+absl::flat_hash_map<uintptr_t, ActorPoseRecord> s_actorPoses;
 
-view_class s_presentation_view_backup{};
-int s_presentation_depth = 0;
+view_class s_presentationViewBackup{};
+int s_presentationDepth = 0;
+bool s_presentationCameraApplied = false;
 
 struct InterpolationCallBackWork {
-    dusk::frame_interp::InterpolationCallBack pCallBack;
+    dusk::frame_interp::InterpolationCallBack begin;
+    dusk::frame_interp::InterpolationCallBack end;
     void* pUserWork;
 };
 
@@ -145,8 +149,7 @@ void copy_camera_to_snap(CameraSnapshot* dst, camera_process_class* camera) {
     if (dst->active && dst->algorithm == 2 && camera->mCamera.mpLockonTarget != nullptr) {
         dst->secondaryTargetActor = camera->mCamera.mpLockonTarget;
         dst->secondaryTargetActorId = fopAcM_GetID(dst->secondaryTargetActor);
-        dst->secondaryTargetAttentionPosition =
-            dst->secondaryTargetActor->attention_info.position;
+        dst->secondaryTargetAttentionPosition = dst->secondaryTargetActor->attention_info.position;
     } else {
         dst->secondaryTargetActor = nullptr;
         dst->secondaryTargetActorId = fpcM_ERROR_PROCESS_ID_e;
@@ -208,14 +211,14 @@ cXyz midpoint(const cXyz& lhs, const cXyz& rhs) {
     return (lhs + rhs) * 0.5f;
 }
 
-bool interpolate_camera_orbit(cXyz* eye, const CameraSnapshot& prev,
-                              const CameraSnapshot& curr, const cXyz& center, f32 step) {
+bool interpolate_camera_orbit(cXyz* eye, const CameraSnapshot& prev, const CameraSnapshot& curr,
+    const cXyz& center, f32 step) {
     if (!same_camera_rig(prev, curr)) {
         return false;
     }
 
-    const SphericalOffset prevOffset = spherical_offset(prev.eye, prev.center);
-    const SphericalOffset currOffset = spherical_offset(curr.eye, curr.center);
+    const auto prevOffset = spherical_offset(prev.eye, prev.center);
+    const auto currOffset = spherical_offset(curr.eye, curr.center);
     if (prevOffset.radius < kMinimumOrbitRadius || currOffset.radius < kMinimumOrbitRadius) {
         return false;
     }
@@ -251,15 +254,14 @@ ActorPoseSnapshot actor_pose_snapshot(const fopAc_ac_c& actor) {
     };
 }
 
-bool actor_pose_discontinuous(const ActorPoseSnapshot& previous,
-                              const ActorPoseSnapshot& current) {
+bool actor_pose_discontinuous(const ActorPoseSnapshot& previous, const ActorPoseSnapshot& current) {
     constexpr f32 kTeleportDistance = 2000.0f;
     return previous.roomNo != current.roomNo ||
            distance_between(previous.position, current.position) > kTeleportDistance;
 }
 
 void roll_actor_poses() {
-    for (auto& entry : s_actor_poses) {
+    for (auto& entry : s_actorPoses) {
         ActorPoseRecord& record = entry.second;
         if (record.currentValid) {
             record.previous = record.current;
@@ -270,8 +272,8 @@ void roll_actor_poses() {
 }
 
 bool evaluate_semantic_orbit(cXyz* eye, cXyz* center, const CameraSnapshot& prev,
-                             const CameraSnapshot& curr, f32 step,
-                             dusk::frame_interp::CameraInterpolationFallbackReason* reason) {
+    const CameraSnapshot& curr, f32 step,
+    dusk::frame_interp::CameraInterpolationFallbackReason* reason) {
     using FallbackReason = dusk::frame_interp::CameraInterpolationFallbackReason;
 
     if (!same_camera_rig(prev, curr)) {
@@ -310,8 +312,7 @@ bool evaluate_semantic_orbit(cXyz* eye, cXyz* center, const CameraSnapshot& prev
             return false;
         }
         dusk::frame_interp::ActorPresentationPose secondaryPose;
-        if (!dusk::frame_interp::sample_actor_pose(curr.secondaryTargetActor, step,
-                                                   &secondaryPose))
+        if (!dusk::frame_interp::sample_actor_pose(curr.secondaryTargetActor, step, &secondaryPose))
         {
             *reason = FallbackReason::TargetPoseUnavailable;
             return false;
@@ -335,8 +336,8 @@ bool evaluate_semantic_orbit(cXyz* eye, cXyz* center, const CameraSnapshot& prev
     return true;
 }
 
-bool clamp_presentation_eye(cXyz* eye, const cXyz& center, const CameraSnapshot& camera,
-                            f32* correction) {
+bool clamp_presentation_eye(
+    cXyz* eye, const cXyz& center, const CameraSnapshot& camera, f32* correction) {
     if ((camera.collisionFlags & 0xb7) == 0 || camera.gazeBackMargin < 0.0f) {
         return false;
     }
@@ -418,24 +419,26 @@ void clear_replacements() {
 }
 
 void clear_interpolation_history() {
-    g_recording = false;
+    s_recording = false;
     s_replacementsActive = false;
-    g_sync_presentation = false;
-    g_previous_recording = {};
-    g_current_recording = {};
+    s_syncPresentation = false;
+    s_previousRecording = {};
+    s_currentRecording = {};
     clear_replacements();
-    s_cam_prev = {};
-    s_cam_curr = {};
-    s_camera_owner = nullptr;
-    s_camera_diagnostics = {};
-    s_max_linear_radius_error = 0.0f;
-    s_max_collision_correction = 0.0f;
-    s_collision_hit_count = 0;
-    s_presentation_interval = {};
-    s_actor_poses.clear();
+    s_camPrev = {};
+    s_camCurr = {};
+    s_cameraOwner = nullptr;
+    s_cameraDiagnostics = {};
+    s_maxLinearRadiusError = 0.0f;
+    s_maxCollisionCorrection = 0.0f;
+    s_collisionHitCount = 0;
+    s_presentationInterval = {};
+    s_actorPoses.clear();
     s_interpolationCallBackWork.clear();
     s_modelInterpolationCallBackWork.clear();
-    s_presentation_depth = 0;
+    dusk::presentation_skeleton::clear();
+    s_presentationDepth = 0;
+    s_presentationCameraApplied = false;
 }
 
 }  // namespace
@@ -449,13 +452,14 @@ void begin_sim_tick() {
 
     s_interpolationCallBackWork.clear();
     s_modelInterpolationCallBackWork.clear();
-    s_cam_prev = std::move(s_cam_curr);
+    s_camPrev = std::move(s_camCurr);
     roll_actor_poses();
-    ++g_sim_tick_seq;
+    ++s_simTickSeq;
+    presentation_skeleton::begin_sim_tick();
 }
 
 uint64_t sim_tick_seq() {
-    return g_sim_tick_seq;
+    return s_simTickSeq;
 }
 
 void begin_frame(float step) {
@@ -465,7 +469,7 @@ void begin_frame(float step) {
         clear_interpolation_history();
     }
 
-    g_step = std::clamp(step, 0.0f, 1.0f);
+    s_step = std::clamp(step, 0.0f, 1.0f);
     if (!is_enabled()) {
         clear_interpolation_history();
     }
@@ -476,8 +480,7 @@ bool is_enabled() {
 }
 
 bool is_sim_frame() {
-    return !game_clock::g_frameTiming.separatePresentation ||
-           game_clock::is_sim_tick_active();
+    return !game_clock::g_frameTiming.separatePresentation || game_clock::is_sim_tick_active();
 }
 
 void begin_record() {
@@ -486,35 +489,39 @@ void begin_record() {
         return;
     }
 
-    g_sync_presentation = false;
-    g_previous_recording = std::move(g_current_recording);
-    g_current_recording = {};
-    g_recording = true;
+    s_syncPresentation = false;
+    s_previousRecording = std::move(s_currentRecording);
+    s_currentRecording = {};
+    s_recording = true;
     s_replacementsActive = false;
     clear_replacements();
 
     if (dComIfGp_getCamera(0) == nullptr) {
-        s_cam_prev.valid = false;
-        s_cam_curr.valid = false;
+        s_camPrev.valid = false;
+        s_camCurr.valid = false;
     }
 }
 
 void end_record() {
-    g_recording = false;
+    s_recording = false;
+    for (auto& entry : s_currentRecording.matrix_values) {
+        dusk::matrix_interp::finalize(&entry.second);
+    }
 }
 
 void interpolate() {
     clear_replacements();
-    s_replacementsActive = is_enabled() && !g_recording && !g_sync_presentation &&
-                           has_recording_data(g_current_recording);
+    s_replacementsActive = is_enabled() && !s_recording && !s_syncPresentation &&
+                           has_recording_data(s_currentRecording);
     if (!s_replacementsActive) {
         return;
     }
-    for (auto const& old : g_previous_recording.matrix_values) {
-        if (auto it = g_current_recording.matrix_values.find(old.first);
-            it != g_current_recording.matrix_values.end())
+    for (auto const& old : s_previousRecording.matrix_values) {
+        if (auto it = s_currentRecording.matrix_values.find(old.first);
+            it != s_currentRecording.matrix_values.end())
         {
-            lerp(g_replacements[old.first], old.second, it->second, g_step);
+            matrix_interp::interpolate(
+                g_replacements[old.first], old.second, it->second, s_step);
         }
     }
 }
@@ -523,18 +530,18 @@ void request_presentation_sync() {
     if (!is_enabled()) {
         return;
     }
-    g_sync_presentation = true;
+    s_syncPresentation = true;
 }
 
 bool presentation_sync_active() {
     if (!is_enabled()) {
         return false;
     }
-    return g_sync_presentation;
+    return s_syncPresentation;
 }
 
 float get_interpolation_step() {
-    return presentation_sync_active() ? 1.0f : g_step;
+    return presentation_sync_active() ? 1.0f : s_step;
 }
 
 bool get_ui_tick_pending() {
@@ -542,16 +549,25 @@ bool get_ui_tick_pending() {
 }
 
 void record_final_mtx(Mtx m, const void* key) {
-    if (!g_recording || m == nullptr) {
+    if (!s_recording || m == nullptr) {
         return;
     }
 
-    auto& it = g_current_recording.matrix_values[reinterpret_cast<uintptr_t>(key)];
-    MTXCopy(m, it);
+    auto& sample = s_currentRecording.matrix_values[reinterpret_cast<uintptr_t>(key)];
+    dusk::matrix_interp::record(&sample, m);
 }
 
 void record_final_mtx(Mtx m) {
     record_final_mtx(m, m);
+}
+
+bool override_presentation_mtx(const void* key, const Mtx value) {
+    if (!s_replacementsActive || presentation_sync_active() || key == nullptr || value == nullptr) {
+        return false;
+    }
+
+    MTXCopy(value, g_replacements[reinterpret_cast<uintptr_t>(key)]);
+    return true;
 }
 
 bool lookup_replacement(const void* key, Mtx out) {
@@ -577,7 +593,9 @@ bool lookup_concat_replacement(const void* lhs, const void* rhs, Mtx out) {
     Mtx rhs_scratch;
     const Mtx* resolved_lhs = resolve_replacement(reinterpret_cast<const Mtx*>(lhs), &lhs_scratch);
     const Mtx* resolved_rhs = resolve_replacement(reinterpret_cast<const Mtx*>(rhs), &rhs_scratch);
-    if (resolved_lhs == reinterpret_cast<const Mtx*>(lhs) && resolved_rhs == reinterpret_cast<const Mtx*>(rhs)) {
+    if (resolved_lhs == reinterpret_cast<const Mtx*>(lhs) &&
+        resolved_rhs == reinterpret_cast<const Mtx*>(rhs))
+    {
         return false;
     }
 
@@ -585,43 +603,43 @@ bool lookup_concat_replacement(const void* lhs, const void* rhs, Mtx out) {
     return true;
 }
 
-void record_camera(::camera_process_class* cam, int camera_id) {
+void record_camera(camera_process_class* cam, int camera_id) {
     if (!is_enabled() || camera_id != 0 || cam == nullptr) {
         return;
     }
-    if (s_camera_owner != cam) {
+    if (s_cameraOwner != cam) {
         reset_camera();
-        s_camera_owner = cam;
+        s_cameraOwner = cam;
     }
-    copy_camera_to_snap(&s_cam_curr, cam);
+    copy_camera_to_snap(&s_camCurr, cam);
 #if WIDESCREEN_SUPPORT
-    s_cam_curr.wideZoom = mDoGph_gInf_c::isWideZoom();
+    s_camCurr.wideZoom = mDoGph_gInf_c::isWideZoom();
 #endif
 }
 
 void reset_camera() {
-    s_cam_prev = {};
-    s_cam_curr = {};
-    s_camera_owner = nullptr;
-    s_camera_diagnostics = {};
-    s_max_linear_radius_error = 0.0f;
-    s_max_collision_correction = 0.0f;
-    s_collision_hit_count = 0;
-    s_presentation_interval = {};
+    s_camPrev = {};
+    s_camCurr = {};
+    s_cameraOwner = nullptr;
+    s_cameraDiagnostics = {};
+    s_maxLinearRadiusError = 0.0f;
+    s_maxCollisionCorrection = 0.0f;
+    s_collisionHitCount = 0;
+    s_presentationInterval = {};
 }
 
 const CameraInterpolationDiagnostics& camera_interpolation_diagnostics() {
-    return s_camera_diagnostics;
+    return s_cameraDiagnostics;
 }
 
-void capture_actor_pose(::fopAc_ac_c* actor) {
+void capture_actor_pose(fopAc_ac_c* actor) {
     if (!is_enabled() || !is_sim_frame() || actor == nullptr) {
         return;
     }
 
     const uintptr_t key = reinterpret_cast<uintptr_t>(actor);
     const fpc_ProcID processId = fopAcM_GetID(actor);
-    auto& record = s_actor_poses[key];
+    auto& record = s_actorPoses[key];
     const ActorPoseSnapshot pose = actor_pose_snapshot(*actor);
     if (record.processId != processId || !record.currentValid) {
         record = {
@@ -644,19 +662,19 @@ void capture_actor_pose(::fopAc_ac_c* actor) {
     }
 }
 
-void erase_actor_pose(::fopAc_ac_c* actor) {
+void erase_actor_pose(fopAc_ac_c* actor) {
     if (actor != nullptr) {
-        s_actor_poses.erase(reinterpret_cast<uintptr_t>(actor));
+        s_actorPoses.erase(reinterpret_cast<uintptr_t>(actor));
     }
 }
 
-bool sample_actor_pose(const ::fopAc_ac_c* actor, float step, ActorPresentationPose* pose) {
+bool sample_actor_pose(const fopAc_ac_c* actor, float step, ActorPresentationPose* pose) {
     if (actor == nullptr || pose == nullptr) {
         return false;
     }
 
-    const auto it = s_actor_poses.find(reinterpret_cast<uintptr_t>(actor));
-    if (it == s_actor_poses.end() || it->second.processId != fopAcM_GetID(actor)) {
+    const auto it = s_actorPoses.find(reinterpret_cast<uintptr_t>(actor));
+    if (it == s_actorPoses.end() || it->second.processId != fopAcM_GetID(actor)) {
         return false;
     }
 
@@ -671,24 +689,24 @@ bool sample_actor_pose(const ::fopAc_ac_c* actor, float step, ActorPresentationP
     step = std::clamp(step, 0.0f, 1.0f);
     lerp(pose->position, record.previous.position, record.current.position, step);
     lerp(pose->attentionPosition, record.previous.attentionPosition,
-         record.current.attentionPosition, step);
+        record.current.attentionPosition, step);
     lerp(pose->eyePosition, record.previous.eyePosition, record.current.eyePosition, step);
     lerp(pose->shapeAngle, record.previous.shapeAngle, record.current.shapeAngle, step);
     return true;
 }
 
 size_t recorded_actor_pose_count() {
-    return s_actor_poses.size();
+    return s_actorPoses.size();
 }
 
-void interp_view(::view_class* view) {
+void interp_view(view_class* view) {
     if (!is_enabled()) {
-        s_camera_diagnostics = {};
+        s_cameraDiagnostics = {};
         return;
     }
 
-    if (!s_cam_prev.valid || !s_cam_curr.valid) {
-        s_camera_diagnostics = {};
+    if (!s_camPrev.valid || !s_camCurr.valid) {
+        s_cameraDiagnostics = {};
         return;
     }
 
@@ -697,49 +715,48 @@ void interp_view(::view_class* view) {
     bool rebased = false;
     f32 cameraFrames = 0.0f;
     if (!is_sim_frame()) {
-        if (!s_presentation_interval.valid ||
-            s_presentation_interval.simTickSeq != g_sim_tick_seq ||
-            step < s_presentation_interval.lastStep)
+        if (!s_presentationInterval.valid || s_presentationInterval.simTickSeq != s_simTickSeq ||
+            step < s_presentationInterval.lastStep)
         {
-            s_presentation_interval = {
-                .simTickSeq = g_sim_tick_seq,
+            s_presentationInterval = {
+                .simTickSeq = s_simTickSeq,
                 .lastStep = 0.0f,
                 .valid = true,
             };
             rebased = true;
         }
-        cameraFrames = step - s_presentation_interval.lastStep;
-        s_presentation_interval.lastStep = step;
+        cameraFrames = step - s_presentationInterval.lastStep;
+        s_presentationInterval.lastStep = step;
     }
 
-    const f32 previousRadius = distance_between(s_cam_prev.eye, s_cam_prev.center);
-    const f32 currentRadius = distance_between(s_cam_curr.eye, s_cam_curr.center);
+    const f32 previousRadius = distance_between(s_camPrev.eye, s_camPrev.center);
+    const f32 currentRadius = distance_between(s_camCurr.eye, s_camCurr.center);
     cXyz linearCenter;
     cXyz linearEye;
-    lerp(linearCenter, s_cam_prev.center, s_cam_curr.center, step);
-    lerp(linearEye, s_cam_prev.eye, s_cam_curr.eye, step);
+    lerp(linearCenter, s_camPrev.center, s_camCurr.center, step);
+    lerp(linearEye, s_camPrev.eye, s_camCurr.eye, step);
     const f32 linearRadius = distance_between(linearEye, linearCenter);
     const f32 orbitRadius = previousRadius + (currentRadius - previousRadius) * step;
     const f32 linearRadiusError = fabsf(orbitRadius - linearRadius);
-    s_max_linear_radius_error = std::max(s_max_linear_radius_error, linearRadiusError);
-    s_camera_diagnostics = {
+    s_maxLinearRadiusError = std::max(s_maxLinearRadiusError, linearRadiusError);
+    s_cameraDiagnostics = {
         .kind = CameraInterpolationKind::Unavailable,
         .step = step,
         .previousRadius = previousRadius,
         .currentRadius = currentRadius,
         .linearRadius = linearRadius,
         .linearRadiusError = linearRadiusError,
-        .maxLinearRadiusError = s_max_linear_radius_error,
+        .maxLinearRadiusError = s_maxLinearRadiusError,
         .cameraFrames = cameraFrames,
-        .maxCollisionCorrection = s_max_collision_correction,
-        .simTickSeq = g_sim_tick_seq,
-        .collisionHitCount = s_collision_hit_count,
-        .algorithm = s_cam_curr.algorithm,
-        .mode = s_cam_curr.mode,
-        .type = s_cam_curr.type,
-        .style = s_cam_curr.style,
+        .maxCollisionCorrection = s_maxCollisionCorrection,
+        .simTickSeq = s_simTickSeq,
+        .collisionHitCount = s_collisionHitCount,
+        .algorithm = s_camCurr.algorithm,
+        .mode = s_camCurr.mode,
+        .type = s_camCurr.type,
+        .style = s_camCurr.style,
         .fallbackReason = CameraInterpolationFallbackReason::None,
-        .compatibleRig = same_camera_rig(s_cam_prev, s_cam_curr),
+        .compatibleRig = same_camera_rig(s_camPrev, s_camCurr),
         .rebased = rebased,
         .valid = true,
     };
@@ -748,51 +765,46 @@ void interp_view(::view_class* view) {
     cXyz center;
     cXyz up;
     if (is_cam_curr_authoritative || step >= 1.0f) {
-        eye = s_cam_curr.eye;
-        center = s_cam_curr.center;
-        up = s_cam_curr.up;
-        s_camera_diagnostics.kind = CameraInterpolationKind::Authoritative;
+        eye = s_camCurr.eye;
+        center = s_camCurr.center;
+        up = s_camCurr.up;
+        s_cameraDiagnostics.kind = CameraInterpolationKind::Authoritative;
     } else if (step <= 0.0f) {
-        eye = s_cam_prev.eye;
-        center = s_cam_prev.center;
-        up = s_cam_prev.up;
-        s_camera_diagnostics.kind = CameraInterpolationKind::Previous;
+        eye = s_camPrev.eye;
+        center = s_camPrev.center;
+        up = s_camPrev.up;
+        s_cameraDiagnostics.kind = CameraInterpolationKind::Previous;
     } else {
         CameraInterpolationFallbackReason fallbackReason = CameraInterpolationFallbackReason::None;
-        if (evaluate_semantic_orbit(&eye, &center, s_cam_prev, s_cam_curr, step,
-                                    &fallbackReason))
-        {
-            s_camera_diagnostics.kind = CameraInterpolationKind::SemanticOrbit;
-            s_camera_diagnostics.actorAnchored = true;
-            s_camera_diagnostics.collisionHit =
-                clamp_presentation_eye(&eye, center, s_cam_curr,
-                                       &s_camera_diagnostics.collisionCorrection);
-            if (s_camera_diagnostics.collisionHit) {
-                ++s_collision_hit_count;
-                s_max_collision_correction =
-                    std::max(s_max_collision_correction,
-                             s_camera_diagnostics.collisionCorrection);
-                s_camera_diagnostics.collisionHitCount = s_collision_hit_count;
-                s_camera_diagnostics.maxCollisionCorrection =
-                    s_max_collision_correction;
+        if (evaluate_semantic_orbit(&eye, &center, s_camPrev, s_camCurr, step, &fallbackReason)) {
+            s_cameraDiagnostics.kind = CameraInterpolationKind::SemanticOrbit;
+            s_cameraDiagnostics.actorAnchored = true;
+            s_cameraDiagnostics.collisionHit = clamp_presentation_eye(
+                &eye, center, s_camCurr, &s_cameraDiagnostics.collisionCorrection);
+            if (s_cameraDiagnostics.collisionHit) {
+                ++s_collisionHitCount;
+                s_maxCollisionCorrection =
+                    std::max(s_maxCollisionCorrection, s_cameraDiagnostics.collisionCorrection);
+                s_cameraDiagnostics.collisionHitCount = s_collisionHitCount;
+                s_cameraDiagnostics.maxCollisionCorrection = s_maxCollisionCorrection;
             }
         } else {
-            s_camera_diagnostics.fallbackReason = fallbackReason;
-            lerp(center, s_cam_prev.center, s_cam_curr.center, step);
+            s_cameraDiagnostics.fallbackReason = fallbackReason;
+            lerp(center, s_camPrev.center, s_camCurr.center, step);
         }
-        if (s_camera_diagnostics.kind == CameraInterpolationKind::SemanticOrbit) {
+        if (s_cameraDiagnostics.kind == CameraInterpolationKind::SemanticOrbit) {
             // The semantic path already produced both center and eye.
-        } else if (interpolate_camera_orbit(&eye, s_cam_prev, s_cam_curr, center, step)) {
-            s_camera_diagnostics.kind = CameraInterpolationKind::Orbit;
+        } else if (interpolate_camera_orbit(&eye, s_camPrev, s_camCurr, center, step)) {
+            s_cameraDiagnostics.kind = CameraInterpolationKind::Orbit;
         } else {
-            lerp(eye, s_cam_prev.eye, s_cam_curr.eye, step);
-            s_camera_diagnostics.kind = CameraInterpolationKind::Linear;
+            lerp(eye, s_camPrev.eye, s_camCurr.eye, step);
+            s_cameraDiagnostics.kind = CameraInterpolationKind::Linear;
         }
-        lerp(up, s_cam_prev.up, s_cam_curr.up, step);
+        lerp(up, s_camPrev.up, s_camCurr.up, step);
     }
-    s_camera_diagnostics.presentedRadius = distance_between(eye, center);
+    s_cameraDiagnostics.presentedRadius = distance_between(eye, center);
     if (!up.normalizeRS()) {
-        up = s_cam_curr.up;
+        up = s_camCurr.up;
         if (!up.normalizeRS()) {
             up = cXyz{0.0f, 1.0f, 0.0f};
         }
@@ -802,94 +814,110 @@ void interp_view(::view_class* view) {
     view->lookat.center = center;
     view->lookat.up = up;
     if (is_cam_curr_authoritative) {
-        view->bank = s_cam_curr.bank;
-        view->fovy = s_cam_curr.fovy;
-        view->aspect = s_cam_curr.aspect;
-        view->near_ = s_cam_curr.near_;
-        view->far_ = s_cam_curr.far_;
+        view->bank = s_camCurr.bank;
+        view->fovy = s_camCurr.fovy;
+        view->aspect = s_camCurr.aspect;
+        view->near_ = s_camCurr.near_;
+        view->far_ = s_camCurr.far_;
     } else {
-        view->bank = lerp(s_cam_prev.bank, s_cam_curr.bank, step);
-        view->fovy = s_cam_prev.fovy + (s_cam_curr.fovy - s_cam_prev.fovy) * step;
-        view->aspect = s_cam_prev.aspect + (s_cam_curr.aspect - s_cam_prev.aspect) * step;
-        view->near_ = s_cam_prev.near_ + (s_cam_curr.near_ - s_cam_prev.near_) * step;
-        view->far_ = s_cam_prev.far_ + (s_cam_curr.far_ - s_cam_prev.far_) * step;
+        view->bank = lerp(s_camPrev.bank, s_camCurr.bank, step);
+        view->fovy = s_camPrev.fovy + (s_camCurr.fovy - s_camPrev.fovy) * step;
+        view->aspect = s_camPrev.aspect + (s_camCurr.aspect - s_camPrev.aspect) * step;
+        view->near_ = s_camPrev.near_ + (s_camCurr.near_ - s_camPrev.near_) * step;
+        view->far_ = s_camPrev.far_ + (s_camCurr.far_ - s_camPrev.far_) * step;
     }
 
     // FRAME INTERP TODO: It might be better if I rewired the game to not clear this flag until the
     // next sim frame, but I don't care enough to right now
 #if WIDESCREEN_SUPPORT
     const f32 wide_step = is_cam_curr_authoritative ? 1.0f : step;
-    if (mDoGph_gInf_c::isWide() && !mDoGph_gInf_c::isWideZoom() && wide_step >= 0.5f ? s_cam_curr.wideZoom : s_cam_prev.wideZoom) {
+    if (mDoGph_gInf_c::isWide() && !mDoGph_gInf_c::isWideZoom() && wide_step >= 0.5f ?
+            s_camCurr.wideZoom :
+            s_camPrev.wideZoom)
+    {
         mDoGph_gInf_c::onWideZoom();
     }
 #endif
 }
 
-static void run_interpolation_callbacks() {
-    for (size_t i = 0; i < s_interpolationCallBackWork.size(); i++) {
-        auto const& work = s_interpolationCallBackWork[i];
-        work.pCallBack(work.pUserWork);
+static void run_presentation_begin_callbacks() {
+    for (const auto& work : s_interpolationCallBackWork) {
+        if (work.begin != nullptr) {
+            work.begin(work.pUserWork);
+        }
+    }
+}
+
+static void run_presentation_end_callbacks() {
+    for (size_t i = s_interpolationCallBackWork.size(); i > 0; --i) {
+        const auto& work = s_interpolationCallBackWork[i - 1];
+        if (work.end != nullptr) {
+            work.end(work.pUserWork);
+        }
     }
 }
 
 void add_interpolation_callback(InterpolationCallBack pCallBack, void* pUserWork) {
-    if (!is_enabled() || s_presentation_depth > 0 || !is_sim_frame()) {
+    add_presentation_callbacks(pCallBack, nullptr, pUserWork);
+}
+
+void add_presentation_callbacks(
+    InterpolationCallBack begin, InterpolationCallBack end, void* pUserWork) {
+    if (!is_enabled() || s_presentationDepth > 0 || !is_sim_frame()) {
+        return;
+    }
+    if (begin == nullptr && end == nullptr) {
         return;
     }
 
-    s_interpolationCallBackWork.emplace_back(pCallBack, pUserWork);
+    s_interpolationCallBackWork.push_back({begin, end, pUserWork});
 }
 
-void add_model_interpolation_callbacks(::J3DModel* model, InterpolationCallBack before,
-                                       InterpolationCallBack after, void* pUserWork) {
-    if (!is_enabled() || s_presentation_depth > 0 || !is_sim_frame() || model == nullptr) {
+void add_model_interpolation_callbacks(
+    J3DModel* model, InterpolationCallBack before, InterpolationCallBack after, void* pUserWork) {
+    if (!is_enabled() || s_presentationDepth > 0 || !is_sim_frame() || model == nullptr) {
         return;
     }
 
     s_modelInterpolationCallBackWork[model] = {before, after, pUserWork};
 }
 
-bool has_model_interpolation_callbacks(const ::J3DModel* model) {
+bool has_model_interpolation_callbacks(const J3DModel* model) {
     return s_modelInterpolationCallBackWork.contains(model);
 }
 
-void begin_model_interpolation(::J3DModel* model) {
+void begin_model_interpolation(J3DModel* model) {
     auto it = s_modelInterpolationCallBackWork.find(model);
     if (it != s_modelInterpolationCallBackWork.end() && it->second.before != nullptr) {
         it->second.before(it->second.pUserWork);
     }
 }
 
-void end_model_interpolation(::J3DModel* model) {
+void end_model_interpolation(J3DModel* model) {
     auto it = s_modelInterpolationCallBackWork.find(model);
     if (it != s_modelInterpolationCallBackWork.end() && it->second.after != nullptr) {
         it->second.after(it->second.pUserWork);
     }
 }
 
-void begin_presentation_camera() {
-    if (!is_enabled()) {
-        return;
-    }
-    if (s_presentation_depth > 0) {
-        s_presentation_depth++;
-        return;
-    }
-    if (!s_cam_prev.valid || !s_cam_curr.valid) {
-        return;
+static bool apply_presentation_camera() {
+    if (!s_camPrev.valid || !s_camCurr.valid) {
+        return false;
     }
 
     view_class* const view = dComIfGd_getView();
     if (view == nullptr) {
-        return;
+        return false;
     }
 
-    std::memcpy(&s_presentation_view_backup, view, sizeof(view_class));
+    std::memcpy(&s_presentationViewBackup, view, sizeof(view_class));
     interp_view(view);
 
-    // FRAME INTERP TODO: Largely copied from d_camera's camera_draw function from this point, got any better ideas?
+    // FRAME INTERP TODO: Largely copied from d_camera's camera_draw function from this point, got
+    // any better ideas?
     C_MTXPerspective(view->projMtx, view->fovy, view->aspect, view->near_, view->far_);
-    mDoMtx_lookAt(view->viewMtx, &view->lookat.eye, &view->lookat.center, &view->lookat.up, view->bank);
+    mDoMtx_lookAt(
+        view->viewMtx, &view->lookat.eye, &view->lookat.center, &view->lookat.up, view->bank);
 #if WIDESCREEN_SUPPORT
     mDoGph_gInf_c::setWideZoomProjection(view->projMtx);
 #endif
@@ -897,7 +925,8 @@ void begin_presentation_camera() {
     cMtx_inverse(view->viewMtx, view->invViewMtx);
 
     bool camera_attention_status = dComIfGp_getCameraAttentionStatus(0) & 0x80;
-    Z2GetAudience()->setAudioCamera(view->viewMtx, view->lookat.eye, view->lookat.center, view->fovy, view->aspect, camera_attention_status, 0, false);
+    Z2GetAudience()->setAudioCamera(view->viewMtx, view->lookat.eye, view->lookat.center,
+        view->fovy, view->aspect, camera_attention_status, 0, false);
 
     dBgS_GndChk gndchk;
     gndchk.OnWaterGrp();
@@ -943,25 +972,54 @@ void begin_presentation_camera() {
 
     mDoLib_clipper::setup(view->fovy, view->aspect, view->near_, far_);
 
-    // FRAME INTERP NOTE: Removed the call to offWideZoom that was here, it causes problems with presentation during cutscenes.
+    // FRAME INTERP NOTE: Removed the call to offWideZoom that was here, it causes problems with
+    // presentation during cutscenes.
+    return true;
+}
 
-    s_presentation_depth = 1;
+void begin_presentation() {
+    if (!is_enabled()) {
+        return;
+    }
+    if (s_presentationDepth > 0) {
+        s_presentationDepth++;
+        return;
+    }
 
-    run_interpolation_callbacks();
+    s_presentationDepth = 1;
+    s_presentationCameraApplied = apply_presentation_camera();
+    run_presentation_begin_callbacks();
+}
+
+void end_presentation() {
+    if (s_presentationDepth == 0) {
+        return;
+    }
+    s_presentationDepth--;
+    if (s_presentationDepth > 0) {
+        return;
+    }
+
+    run_presentation_end_callbacks();
+
+    if (s_presentationCameraApplied) {
+        view_class* const view = dComIfGd_getView();
+        if (view != nullptr) {
+            std::memcpy(view, &s_presentationViewBackup, sizeof(view_class));
+        }
+        s_presentationCameraApplied = false;
+    }
+}
+
+bool is_presentation_active() {
+    return s_presentationDepth > 0;
+}
+
+void begin_presentation_camera() {
+    begin_presentation();
 }
 
 void end_presentation_camera() {
-    if (s_presentation_depth == 0) {
-        return;
-    }
-    s_presentation_depth--;
-    if (s_presentation_depth > 0) {
-        return;
-    }
-
-    view_class* const view = dComIfGd_getView();
-    if (view != nullptr) {
-        std::memcpy(view, &s_presentation_view_backup, sizeof(view_class));
-    }
+    end_presentation();
 }
 }  // namespace dusk::frame_interp

@@ -53,6 +53,7 @@
 
 #if TARGET_PC
 #include "dusk/action_bindings.h"
+#include "dusk/presentation_skeleton.h"
 #include "dusk/settings.h"
 #include "res/Object/Alink.h"
 #include <cstring>
@@ -5881,6 +5882,10 @@ void daAlink_c::setSwordPos() {
 
 void daAlink_c::setItemMatrix(int param_0) {
     mSheathModel->setBaseTRMtx(mpLinkModel->getAnmMtx(field_0x30b6));
+#if TARGET_PC
+    dusk::presentation_skeleton::set_model_attachment(
+        mSheathModel, mpLinkModel, field_0x30b6);
+#endif
     modelCalc(mSheathModel);
 
     int var_r26;
@@ -5892,12 +5897,20 @@ void daAlink_c::setItemMatrix(int param_0) {
     if (!checkNoResetFlg3(FLG3_UNK_4000000)) {
         if (mEquipItem == 0x103 || param_0 != 0) {
             mSwordModel->setBaseTRMtx(mpLinkModel->getAnmMtx(mLeftItemJntNo));
+#if TARGET_PC
+            dusk::presentation_skeleton::set_model_attachment(
+                mSwordModel, mpLinkModel, mLeftItemJntNo);
+#endif
             var_r26 = 1;
         } else {
             mDoMtx_stack_c::copy(mpLinkModel->getAnmMtx(field_0x30b6));
             mDoMtx_stack_c::transM(-18.5f, 0.14f, 12.2f);
             mDoMtx_stack_c::XYZrotM(0, cM_deg2s(33.1f), 0);
             mSwordModel->setBaseTRMtx(mDoMtx_stack_c::get());
+#if TARGET_PC
+            dusk::presentation_skeleton::set_model_attachment(
+                mSwordModel, mpLinkModel, field_0x30b6);
+#endif
             var_r26 = 2;
         }
 
@@ -5928,6 +5941,10 @@ void daAlink_c::setItemMatrix(int param_0) {
             )
         {
             mShieldModel->setBaseTRMtx(mpLinkModel->getAnmMtx(mRightItemJntNo));
+#if TARGET_PC
+            dusk::presentation_skeleton::set_model_attachment(
+                mShieldModel, mpLinkModel, mRightItemJntNo);
+#endif
 
             if (checkShieldGet()) {
                 field_0x2e44.offPassNum(0xF);
@@ -5947,6 +5964,10 @@ void daAlink_c::setItemMatrix(int param_0) {
             mDoMtx_stack_c::transM(4.2f, -4.4f, -20.0f);
             mDoMtx_stack_c::XYZrotM(cM_deg2s(91.0f), cM_deg2s(57.0f), cM_deg2s(180.0f));
             mShieldModel->setBaseTRMtx(mDoMtx_stack_c::get());
+#if TARGET_PC
+            dusk::presentation_skeleton::set_model_attachment(
+                mShieldModel, mpLinkModel, field_0x30b6);
+#endif
 
             if (!checkShieldGet()) {
                 mDoAud_setLinkShieldType(0, 2);
@@ -5965,8 +5986,14 @@ void daAlink_c::setItemMatrix(int param_0) {
     }
 
     mpLinkFaceModel->setBaseTRMtx(mpLinkModel->getAnmMtx(4));
+#if TARGET_PC
+    dusk::presentation_skeleton::set_model_attachment(mpLinkFaceModel, mpLinkModel, 4);
+#endif
     modelCalc(mpLinkFaceModel);
     mpLinkHatModel->setBaseTRMtx(mpLinkModel->getAnmMtx(4));
+#if TARGET_PC
+    dusk::presentation_skeleton::set_model_attachment(mpLinkHatModel, mpLinkModel, 4);
+#endif
 
     if ((mpDemoHDTmpBck != NULL) && mpLinkHatModel != NULL && mClothesChangeWaitTimer == 0) {
         if (mpDemoHDTmpBck->getBckAnm() != NULL) {

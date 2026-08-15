@@ -101,18 +101,26 @@ bool sample_actor_pose(const ::fopAc_ac_c* actor, float step, ActorPresentationP
 size_t recorded_actor_pose_count();
 void record_final_mtx(Mtx m, const void *key);
 void record_final_mtx(Mtx m);
+bool override_presentation_mtx(const void* key, const Mtx value);
 
 bool lookup_replacement(const void* key, Mtx out);
 bool lookup_concat_replacement(const void* lhs, const void* rhs, Mtx out);
 
 typedef void (*InterpolationCallBack)(void* pUserWork);
 void add_interpolation_callback(InterpolationCallBack pCallBack, void* pUserWork);
+void add_presentation_callbacks(InterpolationCallBack begin, InterpolationCallBack end,
+                                void* pUserWork);
 void add_model_interpolation_callbacks(::J3DModel* model, InterpolationCallBack before,
                                        InterpolationCallBack after, void* pUserWork);
 bool has_model_interpolation_callbacks(const ::J3DModel* model);
 void begin_model_interpolation(::J3DModel* model);
 void end_model_interpolation(::J3DModel* model);
 
+void begin_presentation();
+void end_presentation();
+bool is_presentation_active();
+
+// Compatibility names for callers that only care about camera presentation.
 void begin_presentation_camera();
 void end_presentation_camera();
 

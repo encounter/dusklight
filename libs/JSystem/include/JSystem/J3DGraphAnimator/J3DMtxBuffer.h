@@ -34,6 +34,9 @@ public:
     void setScaleFlag(int idx, u8 flag) { mpScaleFlagArr[idx] = flag; }
     u32* getCurrentViewNoPtr() { return &mCurrentViewNo; }
     u8* getScaleFlagArray() const { return mpScaleFlagArr; }
+#if TARGET_PC
+    u8* getEnvScaleFlagArray() const { return mpEvlpScaleFlagArr; }
+#endif
     u8 getScaleFlag(int idx) const { return mpScaleFlagArr[idx]; }
     u8 getEnvScaleFlag(int idx) const { return mpEvlpScaleFlagArr[idx]; }
     Mtx** getDrawMtxPtrPtr() { return mpDrawMtxArr[1]; }

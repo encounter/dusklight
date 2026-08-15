@@ -395,6 +395,9 @@ public:
     virtual void calc();
 
     J3DModel* getModel() { return mpModel; }
+#if TARGET_PC
+    bool hasPresentationCallbacks() const { return mpCallback1 != NULL || mpCallback2 != NULL; }
+#endif
 
 private:
     /* 0x38 */ mDoExt_McaMorfCallBack1_c* mpCallback1;
@@ -433,6 +436,9 @@ public:
     Quaternion* getOldQuaternion() { return mpQuat; }
     void offTranslate() { mTranslate = true; }
     void setTranslateScale(const cXyz& scale) { mTranslateScale = scale; }
+#if TARGET_PC
+    bool hasPresentationCallbacks() const { return mpCallback1 != NULL || mpCallback2 != NULL; }
+#endif
 
 private:
     /* 0x38 */ mDoExt_McaMorfCallBack1_c* mpCallback1;
@@ -464,6 +470,11 @@ public:
     virtual void calc();
 
     inline f32 getAnmRate() { return mAnmRate; }
+#if TARGET_PC
+    J3DAnmTransform* getSecondaryAnm() const { return field_0x40; }
+    void setPresentationAnmRate(f32 rate) { mAnmRate = rate; }
+    bool hasPresentationCallbacks() const { return mpCallback1 != NULL || mpCallback2 != NULL; }
+#endif
     inline void changeAnm(J3DAnmTransform* anm, J3DAnmTransform* anm2) {
         mpAnm = anm;
         field_0x40 = anm2;

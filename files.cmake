@@ -1460,6 +1460,7 @@ set(DUSK_FILES
         src/dusk/layout.cpp
         src/dusk/livesplit.cpp
         src/dusk/logging.cpp
+        src/dusk/matrix_interpolation.cpp
         src/dusk/menu_pointer.cpp
         src/dusk/menu_pointer.h
         src/dusk/mods/loader/bundle_disk.cpp
@@ -1506,6 +1507,7 @@ set(DUSK_FILES
         src/dusk/mouse.cpp
         src/dusk/presentation.cpp
         src/dusk/presentation.hpp
+        src/dusk/presentation_skeleton.cpp
         src/dusk/scope_guard.hpp
         src/dusk/settings.cpp
         src/dusk/speedrun.cpp
