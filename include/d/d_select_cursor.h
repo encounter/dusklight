@@ -88,6 +88,8 @@ private:
     /* 0x60 */ f32 mParam1;
 #ifdef TARGET_PC
     f32 mBaseParam1;
+    f32 mOscillationPhase;
+    f32 mAlphaFade;
 #endif
     /* 0x64 */ f32 mParam2;
     /* 0x68 */ f32 mParam3;
