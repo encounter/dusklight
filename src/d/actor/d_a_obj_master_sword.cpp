@@ -10,6 +10,20 @@
 #include "d/d_com_inf_game.h"
 #include "d/d_meter2_info.h"
 
+#if TARGET_PC
+#include "dusk/mods/item.hpp"
+#endif
+
+#if TARGET_PC
+namespace {
+
+constexpr const char* kMasterSwordPedestalCheck = "master_sword";
+constexpr const char* kShadowCrystalPedestalCheck = "shadow_crystal";
+constexpr u16 kTransformingUnlocked = 0xD04;
+
+}  // namespace
+#endif
+
 DUSK_GAME_DATA daObjMasterSword_Attr_c const daObjMasterSword_c::mAttr = {1.0f};
 
 void daObjMasterSword_c::initBaseMtx() {
@@ -45,6 +59,39 @@ void daObjMasterSword_c::executeWait() {
     }
 
     if (fopAcM_checkCarryNow(this)) {
+#if TARGET_PC
+        const u8 masterSwordItem =
+            dusk::mods::item_check(kMasterSwordPedestalCheck, dItemNo_MASTER_SWORD_e, this);
+        const u8 shadowCrystalItem =
+            dusk::mods::item_check(kShadowCrystalPedestalCheck, dItemNo_NONE_e, this);
+
+        // Preserve the original event when neither check changes. If either is overridden, queue
+        // the resolved rewards and reproduce the vanilla side effects without starting the event.
+        if (masterSwordItem != dItemNo_MASTER_SWORD_e || shadowCrystalItem != dItemNo_NONE_e) {
+            dusk::mods::ResolvedItemGive gives[2];
+            size_t giveCount = 0;
+            if (masterSwordItem != dItemNo_NONE_e) {
+                gives[giveCount++] = {kMasterSwordPedestalCheck, masterSwordItem};
+            }
+            if (shadowCrystalItem != dItemNo_NONE_e) {
+                gives[giveCount++] = {kShadowCrystalPedestalCheck, shadowCrystalItem};
+            }
+
+            if (!dusk::mods::item_give_enqueue_resolved(gives, giveCount)) {
+                return;
+            }
+
+            // Shadow Crystal is a fabricated check. Its vanilla NONE result means the pedestal
+            // performs the original transform unlock; an override defers that effect to the item.
+            if (shadowCrystalItem == dItemNo_NONE_e) {
+                dComIfGs_onEventBit(kTransformingUnlocked);
+            }
+
+            dComIfGs_onTmpBit(dSv_event_tmp_flag_c::tempBitLabels[73]);
+            dComIfGs_onEventBit(dSv_event_flag_c::saveBitLabels[getFlagNo()]);
+            return;
+        }
+#endif
         dMeter2Info_setCloth(dItemNo_WEAR_KOKIRI_e, false);
         fopAcM_orderMapToolEvent(this, getEventID(), 0xFF, 0xFFFF, 1, 0);
     }
@@ -186,6 +233,14 @@ int daObjMasterSword_c::execute() {
     mBrk.play();
 
     if (dComIfGs_isTmpBit(dSv_event_tmp_flag_c::tempBitLabels[73])) {
+#if TARGET_PC
+        // The overridden-check path completes the pedestal from executeWait() during this same
+        // execute call. Its save flag distinguishes it from the vanilla event setting T_0073.
+        if (dComIfGs_isEventBit(dSv_event_flag_c::saveBitLabels[getFlagNo()])) {
+            fopAcM_delete(this);
+            return 1;
+        }
+#endif
         dComIfGs_onItemFirstBit(dItemNo_MASTER_SWORD_e);
         dMeter2Info_setSword(dItemNo_MASTER_SWORD_e, false);
         dComIfGs_setSelectEquipSword(dItemNo_MASTER_SWORD_e);

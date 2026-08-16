@@ -528,6 +528,8 @@ std::string nameLookupOverride(const std::string& locationName) {
         {"Plumm Fruit Balloon Minigame", "plumm_minigame_reward"},
         {"Renados Letter", "renado_letter"},
         {"Rutelas Blessing", "zora_armor"},
+        {"Sacred Grove Pedestal Master Sword", "master_sword"},
+        {"Sacred Grove Pedestal Shadow Crystal", "shadow_crystal"},
         {"Skybook From Impaz", "skybook"},
         {"Snowboard Racing Prize", "snowboard_race_reward"},
         {"Snowpeak Ruins Ball and Chain", "ball_and_chain:D_MN11"},

@@ -1361,8 +1361,8 @@ RandomizerContext WriteSeedData(randomizer::logic::world::World* world) {
         }
 
         // Items that we lookup just by calling their location name
-        if (location->HasCategories("Name Lookup")) {
-            for (const auto& locationNameNode : metaData["Name Lookup"]) {
+        if (const auto& nameLookupNode = metaData["Name Lookup"]) {
+            for (const auto& locationNameNode : nameLookupNode) {
                 const auto& locationName = nameLookupOverride(locationNameNode.as<std::string>());
                 const int itemId = location->GetCurrentItem()->GetID();
                 randoData.mItemLocations[locationName].itemId = itemId;

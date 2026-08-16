@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 class fopAc_ac_c;
@@ -28,6 +29,14 @@ uint32_t item_give_tag_sky_character();
 
 void item_check_enqueue(const char* name, uint8_t itemNo);
 void item_check_enqueue_poe(uint8_t bitNo, uint8_t itemNo);
+
+struct ResolvedItemGive {
+    const char* checkName;
+    uint8_t itemNo;
+};
+
+/* Atomically enqueue items that have already been resolved. */
+bool item_give_enqueue_resolved(const ResolvedItemGive* gives, size_t giveCount);
 
 void item_granted(uint8_t itemNo, uint32_t giveTag, fopAc_ac_c* giver);
 

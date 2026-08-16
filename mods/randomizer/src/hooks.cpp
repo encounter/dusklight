@@ -30,7 +30,6 @@
 #include "d/actor/d_a_npc_zrc.h"
 #include "d/actor/d_a_npc_zrz.h"
 #include "d/actor/d_a_obj_bosswarp.h"
-#include "d/actor/d_a_obj_master_sword.h"
 #include "d/actor/d_a_obj_swBallC.h"
 #include "d/actor/d_a_obj_zra_rock.h"
 #include "d/actor/d_a_tag_kmsg.h"
@@ -132,9 +131,6 @@ DEFINE_HOOK(&daNpc_ykM_c::isDelete, daNpc_ykM_c__isDelete);
 DEFINE_HOOK(&daNpc_ykW_c::isDelete, daNpc_ykW_c__isDelete);
 
 DEFINE_HOOK_SYMBOL("daE_MD_Create", int(fopAc_ac_c*), daE_MD_c__create);
-
-DEFINE_HOOK(&fopAcM_orderMapToolEvent, orderMapToolEvent);
-DEFINE_HOOK_SYMBOL("daObjMasterSword_Execute", int(daObjMasterSword_c*), daObjMasterSword_c__execute);
 
 DEFINE_HOOK(&dScnName_c::changeGameScene, dScnName_c__changeGameScene);
 
@@ -2152,38 +2148,6 @@ void hookPostEMdCreate(ModContext*, void* args, void*, void*) {
     hookEMdCreate_prevSkipInfo = 0;
 }
 
-HookAction hookPreOrderMapToolEvent(ModContext*, void* args, void*, void*) {
-    auto eventId = mods::arg<u8>(args, 1);
-
-    // skip starting the master sword cutscene so we can handle the checks manually
-    if (daAlink_c::checkStageName("F_SP117") && eventId == 2) {
-        // Set the necessary flags to de-spawn the MS and set the save file event flag.
-        dComIfGs_onTmpBit(0x820);
-        dComIfGs_onEventBit(0x2120);
-        return HOOK_SKIP_ORIGINAL;
-    }
-
-    return HOOK_CONTINUE;
-}
-
-HookAction hookPreMasterSwordExecute(ModContext*, void* args, void* retval, void*) {
-    auto* i_this = mods::arg<daObjMasterSword_c*>(args, 0);
-
-    (i_this->*i_this->mActionFunc[1])();
-    dComIfG_Ccsp()->Set(&i_this->mCyl);
-
-    i_this->mBtk.play();
-    i_this->mBrk.play();
-
-    if (dComIfGs_isTmpBit(dSv_event_tmp_flag_c::tempBitLabels[73])) {
-        // Don't automatically give the master sword in randomizer
-        fopAcM_delete(i_this);
-    }
-
-    *static_cast<int*>(retval) = 1;
-    return HOOK_SKIP_ORIGINAL;
-}
-
 void hookPost_dScnName_c__changeGameScene(ModContext* ctx, void* args, void* retval, void* userdata) {
     if (!mDoRst::isReset() && !fopOvlpM_IsPeek()) {
         randomizer::session::registerStartingLocation();
@@ -2617,9 +2581,6 @@ ModResult initialize() {
     ADD_HOOK_PRE(daE_MD_c__create, hookPreEMdCreate);
     ADD_HOOK_POST(daE_MD_c__create, hookPostEMdCreate);
 
-    ADD_HOOK_PRE(orderMapToolEvent, hookPreOrderMapToolEvent);
-    ADD_HOOK_PRE(daObjMasterSword_c__execute, hookPreMasterSwordExecute);
-
     ADD_HOOK_POST(dScnName_c__changeGameScene, hookPost_dScnName_c__changeGameScene);
 
     ADD_HOOK_POST(daNpc_zrZ_c__isDelete, hookPostNpcZrzIsDelete);
@@ -2734,9 +2695,6 @@ ModResult uninstall() {
     mods::hook::uninstall<daNpc_ykW_c__isDelete>(svc_hook);
 
     mods::hook::uninstall<daE_MD_c__create>(svc_hook);
-
-    mods::hook::uninstall<orderMapToolEvent>(svc_hook);
-    mods::hook::uninstall<daObjMasterSword_c__execute>(svc_hook);
 
     mods::hook::uninstall<dScnName_c__changeGameScene>();
 

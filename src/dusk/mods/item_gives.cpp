@@ -209,6 +209,29 @@ void item_check_enqueue(const char* name, uint8_t itemNo) {
     });
 }
 
+bool item_give_enqueue_resolved(const ResolvedItemGive* gives, size_t giveCount) {
+    if ((gives == nullptr && giveCount != 0) || giveCount > kGiveQueueLimit - s_giveQueue.size()) {
+        Log.warn("item give queue has no room for {} resolved give(s)", giveCount);
+        return false;
+    }
+
+    for (size_t i = 0; i < giveCount; ++i) {
+        if (gives[i].itemNo == dItemNo_NONE_e) {
+            Log.warn("refusing to enqueue resolved NONE item for check '{}'",
+                gives[i].checkName != nullptr ? gives[i].checkName : "");
+            return false;
+        }
+    }
+
+    for (size_t i = 0; i < giveCount; ++i) {
+        s_giveQueue.push_back({
+            .tag = item_give_tag(gives[i].checkName),
+            .itemNo = gives[i].itemNo,
+        });
+    }
+    return true;
+}
+
 void item_granted(uint8_t itemNo, uint32_t giveTag, fopAc_ac_c* giver) {
     ItemGiveOrigin origin = ITEM_GIVE_ORIGIN_GAME;
     if (s_dispatchingSilent) {

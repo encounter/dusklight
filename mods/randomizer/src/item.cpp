@@ -19,6 +19,10 @@ static void item_func_FOOLISH_ITEM() {
     }
 }
 
+static void item_func_SHADOW_CRYSTAL() {
+    dComIfGs_onEventBit(TRANSFORMING_UNLOCKED);
+}
+
 static void item_func_ORDON_PORTAL() {
     dComIfGs_onStageSwitch(0x0, 0x34); // Unlock Ordon Portal
 }
@@ -467,7 +471,7 @@ static void (*item_func_ptr_randomizer[256])() = {
     /* 0x2F */ item_func_WEAR_KOKIRI,
     /* 0x30 */ item_func_ARMOR,
     /* 0x31 */ item_func_WEAR_ZORA,
-    /* 0x32 */ item_func_MAGIC_LV1,
+    /* 0x32 */ item_func_SHADOW_CRYSTAL,
     /* 0x33 */ item_func_DUNGEON_EXIT_2,
     /* 0x34 */ item_func_WALLET_LV1,
     /* 0x35 */ item_func_WALLET_LV2,
