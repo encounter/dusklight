@@ -112,9 +112,8 @@ void event_remove_trade_item(ModContext*, const FlowEventContext* event, void*) 
 
 std::vector<uint8_t> encoded_text(const std::string& text) {
     std::vector<uint8_t> result{text.begin(), text.end()};
-    if (result.empty() || result.back() != 0) {
-        result.push_back(0);
-    }
+    // A message control code can end in a zero-valued argument, which is not a terminator.
+    result.push_back(0);
     return result;
 }
 
