@@ -155,6 +155,18 @@ void observe_give(ModContext*, const ItemGiveInfo* info, void*) {
         it != ctx.mItemLocations.end())
     {
         randomizer_setTempFlag(it->second);
+
+        const bool persistParityCheck =
+            std::strcmp(info->check_name, ITEM_CHECK_CORO_LANTERN) == 0 ||
+            std::strcmp(info->check_name, ITEM_CHECK_CORO_GATE_KEY) == 0 ||
+            std::strcmp(info->check_name, ITEM_CHECK_SHAD_DOMINION_ROD) == 0 ||
+            std::strcmp(info->check_name, "shop:R_SP160:97") == 0 ||
+            std::strcmp(info->check_name, "shop:R_SP160:102") == 0 ||
+            std::strcmp(info->check_name, "shop:R_SP160:44") == 0 ||
+            std::strcmp(info->check_name, "shop:F_SP116:16") == 0;
+        if (persistParityCheck && it->second.stage == 0xFF && it->second.flag != 0xFFFF) {
+            dComIfGs_onEventBit(it->second.flag);
+        }
     }
 
     if (auto key = parse_derived(info->check_name, ITEM_CHECK_FREESTANDING_PREFIX);

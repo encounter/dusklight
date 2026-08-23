@@ -10,6 +10,9 @@
 #include "d/actor/d_a_npc.h"
 #include "d/actor/d_a_tag_evtarea.h"
 #include "d/d_msg_object.h"
+#if TARGET_PC
+#include "mods/items.h"
+#endif
 #include <cstring>
 
 DUSK_GAME_DATA const daNpcShad_HIOParam daNpcShad_Param_c::m = {
@@ -1490,7 +1493,27 @@ bool daNpcShad_c::talk(void* param_1) {
                     OS_REPORT("会話終了時 イベントID=%d アイテムNo=%d\n", eventID, itemNo); // At the end of the conversation, Event ID=%d Item No=%d
 
                     if (eventID == 1) {
+#if TARGET_PC
+                        if (strcmp(dComIfGp_getStartStageName(), "R_SP209") == 0 &&
+                            itemNo == dItemNo_COPY_ROD_e)
+                        {
+                            const auto itemCheck = dusk::mods::item_check_commit(
+                                ITEM_CHECK_SHAD_DOMINION_ROD, itemNo, this);
+                            itemNo = itemCheck.itemNo;
+                            if (itemNo == dItemNo_NONE_e) {
+                                dusk::mods::item_check_complete(itemCheck, this);
+                                setWaitAction();
+                            } else {
+                                mItemPartnerId = fopAcM_createItemForPresentDemo(
+                                    &current.pos, itemNo, 0, -1, -1, NULL, NULL, itemCheck.tag);
+                            }
+                        } else {
+                            mItemPartnerId = fopAcM_createItemForPresentDemo(
+                                &current.pos, itemNo, 0, -1, -1, NULL, NULL, 0);
+                        }
+#else
                         mItemPartnerId = fopAcM_createItemForPresentDemo(&current.pos, itemNo, 0, -1, -1, NULL, NULL);
+#endif
 
                         if (mItemPartnerId != fpcM_ERROR_PROCESS_ID_e) {
                             eventIdx = dComIfGp_getEventManager().getEventIdx(this, "DEFAULT_GETITEM", 0xFF);
