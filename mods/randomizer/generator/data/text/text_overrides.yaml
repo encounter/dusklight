@@ -371,6 +371,54 @@
   Group: 4
   Message Id: 5451
 
+- Only If: Shop_Items == On
+  Name: Castle Town Goron Red Potion Confirmation Initial Text
+  Group: 4
+  Message Id: 6626
+
+- Only If: Shop_Items == On
+  Name: Castle Town Goron Red Potion Confirmation Later Text
+  Group: 4
+  Message Id: 6628
+
+- Only If: Shop_Items == On
+  Name: Castle Town Goron Red Potion Too Expensive Text
+  Group: 4
+  Message Id: 6629
+
+- Only If: Shop_Items == On
+  Name: Castle Town Goron Lantern Oil Confirmation Initial Text
+  Group: 4
+  Message Id: 6614
+
+- Only If: Shop_Items == On
+  Name: Castle Town Goron Lantern Oil Confirmation Later Text
+  Group: 4
+  Message Id: 6616
+
+- Only If: Shop_Items == On
+  Name: Castle Town Goron Lantern Oil Too Expensive Text
+  Group: 4
+  Message Id: 6607
+
+- Only If: Shop_Items == On
+  Name: Castle Town Goron Arrow Refill Confirmation Initial Text
+  Group: 4
+  Message Id: 6651
+
+- Only If: Shop_Items == On
+  Name: Castle Town Goron Arrow Refill Confirmation Later Text
+  Group: 4
+  Message Id: 6654
+
+- Name: Castle Town Goron Hylian Shield Confirmation Initial Text
+  Group: 4
+  Message Id: 6662
+
+- Name: Castle Town Goron Hylian Shield Confirmation Later Text
+  Group: 4
+  Message Id: 6664
+
 - Name: Charlo Donation Ask Text
   Group: 4
   Message Id: 6402

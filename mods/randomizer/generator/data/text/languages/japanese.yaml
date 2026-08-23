@@ -482,6 +482,14 @@ Red Potion Shop:
   Cryptic:
     Text: a {health refill}
 
+Lantern Oil Shop:
+  Standard:
+    Text: Lantern Oil Shop
+  Pretty:
+    Text: Lantern Oil
+  Cryptic:
+    Text: an {oil refill}
+
 Blue Potion Shop:
   Standard:
     Text: Blue Potion Shop
@@ -2100,6 +2108,57 @@ Kakariko Malo Mart Hylian Shield Text Template:
 #              LIMITED SUPPLY!
 #      Don't let them sell out before you
 #      buy one!
+
+
+Castle Town Goron Red Potion Confirmation Initial Text Template:
+  Standard:
+    Text: |-
+      How about <Item Pretty Name> for <purple>40 Rupees<white>? Want it?<begin choice>
+
+Castle Town Goron Red Potion Confirmation Later Text Template:
+  Standard:
+    Text: |-
+      <Item Pretty Name> costs <purple>40 Rupees<white>. Want to buy it?<begin choice>
+
+Castle Town Goron Red Potion Too Expensive Text Template:
+  Standard:
+    Text: |-
+      <Item Pretty Name> costs <purple>40 Rupees<white>. You do not have enough Rupees.
+
+Castle Town Goron Lantern Oil Confirmation Initial Text Template:
+  Standard:
+    Text: |-
+      How about <Item Pretty Name> for <purple>30 Rupees<white>? Want it?<begin choice>
+
+Castle Town Goron Lantern Oil Confirmation Later Text Template:
+  Standard:
+    Text: |-
+      <Item Pretty Name> costs <purple>30 Rupees<white>. Want to buy it?<begin choice>
+
+Castle Town Goron Lantern Oil Too Expensive Text Template:
+  Standard:
+    Text: |-
+      <Item Pretty Name> costs <purple>30 Rupees<white>. You do not have enough Rupees.
+
+Castle Town Goron Arrow Refill Confirmation Initial Text Template:
+  Standard:
+    Text: |-
+      How about <Item Pretty Name> for <purple>40 Rupees<white>? Want it?<begin choice>
+
+Castle Town Goron Arrow Refill Confirmation Later Text Template:
+  Standard:
+    Text: |-
+      <Item Pretty Name> costs <purple>40 Rupees<white>. Want to buy it?<begin choice>
+
+Castle Town Goron Hylian Shield Confirmation Initial Text Template:
+  Standard:
+    Text: |-
+      How about <Item Pretty Name> for <purple>210 Rupees<white>? Want it?<begin choice>
+
+Castle Town Goron Hylian Shield Confirmation Later Text Template:
+  Standard:
+    Text: |-
+      <Item Pretty Name> costs <purple>210 Rupees<white>. Want to buy it?<begin choice>
 
 Chudleys Shop Magic Armor Text Template:
   Standard:
