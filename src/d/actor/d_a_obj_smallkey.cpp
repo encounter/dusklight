@@ -155,7 +155,15 @@ int daKey_c::create() {
         mIsPrmInit = TRUE;
     }
 
+#if TARGET_PC
+    m_itemNo = dusk::mods::item_check_freestanding(getSaveBitNo(), dItemNo_SMALL_KEY_e, this);
+    if (m_itemNo == dItemNo_NONE_e) {
+        // Keep the pickup visible until the empty check is collected.
+        m_itemNo = dItemNo_SMALL_KEY_e;
+    }
+#else
     m_itemNo = dItemNo_SMALL_KEY_e;
+#endif
 
     if (strcmp(dComIfGp_getStartStageName(), "F_SP118") == 0) {
         OS_REPORT(" SMKEY 0\n");
@@ -317,10 +325,26 @@ int daKey_c::initActionOrderGetDemo() {
     hide();
     effectStop();
 
+#if TARGET_PC
+    const auto itemCheck = dusk::mods::item_check_commit(
+        dusk::mods::item_give_tag_freestanding(getSaveBitNo()), dItemNo_SMALL_KEY_e, this);
+    m_itemNo = itemCheck.itemNo;
+    if (m_itemNo == dItemNo_NONE_e) {
+        dusk::mods::item_check_complete(itemCheck, this);
+        dComIfGs_onTbox(getSaveBitNo());
+        dTres_c::offStatus(getSaveBitNo(), 1);
+        dComIfGp_event_reset();
+        fopAcM_delete(this);
+        return 1;
+    }
+#endif
+
     fopAcM_orderItemEvent(this, 0, 0);
     eventInfo.onCondition(8);
 
-    mItemId = fopAcM_createItemForTrBoxDemo(&current.pos, m_itemNo, -1, fopAcM_GetRoomNo(this), NULL, NULL);
+    mItemId = fopAcM_createItemForTrBoxDemo(
+        &current.pos, m_itemNo, -1, fopAcM_GetRoomNo(this), NULL,
+        NULL IF_DUSK_ARG(itemCheck.tag));
     JUT_ASSERT(699, mItemId != fpcM_ERROR_PROCESS_ID_e);
 
     setStatus(STATUS_ORDER_GET_DEMO_e);
