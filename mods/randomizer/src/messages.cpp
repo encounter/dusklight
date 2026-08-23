@@ -229,6 +229,7 @@ bool resolve_query(const std::string& name, FlowQueryId& out) {
         {"item owned", FLOW_QUERY_ITEM_OWNED},
         {"save switch", FLOW_QUERY_SAVE_SWITCH},
         {"empty bottles", FLOW_QUERY_EMPTY_BOTTLES},
+        {"select 2", FLOW_QUERY_SELECT_2},
         {"select 2 cancel", FLOW_QUERY_SELECT_2_CANCEL},
         {"select 3 cancel", FLOW_QUERY_SELECT_3_CANCEL},
     };
@@ -253,6 +254,7 @@ bool resolve_event(const std::string& name, FlowEventId& out) {
         {"remove rupees", FLOW_EVENT_REMOVE_RUPEES},
         {"start event", FLOW_EVENT_START_EVENT},
         {"select vertical", FLOW_EVENT_SELECT_VERTICAL},
+        {"set event flag", FLOW_EVENT_SET_EVENT_FLAG},
         {"set switch", FLOW_EVENT_SET_SWITCH},
         {"shop sold out", FLOW_EVENT_SHOP_SOLD_OUT},
         {"add donation", FLOW_EVENT_ADD_DONATION},

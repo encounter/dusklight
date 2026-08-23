@@ -138,6 +138,89 @@
     parameters: 0x00000081
     next: 0x2D8
 
+  # The shield offer is a location even when Link already owns a Hylian Shield.
+  - index: 0xA16
+    type: branch
+    query: event flag
+    parameters: 0x032F
+    results:
+      - 0xA10
+      - 0xA02
+
+  # The give observer persists each shop flag only after the item event succeeds. The original
+  # temporary-flag nodes remain in place for the native conversation state machine.
+  - only if: Shop_Items == On
+    index: 0x9BF
+    type: branch
+    query: event flag
+    parameters: 0x0330
+    results:
+      - 0x9B7
+      - 0x9AA
+
+  - only if: Shop_Items == On
+    index: 0x9A8
+    type: branch
+    query: empty bottles
+    parameters: 0x0001
+    results:
+      - 0x9B6
+      - 0x9B6
+
+  - only if: Shop_Items == On
+    index: 0x9A6
+    type: branch
+    query: event flag
+    parameters: 0x0331
+    results:
+      - 0x9A2
+      - 0x97C
+
+  - only if: Shop_Items == On
+    index: 0x97F
+    type: branch
+    query: empty bottles
+    parameters: 0x0001
+    results:
+      - 0x980
+      - 0x980
+
+  - only if: Shop_Items == On
+    index: 0x988
+    type: branch
+    query: event flag
+    parameters: 0x00FA
+    results:
+      - 0x998
+      - 0x998
+
+  - only if: Shop_Items == On
+    index: 0x9C1
+    type: branch
+    query: event flag
+    parameters: 0x0332
+    results:
+      - 0x9CD
+      - 0x9DD
+
+  - only if: Shop_Items == On
+    index: 0x9C4
+    type: branch
+    query: select 2
+    parameters: 0x0000
+    results:
+      - 0x9C5
+      - 0x9FB
+
+  - only if: Shop_Items == On
+    index: 0x9DD
+    type: branch
+    query: event flag
+    parameters: 0x00FA
+    results:
+      - 0x9E8
+      - 0x9E8
+
 5: # zel_05.bmg
   # Patch Yeta flow to always give the map check even if the player has obtained the Ordon Cheese
   - index: 0x8
