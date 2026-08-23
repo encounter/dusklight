@@ -1283,8 +1283,12 @@ RandomizerContext WriteSeedData(randomizer::logic::world::World* world) {
             for (const auto& locationNameNode : metaData["Name Lookup"]) {
                 const auto& locationName = nameLookupOverride(locationNameNode.as<std::string>());
                 const int itemId = location->GetCurrentItem()->GetID();
-                randoData.mItemLocations[locationName].itemId = itemId;
-                getNodeFlags(randoData.mItemLocations[locationName], metaData);
+                const auto [itemLocation, inserted] = randoData.mItemLocations.try_emplace(locationName);
+                if (!inserted) {
+                    throw std::runtime_error("Duplicate ItemService location identity: " + locationName);
+                }
+                itemLocation->second.itemId = itemId;
+                getNodeFlags(itemLocation->second, metaData);
             }
         }
     }

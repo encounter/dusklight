@@ -214,7 +214,10 @@ namespace randomizer::logic::world
 
             location->SetRegisteredLocationCategories(&this->_registeredLocationCategories);
 
-            this->_locationTable.emplace(name, std::move(location));
+            const auto [_, inserted] = this->_locationTable.emplace(name, std::move(location));
+            if (!inserted) {
+                throw std::runtime_error("Duplicate location name: " + name);
+            }
         }
     }
 

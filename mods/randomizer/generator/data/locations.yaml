@@ -499,6 +499,30 @@
       - Coro Bottle
     Event Flag: 0x1A08
 
+- Name: Coro Lantern
+  Original Item: Lantern
+  Categories:
+    - Overworld
+    - Npc
+    - Faron Woods
+    - ARC
+  Metadata:
+    Name Lookup:
+      - Coro Lantern
+    Event Flag: 0x0F01
+
+- Name: Coro Gate Key
+  Original Item: Coro Key
+  Categories:
+    - Overworld
+    - Npc
+    - Faron Woods
+    - ARC
+  Metadata:
+    Name Lookup:
+      - Coro Gate Key
+    Event Flag: 0x1A10
+
 - Name: Faron Woods Coro Boulder Rupee 1
   Original Item: Green Rupee
   Categories:
@@ -1381,6 +1405,18 @@
       Stage: 68
       Flag: 0x5
 
+- Name: Shad Dominion Rod
+  Original Item: Progressive Dominion Rod
+  Categories:
+    - Overworld
+    - Npc
+    - Kakariko Village
+    - ARC
+  Metadata:
+    Name Lookup:
+      - Shad Dominion Rod
+    Event Flag: 0x6308
+
 - Name: Kakariko Inn Chest
   Original Item: Red Rupee
   Categories:
@@ -1742,6 +1778,8 @@
     Freestanding Item:
       - Stage: 56
         Flag: 0x80
+    Name Lookup:
+      - Goron Springwater Rush
 
 - Name: Eldin Field Water Bomb Fish Grotto Chest
   Original Item: Purple Rupee
@@ -2431,6 +2469,66 @@
     Switch Flag:
       Stage: 73
       Flag: 0x2B
+
+- Name: Castle Town Goron Shop Red Potion
+  Original Item: Red Potion Shop
+  Categories:
+    - Overworld
+    - Castle Town
+    - Shop
+    - ARC
+  Metadata:
+    Shop:
+      - Stage: 73
+        Item: 0x61
+    Name Lookup:
+      - Castle Town Goron Shop Red Potion
+    Event Flag: 0x6340
+
+- Name: Castle Town Goron Shop Lantern Oil
+  Original Item: Lantern Oil Shop
+  Categories:
+    - Overworld
+    - Castle Town
+    - Shop
+    - ARC
+  Metadata:
+    Shop:
+      - Stage: 73
+        Item: 0x66
+    Name Lookup:
+      - Castle Town Goron Shop Lantern Oil
+    Event Flag: 0x6320
+
+- Name: Castle Town Goron Shop Hylian Shield
+  Original Item: Hylian Shield
+  Categories:
+    - Overworld
+    - Castle Town
+    - Shop
+    - ARC
+  Metadata:
+    Shop:
+      - Stage: 73
+        Item: 0x2C
+    Name Lookup:
+      - Castle Town Goron Shop Hylian Shield
+    Event Flag: 0x6380
+
+- Name: Castle Town Goron Shop Arrow Refill
+  Original Item: Arrows 30
+  Categories:
+    - Overworld
+    - Castle Town
+    - Shop
+    - ARC
+  Metadata:
+    Shop:
+      - Stage: 53
+        Item: 0x10
+    Name Lookup:
+      - Castle Town Goron Shop Arrow Refill
+    Event Flag: 0x6310
 
 # HD Only location
 # - Name: Castle Town Malo Mart Stamp
