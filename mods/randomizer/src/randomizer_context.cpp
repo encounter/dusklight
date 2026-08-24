@@ -1032,31 +1032,6 @@ void randomizer_returnToSpawn(bool tryOverride) {
     dComIfGp_setNextStage("F_SP103", 1, 1, -1);
 }
 
-u8 randomizer_getRandomFoolishItemModelID() {
-    static constexpr auto foolishItemModels = std::to_array<u8>({
-        dItemNo_Randomizer_ARMOR_e,
-        dItemNo_Randomizer_WOOD_STICK_e,
-        dItemNo_Randomizer_WOOD_SHIELD_e,
-        dItemNo_Randomizer_HYLIA_SHIELD_e,
-        dItemNo_Randomizer_MAGIC_LV1_e,
-        dItemNo_Randomizer_FISHING_ROD_1_e,
-        dItemNo_Randomizer_HAWK_EYE_e,
-        dItemNo_Randomizer_BOOMERANG_e,
-        dItemNo_Randomizer_SPINNER_e,
-        dItemNo_Randomizer_IRONBALL_e,
-        dItemNo_Randomizer_BOW_e,
-        dItemNo_Randomizer_COPY_ROD_e,
-        dItemNo_Randomizer_HOOKSHOT_e,
-        dItemNo_Randomizer_HVY_BOOTS_e,
-        dItemNo_Randomizer_PACHINKO_e,
-        dItemNo_Randomizer_BOMB_BAG_LV1_e,
-        dItemNo_Randomizer_ANCIENT_DOCUMENT_e,
-    });
-
-    u8 selectedModal = foolishItemModels[static_cast<int>(cM_rnd() * foolishItemModels.size()) % foolishItemModels.size()];
-    return verifyProgressiveItem(selectedModal);
-}
-
 u32 getActorPatchesCurrentStageKey(u8 roomNo) {
     u32 actorPatchesStageKey{};
     actorPatchesStageKey |= getStageID(dComIfGp_getStartStageName()) << 16;

@@ -30,6 +30,7 @@ public:
     bool mCreatingSave{false};
     u32 mSeedID{0};
     std::string mHash{""};
+    u8 mFoolishDisplayItem{0xFF};
 
     // Maps enum of necessary setting to enum of value
     std::unordered_map<int, int> mSettings{};
@@ -265,8 +266,6 @@ bool randomizer_checkTempleOfTimeRequirement();
 bool randomizer_mirrorChamberWallShouldExist();
 
 void randomizer_returnToSpawn(bool tryDungeon);
-
-u8 randomizer_getRandomFoolishItemModelID();
 
 /**
  * Helper function to convert raw bytes of a container to a hex string

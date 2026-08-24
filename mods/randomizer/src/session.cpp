@@ -193,7 +193,7 @@ bool activateSeed(const char* hash) {
         return false;
     }
 
-    item::apply_item_data_tables();
+    item::apply_item_data_tables(ctx.mHash);
 
     svc_mng.item->set_check_resolver(mod_ctx, nullptr, resolve_check, nullptr, &s_check_resolver);
     svc_mng.item->observe_gives(mod_ctx, observe_give, nullptr, &s_check_observer);

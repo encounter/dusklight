@@ -1797,7 +1797,7 @@ HookAction hookPreSetGetSubBgm(ModContext*, void* args, void*, void*) {
         se_type = SETYPE_ITEM_GET_ME_S;
     }
 
-    if (se_type != SETYPE_NONE || i_itemNo == dItemNo_Randomizer_FOOLISH_ITEM_e) {
+    if (se_type != SETYPE_NONE) {
         mDoAud_subBgmStart(bgmLabel[se_type]);
         dComIfGp_setMesgBgmOn();
     }

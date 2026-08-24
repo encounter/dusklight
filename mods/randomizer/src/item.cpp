@@ -10,6 +10,11 @@
 #include "stages.h"
 #include "tools.h"
 #include "verify_item_functions.h"
+#include "../generator/utility/crc32.hpp"
+
+#include <cassert>
+#include <cstring>
+#include <string_view>
 
 namespace {
 void item_func_FOOLISH_ITEM() {
@@ -1741,7 +1746,23 @@ static dItem_fieldItemResource s_vanilla_field_item_res[255];
 static dItem_itemInfo s_vanilla_item_info[255];
 static bool s_applied = false;
 
-void apply_item_data_tables() {
+static u8 select_foolish_display_item(std::string_view seedHash) {
+    // The domain and pool order define stable visuals for an existing seed hash.
+    // These models need no consumer-specific height or scale corrections.
+    static constexpr char domain[] = "dusklight:foolish-model:v1";
+    static constexpr u8 modelPool[] = {
+        dItemNo_Randomizer_HAWK_EYE_e,
+        dItemNo_Randomizer_IRONBALL_e,
+        dItemNo_Randomizer_HOOKSHOT_e,
+        dItemNo_Randomizer_HVY_BOOTS_e,
+    };
+
+    u32 hash = utility::crc32(domain, sizeof(domain));
+    hash = utility::crc32(seedHash.data(), seedHash.size(), hash);
+    return modelPool[hash % std::size(modelPool)];
+}
+
+void apply_item_data_tables(std::string_view seedHash) {
     if (s_applied) {
         return;
     }
@@ -1751,6 +1772,23 @@ void apply_item_data_tables() {
     std::memcpy(dItem_data::item_resource, item_resource_randomizer, sizeof(item_resource_randomizer));
     std::memcpy(dItem_data::field_item_res, field_item_res_randomizer, sizeof(field_item_res_randomizer));
     std::memcpy(dItem_data::item_info, item_info_randomizer, sizeof(item_info_randomizer));
+
+    constexpr u8 foolishItem = dItemNo_Randomizer_FOOLISH_ITEM_e;
+    const u8 displayItem = select_foolish_display_item(seedHash);
+    const u8 foolishFlags = dItem_data::item_info[foolishItem].mFlag;
+    assert(dItem_data::item_resource[displayItem].mArcName != nullptr);
+    assert(dItem_data::item_resource[displayItem].mBmdName >= 0);
+    assert(dItem_data::field_item_res[displayItem].mFieldArc != nullptr);
+    assert(dItem_data::field_item_res[displayItem].mItemBmdName >= 0);
+
+    dItem_data::item_resource[foolishItem] = dItem_data::item_resource[displayItem];
+    dItem_data::field_item_res[foolishItem] = dItem_data::field_item_res[displayItem];
+    dItem_data::item_info[foolishItem].mShadowSize = dItem_data::item_info[displayItem].mShadowSize;
+    dItem_data::item_info[foolishItem].mH = dItem_data::item_info[displayItem].mH;
+    dItem_data::item_info[foolishItem].mR = dItem_data::item_info[displayItem].mR;
+    assert(dItem_data::item_info[foolishItem].mFlag == foolishFlags);
+
+    randomizer_GetContext().mFoolishDisplayItem = displayItem;
     s_applied = true;
 }
 
@@ -1761,6 +1799,13 @@ void restore_item_data_tables() {
     std::memcpy(dItem_data::item_resource, s_vanilla_item_resource, sizeof(s_vanilla_item_resource));
     std::memcpy(dItem_data::field_item_res, s_vanilla_field_item_res, sizeof(s_vanilla_field_item_res));
     std::memcpy(dItem_data::item_info, s_vanilla_item_info, sizeof(s_vanilla_item_info));
+    constexpr u8 foolishItem = dItemNo_Randomizer_FOOLISH_ITEM_e;
+    assert(std::memcmp(&dItem_data::item_resource[foolishItem], &s_vanilla_item_resource[foolishItem],
+                       sizeof(dItem_itemResource)) == 0);
+    assert(std::memcmp(&dItem_data::field_item_res[foolishItem], &s_vanilla_field_item_res[foolishItem],
+                       sizeof(dItem_fieldItemResource)) == 0);
+    assert(std::memcmp(&dItem_data::item_info[foolishItem], &s_vanilla_item_info[foolishItem],
+                       sizeof(dItem_itemInfo)) == 0);
     s_applied = false;
 }
 
