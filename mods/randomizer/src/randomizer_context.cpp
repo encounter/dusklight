@@ -1275,6 +1275,10 @@ RandomizerContext WriteSeedData(randomizer::logic::world::World* world) {
             } else if (metaData["Item Flag"]) {
                 itemData.stage = metaData["Item Flag"]["Stage"].as<u8>();
                 itemData.flag = metaData["Item Flag"]["Flag"].as<u8>();
+            } else if (metaData["Freestanding Item"]) {
+                const auto& freestandingItem = metaData["Freestanding Item"][0];
+                itemData.stage = freestandingItem["Stage"].as<u8>();
+                itemData.flag = freestandingItem["Flag"].as<u8>();
             }
         };
 
