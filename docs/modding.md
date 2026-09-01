@@ -719,8 +719,9 @@ Writes that store the same value are silent. Values applied from `config.json` o
 
 ### SaveService ([`mods/svc/save.h`](../sdk/include/mods/svc/save.h))
 
-Stores named binary blobs for each save slot. Blob names are scoped to the calling mod, and each mod may store up to
-`SAVE_BLOB_BUDGET_BYTES` per slot. The service copies data passed to `set_blob`.
+Stores named binary blobs for each save slot. Blob names are scoped to the calling mod and the active game mode's save
+file, and each mod may store up to `SAVE_BLOB_BUDGET_BYTES` per slot. Game modes with the same `save_name` share blob
+storage. The service copies data passed to `set_blob`.
 
 ```cpp
 IMPORT_SERVICE(SaveService, svc_save);
@@ -743,8 +744,9 @@ if (svc_save->get_blob(mod_ctx, "state", &loaded, &loadedSize) == MOD_OK &&
 
 `set_blob`, `get_blob`, and `delete_blob` operate on the current slot, which is available after creating or loading a
 save and unavailable at file select. Blob changes are written with the next game save. File-select copy and erase
-operations update the blob data as well. Use `peek_blob` to read the calling mod's data from any slot; it uses the same
-buffer contract as `get_blob`. Pass a `NULL` buffer to either read function to query the blob size.
+operations update the blob data as well. Use `peek_blob` to read the calling mod's data from any slot in the active save
+file; it uses the same buffer contract as `get_blob`. Pass a `NULL` buffer to either read function to query the blob
+size.
 
 `observe_saves` registers callbacks for new, loaded, and written saves. New-save callbacks run after the slot's blobs
 are cleared. Observers are removed automatically when the mod is detached, so the output handle is only needed for
@@ -1097,7 +1099,9 @@ state for the current frame. Register and unregister using `register_camera_oper
 
 Allows a mod to register a game mode with callbacks for key gameplay and save lifecycle events. Registered game modes
 appear in the prelaunch menu. Game modes may use a unique set of saves by configuring `save_name`; leave it empty to use
-the vanilla `gczelda2` save.
+the vanilla `gczelda2` save. Blob storage is isolated by `save_name`, so modes that share a save file also share their
+per-slot SaveService blobs. Save names may contain up to 31 letters, digits, periods, underscores, or hyphens; `.` and
+`..` are not valid names.
 
 ```cpp
 IMPORT_SERVICE(LogService, svc_log);

@@ -12,8 +12,11 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstring>
 #include <exception>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -76,6 +79,32 @@ std::string get_mod_game_mode_id(ModContext* ctx, const std::string& id) {
     return fullId;
 }
 
+std::optional<std::string> validate_save_name(const GameModeDesc& desc, std::string_view id) {
+    const auto* terminator =
+        static_cast<const char*>(std::memchr(desc.save_name, '\0', sizeof(desc.save_name)));
+    if (terminator == nullptr) {
+        Log.error("Game mode {} has a save name longer than {} characters", id,
+            sizeof(desc.save_name) - 1);
+        return std::nullopt;
+    }
+
+    std::string saveName{desc.save_name, terminator};
+    if (saveName.empty()) {
+        return saveName;
+    }
+    const bool validCharacters = std::ranges::all_of(saveName, [](char ch) {
+        return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') ||
+               ch == '.' || ch == '_' || ch == '-';
+    });
+    if (!validCharacters || saveName == "." || saveName == "..") {
+        Log.error("Game mode {} has invalid save name '{}'; expected only letters, digits, '.', "
+                  "'_', and '-'",
+            id, saveName);
+        return std::nullopt;
+    }
+    return saveName;
+}
+
 void game_mode_remove_mod(LoadedMod& mod) {
     const auto it = s_gameModesByMod.find(mod.metadata.id);
     if (it != s_gameModesByMod.end()) {
@@ -117,7 +146,12 @@ ModResult register_game_mode(ModContext* ctx, const GameModeDesc* desc) {
         }
     }
 
-    gamemode::GameMode mode{id, fullName, desc->save_name};
+    const auto saveName = validate_save_name(*desc, id);
+    if (!saveName) {
+        return MOD_INVALID_ARGUMENT;
+    }
+
+    gamemode::GameMode mode{id, fullName, *saveName};
     if (desc->on_activated) {
         mode.mOnActivatedFunction = wrap_callback(
             *owner, desc->on_activated, desc->user_data, "game mode activation callback");

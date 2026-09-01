@@ -6,14 +6,23 @@
 #include "dusk/main.h"
 #include "dusk/mods/loader/loader.hpp"
 #include "dusk/utilities.hpp"
+#include "dusk/version.hpp"
+#include "m_Do/m_Do_MemCard.h"
 #include "mods/svc/save.h"
 
-#include "d/d_save.h"
-
+#include <aurora/card.h>
 #include <aurora/lib/logging.hpp>
+#include <borealis/io.hpp>
 
+#include <algorithm>
+#include <array>
 #include <fstream>
+#include <map>
+#include <optional>
+#include <set>
+#include <string>
 #include <string_view>
+#include <vector>
 
 namespace dusk::mods::svc {
 namespace {
@@ -21,18 +30,23 @@ namespace {
 aurora::Module Log("dusk::mods::save");
 
 constexpr uint32_t kSlotCount = 3;
-constexpr size_t kQuestLogSize = 0xA94;
-static_assert(kQuestLogSize == QUEST_LOG_SIZE);
-constexpr int kSidecarVersion = 1;
-constexpr const char* kSidecarName = "mod_saves.json";
+constexpr int kLegacySidecarVersion = 1;
+constexpr int kModSidecarVersion = 1;
+constexpr const char* kLegacySidecarName = "mod_saves.json";
+constexpr const char* kDefaultSaveName = "gczelda2";
+constexpr s32 kCardChannel = 0;
 constexpr size_t kMaxBlobNameLength = 256;
 
 using BlobMap = std::map<std::string, std::vector<uint8_t>>;
 
 struct SlotStore {
-    bool snapshotValid = false;
-    uint32_t snapshotCrc = 0;
     std::map<std::string, BlobMap> mods;
+};
+
+struct SaveStore {
+    std::array<SlotStore, kSlotCount> slots;
+    std::set<std::string> dirtyMods;
+    bool loaded = false;
 };
 
 struct SaveObserverRecord {
@@ -44,96 +58,325 @@ struct SaveObserverRecord {
     void* userData = nullptr;
 };
 
-std::array<SlotStore, kSlotCount> s_slots;
+std::map<std::string, SaveStore> s_saves;
 int32_t s_currentSlot = -1;
-bool s_sidecarLoaded = false;
+bool s_legacyMigrationChecked = false;
 std::vector<SaveObserverRecord> s_observers;
 uint64_t s_nextHandle = 1;
 
-std::filesystem::path sidecar_path() {
-    return dusk::ConfigPath / kSidecarName;
+bool is_valid_path_component(std::string_view value) {
+    if (value.empty() || value == "." || value == "..") {
+        return false;
+    }
+    return std::ranges::all_of(value, [](char ch) {
+        return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') ||
+               ch == '.' || ch == '_' || ch == '-';
+    });
 }
 
-void load_sidecar() {
-    if (s_sidecarLoaded) {
-        return;
-    }
-    s_sidecarLoaded = true;
-    std::ifstream in{sidecar_path()};
-    if (!in.is_open()) {
-        return;
-    }
-    try {
-        const auto json = nlohmann::json::parse(in);
-        if (json.value("version", 0) != kSidecarVersion) {
-            Log.warn(
-                "mod save sidecar has unknown version {}; ignoring it", json.value("version", 0));
-            return;
-        }
-        const auto& slots = json.at("slots");
-        for (uint32_t slot = 0; slot < kSlotCount && slot < slots.size(); ++slot) {
-            auto& store = s_slots[slot];
-            const auto& slotJson = slots[slot];
-            if (slotJson.contains("snapshot_crc32")) {
-                store.snapshotValid = true;
-                store.snapshotCrc = slotJson["snapshot_crc32"].get<uint32_t>();
-            }
-            const auto modsJson = slotJson.value("mods", nlohmann::json::object());
-            for (const auto& [modId, blobs] : modsJson.items()) {
-                for (const auto& [name, encoded] : blobs.items()) {
-                    std::vector<uint8_t> bytes;
-                    if (!utils::base64_decode(encoded.get<std::string>(), bytes)) {
-                        Log.warn("mod save sidecar: bad blob '{}/{}' in slot {}; dropped", modId,
-                            name, slot);
-                        continue;
-                    }
-                    s_slots[slot].mods[modId][name] = std::move(bytes);
-                }
-            }
-        }
-    } catch (const std::exception& e) {
-        Log.error("failed to read mod save sidecar: {}", e.what());
-    }
+bool is_valid_blob_name(std::string_view name) {
+    return !name.empty() && name.size() <= kMaxBlobNameLength;
 }
 
-void flush_sidecar() {
+std::filesystem::path legacy_sidecar_path() {
+    return ConfigPath / kLegacySidecarName;
+}
+
+std::optional<std::filesystem::path> card_path() {
+    const size_t required = aurora_card_get_path(kCardChannel, nullptr, 0);
+    if (required == 0) {
+        return std::nullopt;
+    }
+    std::vector<char> buffer(required);
+    if (aurora_card_get_path(kCardChannel, buffer.data(), buffer.size()) != required) {
+        return std::nullopt;
+    }
+    return borealis::io::fs_path_from_utf8(buffer.data());
+}
+
+std::string card_file_stem(std::string_view saveName) {
+    const auto& diskId = version::getDiskID();
+    const std::string_view maker{diskId.company, sizeof(diskId.company)};
+    const std::string_view game{diskId.gameName, sizeof(diskId.gameName)};
+    return fmt::format("{}-{}-{}", maker, game, saveName);
+}
+
+std::optional<std::filesystem::path> save_sidecar_directory(std::string_view saveName) {
+    auto backingPath = card_path();
+    if (!backingPath) {
+        return std::nullopt;
+    }
+
+    const auto stem = card_file_stem(saveName);
+    switch (aurora_card_get_type(kCardChannel)) {
+    case AURORA_CARD_GCI_DIRECTORY:
+        return *backingPath / (stem + ".mods");
+    case AURORA_CARD_RAW_IMAGE:
+        *backingPath += ".mods";
+        return *backingPath / stem;
+    case AURORA_CARD_UNAVAILABLE:
+        return std::nullopt;
+    }
+    return std::nullopt;
+}
+
+std::optional<std::filesystem::path> mod_sidecar_path(
+    std::string_view saveName, std::string_view modId) {
+    const auto directory = save_sidecar_directory(saveName);
+    if (!directory) {
+        return std::nullopt;
+    }
+    return *directory / (std::string{modId} + ".json");
+}
+
+bool write_mod_sidecar(
+    const std::string& saveName, const std::string& modId, const SaveStore& store) {
+    if (!is_valid_path_component(saveName) || !is_valid_path_component(modId)) {
+        Log.error("refusing to write mod save sidecar with invalid path components '{}/{}'",
+            saveName, modId);
+        return false;
+    }
+
+    const auto path = mod_sidecar_path(saveName, modId);
+    if (!path) {
+        Log.error("CARD backing storage is unavailable for mod save sidecars");
+        return false;
+    }
+
     nlohmann::json slots = nlohmann::json::array();
-    for (const auto& store : s_slots) {
-        nlohmann::json slotJson = nlohmann::json::object();
-        if (store.snapshotValid) {
-            slotJson["snapshot_crc32"] = store.snapshotCrc;
-        }
-        nlohmann::json mods = nlohmann::json::object();
-        for (const auto& [modId, blobs] : store.mods) {
-            if (blobs.empty()) {
-                continue;
-            }
-            nlohmann::json blobsJson = nlohmann::json::object();
-            for (const auto& [name, bytes] : blobs) {
+    bool hasBlobs = false;
+    for (const auto& slot : store.slots) {
+        nlohmann::json blobsJson = nlohmann::json::object();
+        const auto modIt = slot.mods.find(modId);
+        if (modIt != slot.mods.end()) {
+            for (const auto& [name, bytes] : modIt->second) {
                 blobsJson[name] = utils::base64_encode(bytes);
+                hasBlobs = true;
             }
-            mods[modId] = std::move(blobsJson);
         }
-        slotJson["mods"] = std::move(mods);
-        slots.push_back(std::move(slotJson));
+        slots.push_back(nlohmann::json{{"blobs", std::move(blobsJson)}});
     }
-    const nlohmann::json json{{"version", kSidecarVersion}, {"slots", std::move(slots)}};
 
-    const auto path = sidecar_path();
-    const auto tempPath = path.string() + ".tmp";
+    if (!hasBlobs) {
+        std::error_code ec;
+        std::filesystem::remove(*path, ec);
+        if (ec) {
+            Log.error("failed to remove mod save sidecar '{}': {}", path->string(), ec.message());
+            return false;
+        }
+        return true;
+    }
+
+    const nlohmann::json json{
+        {"version", kModSidecarVersion},
+        {"slots", std::move(slots)},
+    };
+    const auto tempPath = std::filesystem::path{path->string() + ".tmp"};
     try {
+        std::filesystem::create_directories(path->parent_path());
         {
             std::ofstream out{tempPath, std::ios::trunc};
             out << json.dump(2);
             if (!out.good()) {
-                throw std::runtime_error("write failed");
+                throw std::runtime_error{"write failed"};
             }
         }
-        std::filesystem::rename(tempPath, path);
+        std::string error;
+        if (!borealis::io::atomic_replace(tempPath, *path, error)) {
+            throw std::runtime_error{error};
+        }
+        return true;
     } catch (const std::exception& e) {
-        Log.error("failed to write mod save sidecar: {}", e.what());
+        Log.error("failed to write mod save sidecar '{}': {}", path->string(), e.what());
         std::error_code ec;
         std::filesystem::remove(tempPath, ec);
+        return false;
+    }
+}
+
+void migrate_legacy_sidecar() {
+    if (s_legacyMigrationChecked) {
+        return;
+    }
+    const auto destination = save_sidecar_directory(kDefaultSaveName);
+    if (!destination) {
+        return;
+    }
+    s_legacyMigrationChecked = true;
+
+    const auto path = legacy_sidecar_path();
+    std::ifstream in{path};
+    if (!in.is_open()) {
+        return;
+    }
+
+    SaveStore legacyStore;
+    std::set<std::string> modIds;
+    try {
+        const auto json = nlohmann::json::parse(in);
+        if (json.value("version", 0) != kLegacySidecarVersion) {
+            Log.warn("legacy mod save sidecar has unknown version {}; ignoring it",
+                json.value("version", 0));
+            return;
+        }
+        const auto& slots = json.at("slots");
+        for (uint32_t slot = 0; slot < kSlotCount && slot < slots.size(); ++slot) {
+            const auto& slotJson = slots[slot];
+            const auto modsJson = slotJson.value("mods", nlohmann::json::object());
+            for (const auto& [modId, blobs] : modsJson.items()) {
+                if (!is_valid_path_component(modId)) {
+                    Log.warn("legacy mod save sidecar has invalid mod ID '{}'; dropped", modId);
+                    continue;
+                }
+                for (const auto& [name, encoded] : blobs.items()) {
+                    if (!is_valid_blob_name(name) || !encoded.is_string()) {
+                        Log.warn(
+                            "legacy mod save sidecar: invalid blob '{}/{}' in slot {}; dropped",
+                            modId, name, slot);
+                        continue;
+                    }
+                    std::vector<uint8_t> bytes;
+                    if (!utils::base64_decode(encoded.get<std::string>(), bytes)) {
+                        Log.warn("legacy mod save sidecar: bad blob '{}/{}' in slot {}; dropped",
+                            modId, name, slot);
+                        continue;
+                    }
+                    legacyStore.slots[slot].mods[modId][name] = std::move(bytes);
+                    modIds.insert(modId);
+                }
+            }
+        }
+    } catch (const std::exception& e) {
+        Log.error("failed to read legacy mod save sidecar: {}", e.what());
+        return;
+    }
+
+    for (const auto& modId : modIds) {
+        if (!write_mod_sidecar(kDefaultSaveName, modId, legacyStore)) {
+            return;
+        }
+    }
+
+    const auto backupPath = std::filesystem::path{path.string() + ".bak"};
+    std::string error;
+    if (!borealis::io::atomic_replace(path, backupPath, error)) {
+        Log.error("migrated legacy mod save data but failed to rename '{}' to '{}': {}",
+            path.string(), backupPath.string(), error);
+        return;
+    }
+    Log.info("migrated legacy mod save data to '{}'", destination->string());
+}
+
+void load_mod_sidecar(const std::filesystem::path& path, const std::string& saveName,
+    const std::string& modId, SaveStore& store) {
+    try {
+        std::ifstream in{path};
+        if (!in.is_open()) {
+            throw std::runtime_error{"open failed"};
+        }
+        const auto json = nlohmann::json::parse(in);
+        if (json.value("version", 0) != kModSidecarVersion) {
+            Log.warn("mod save sidecar '{}/{}' has unknown version {}; ignoring it", saveName,
+                modId, json.value("version", 0));
+            return;
+        }
+        const auto& slots = json.at("slots");
+        for (uint32_t slot = 0; slot < kSlotCount && slot < slots.size(); ++slot) {
+            const auto blobsJson = slots[slot].value("blobs", nlohmann::json::object());
+            BlobMap blobs;
+            size_t totalSize = 0;
+            for (const auto& [name, encoded] : blobsJson.items()) {
+                if (!is_valid_blob_name(name) || !encoded.is_string()) {
+                    Log.warn("mod save sidecar: invalid blob '{}' in {}/{} slot {}; dropped", name,
+                        saveName, modId, slot);
+                    continue;
+                }
+                std::vector<uint8_t> bytes;
+                if (!utils::base64_decode(encoded.get<std::string>(), bytes)) {
+                    Log.warn("mod save sidecar: bad blob '{}' in {}/{} slot {}; dropped", name,
+                        saveName, modId, slot);
+                    continue;
+                }
+                if (totalSize + bytes.size() > SAVE_BLOB_BUDGET_BYTES) {
+                    Log.warn("mod save sidecar: blobs exceed the {}-byte budget in {}/{} slot {}; "
+                             "blob '{}' dropped",
+                        SAVE_BLOB_BUDGET_BYTES, saveName, modId, slot, name);
+                    continue;
+                }
+                totalSize += bytes.size();
+                blobs[name] = std::move(bytes);
+            }
+            if (!blobs.empty()) {
+                store.slots[slot].mods[modId] = std::move(blobs);
+            }
+        }
+    } catch (const std::exception& e) {
+        Log.error("failed to read mod save sidecar '{}': {}", path.string(), e.what());
+    }
+}
+
+SaveStore& load_save_store(const std::string& saveName) {
+    auto& store = s_saves[saveName];
+    if (store.loaded) {
+        return store;
+    }
+    const auto directory = save_sidecar_directory(saveName);
+    if (!directory) {
+        return store;
+    }
+
+    migrate_legacy_sidecar();
+    store.loaded = true;
+
+    std::error_code ec;
+    if (!std::filesystem::exists(*directory, ec)) {
+        if (ec) {
+            Log.error(
+                "failed to inspect mod save directory '{}': {}", directory->string(), ec.message());
+        }
+        return store;
+    }
+
+    try {
+        for (const auto& entry : std::filesystem::directory_iterator{*directory}) {
+            if (!entry.is_regular_file() || entry.path().extension() != ".json") {
+                continue;
+            }
+            const auto modId = entry.path().stem().string();
+            if (!is_valid_path_component(modId)) {
+                Log.warn("ignoring mod save sidecar with invalid mod ID '{}'", modId);
+                continue;
+            }
+            load_mod_sidecar(entry.path(), saveName, modId, store);
+        }
+    } catch (const std::exception& e) {
+        Log.error("failed to enumerate mod save directory '{}': {}", directory->string(), e.what());
+    }
+    return store;
+}
+
+std::optional<std::string> current_save_name() {
+    const char* fileName = mDoMemCd_GetFileName();
+    std::string saveName = fileName != nullptr ? fileName : "";
+    if (!is_valid_path_component(saveName)) {
+        Log.error("CARD save file name '{}' is invalid for mod save storage", saveName);
+        return std::nullopt;
+    }
+    return saveName;
+}
+
+void flush_save_sidecars(const std::string& saveName, SaveStore& store) {
+    const auto dirtyMods = store.dirtyMods;
+    for (const auto& modId : dirtyMods) {
+        if (write_mod_sidecar(saveName, modId, store)) {
+            store.dirtyMods.erase(modId);
+        }
+    }
+}
+
+void mark_slot_dirty(SaveStore& save, const SlotStore& slot) {
+    for (const auto& entry : slot.mods) {
+        save.dirtyMods.insert(entry.first);
     }
 }
 
@@ -162,68 +405,74 @@ void save_slot_new(uint32_t slot) {
     if (slot >= kSlotCount) {
         return;
     }
-    load_sidecar();
-    auto& store = s_slots[slot];
-    store.mods.clear();
-    store.snapshotValid = false;
     s_currentSlot = static_cast<int32_t>(slot);
     item_gives_clear();
-    Log.info("new save in slot {}; mod blob store cleared", slot);
+    if (const auto saveName = current_save_name()) {
+        auto& save = load_save_store(*saveName);
+        auto& mods = save.slots[slot].mods;
+        mark_slot_dirty(save, save.slots[slot]);
+        mods.clear();
+        Log.info("new save in {}/{}; mod blob store cleared", *saveName, slot);
+    }
     notify(slot, &SaveObserverRecord::onNewSave, "new-save");
 }
 
-void save_slot_loaded(uint32_t slot, const void* slotData) {
+void save_slot_loaded(uint32_t slot) {
     if (slot >= kSlotCount) {
         return;
     }
-    load_sidecar();
-    auto& store = s_slots[slot];
-    if (store.snapshotValid && slotData != nullptr) {
-        const auto crc = utils::crc32(slotData, kQuestLogSize);
-        if (crc != store.snapshotCrc) {
-            Log.warn("slot {} save data does not match the mod sidecar snapshot; mod save "
-                     "data may be stale (card file changed externally?)",
-                slot);
-        }
+    if (const auto saveName = current_save_name()) {
+        load_save_store(*saveName);
     }
     s_currentSlot = static_cast<int32_t>(slot);
     item_gives_clear();
     notify(slot, &SaveObserverRecord::onLoaded, "save-loaded");
 }
 
-void save_slot_written(uint32_t slot, const void* slotData) {
+void save_slot_written(uint32_t slot) {
     if (slot >= kSlotCount) {
         return;
     }
     s_currentSlot = static_cast<int32_t>(slot);
     notify(slot, &SaveObserverRecord::onWritten, "save-written");
-    load_sidecar();
-    auto& store = s_slots[slot];
-    if (slotData != nullptr) {
-        store.snapshotValid = true;
-        store.snapshotCrc = utils::crc32(slotData, kQuestLogSize);
+    if (const auto saveName = current_save_name()) {
+        auto& store = load_save_store(*saveName);
+        flush_save_sidecars(*saveName, store);
     }
-    flush_sidecar();
 }
 
 void save_slot_copied(uint32_t fromSlot, uint32_t toSlot) {
     if (fromSlot >= kSlotCount || toSlot >= kSlotCount || fromSlot == toSlot) {
         return;
     }
-    load_sidecar();
-    s_slots[toSlot] = s_slots[fromSlot];
-    flush_sidecar();
-    Log.info("mod save data copied with slot {} -> {}", fromSlot, toSlot);
+    const auto saveName = current_save_name();
+    if (!saveName) {
+        return;
+    }
+    auto& save = load_save_store(*saveName);
+    auto& fromMods = save.slots[fromSlot].mods;
+    auto& toMods = save.slots[toSlot].mods;
+    mark_slot_dirty(save, save.slots[fromSlot]);
+    mark_slot_dirty(save, save.slots[toSlot]);
+    toMods = fromMods;
+    flush_save_sidecars(*saveName, save);
+    Log.info("mod save data copied in {} with slot {} -> {}", *saveName, fromSlot, toSlot);
 }
 
 void save_slot_erased(uint32_t slot) {
     if (slot >= kSlotCount) {
         return;
     }
-    load_sidecar();
-    s_slots[slot] = SlotStore{};
-    flush_sidecar();
-    Log.info("mod save data erased with slot {}", slot);
+    const auto saveName = current_save_name();
+    if (!saveName) {
+        return;
+    }
+    auto& save = load_save_store(*saveName);
+    auto& mods = save.slots[slot].mods;
+    mark_slot_dirty(save, save.slots[slot]);
+    mods.clear();
+    flush_save_sidecars(*saveName, save);
+    Log.info("mod save data erased in {} with slot {}", *saveName, slot);
 }
 
 void save_no_slot() {
@@ -233,28 +482,40 @@ void save_no_slot() {
 
 namespace {
 
-BlobMap* current_blobs(const LoadedMod& mod, bool create) {
+struct CurrentBlobAccess {
+    SaveStore* store = nullptr;
+    BlobMap* blobs = nullptr;
+};
+
+CurrentBlobAccess current_blobs(const LoadedMod& mod, bool create) {
     if (s_currentSlot < 0) {
-        return nullptr;
+        return {};
     }
-    load_sidecar();
-    auto& mods = s_slots[s_currentSlot].mods;
+    const auto saveName = current_save_name();
+    if (!saveName) {
+        return {};
+    }
+    auto& store = load_save_store(*saveName);
+    if (!store.loaded) {
+        return {};
+    }
+    auto& mods = store.slots[s_currentSlot].mods;
     if (!create) {
         const auto it = mods.find(mod.metadata.id);
-        return it != mods.end() ? &it->second : nullptr;
+        return {&store, it != mods.end() ? &it->second : nullptr};
     }
-    return &mods[mod.metadata.id];
+    return {&store, &mods[mod.metadata.id]};
 }
 
 }  // namespace
 
 ModResult save_set_blob(LoadedMod& mod, const char* name, const void* data, size_t size) {
-    auto* blobs = current_blobs(mod, true);
-    if (blobs == nullptr) {
+    const auto access = current_blobs(mod, true);
+    if (access.blobs == nullptr) {
         return MOD_UNAVAILABLE;
     }
     size_t total = size;
-    for (const auto& [blobName, bytes] : *blobs) {
+    for (const auto& [blobName, bytes] : *access.blobs) {
         if (blobName != name) {
             total += bytes.size();
         }
@@ -265,17 +526,22 @@ ModResult save_set_blob(LoadedMod& mod, const char* name, const void* data, size
         return MOD_UNAVAILABLE;
     }
     const auto* bytes = static_cast<const uint8_t*>(data);
-    (*blobs)[name] = std::vector<uint8_t>{bytes, bytes + size};
+    std::vector<uint8_t> blob;
+    if (size != 0) {
+        blob.assign(bytes, bytes + size);
+    }
+    (*access.blobs)[name] = std::move(blob);
+    access.store->dirtyMods.insert(mod.metadata.id);
     return MOD_OK;
 }
 
 ModResult save_get_blob(LoadedMod& mod, const char* name, void* buf, size_t& inoutSize) {
-    auto* blobs = current_blobs(mod, false);
-    if (blobs == nullptr) {
+    const auto access = current_blobs(mod, false);
+    if (access.blobs == nullptr) {
         return MOD_UNAVAILABLE;
     }
-    const auto it = blobs->find(name);
-    if (it == blobs->end()) {
+    const auto it = access.blobs->find(name);
+    if (it == access.blobs->end()) {
         return MOD_UNAVAILABLE;
     }
     if (buf == nullptr) {
@@ -291,11 +557,15 @@ ModResult save_get_blob(LoadedMod& mod, const char* name, void* buf, size_t& ino
 }
 
 ModResult save_delete_blob(LoadedMod& mod, const char* name) {
-    auto* blobs = current_blobs(mod, false);
-    if (blobs == nullptr) {
+    const auto access = current_blobs(mod, false);
+    if (access.blobs == nullptr) {
         return MOD_UNAVAILABLE;
     }
-    return blobs->erase(name) != 0 ? MOD_OK : MOD_INVALID_ARGUMENT;
+    if (access.blobs->erase(name) == 0) {
+        return MOD_INVALID_ARGUMENT;
+    }
+    access.store->dirtyMods.insert(mod.metadata.id);
+    return MOD_OK;
 }
 
 ModResult save_observe(LoadedMod& mod, SaveEventFn onNewSave, SaveEventFn onLoaded,
@@ -322,8 +592,15 @@ ModResult save_peek_blob(
     if (slot >= kSlotCount) {
         return MOD_INVALID_ARGUMENT;
     }
-    load_sidecar();
-    const auto& mods = s_slots[slot].mods;
+    const auto saveName = current_save_name();
+    if (!saveName) {
+        return MOD_UNAVAILABLE;
+    }
+    const auto& store = load_save_store(*saveName);
+    if (!store.loaded) {
+        return MOD_UNAVAILABLE;
+    }
+    const auto& mods = store.slots[slot].mods;
     const auto modIt = mods.find(mod.metadata.id);
     if (modIt == mods.end()) {
         return MOD_UNAVAILABLE;
