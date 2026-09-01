@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string_view>
 
 namespace dusk::mods::svc {
 
@@ -10,5 +11,6 @@ void save_slot_written(uint32_t slot);
 void save_slot_copied(uint32_t fromSlot, uint32_t toSlot);
 void save_slot_erased(uint32_t slot);
 void save_no_slot();
+void invalidate_save(std::string_view saveName);
 
 }  // namespace dusk::mods::svc

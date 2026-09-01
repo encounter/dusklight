@@ -5,6 +5,7 @@
 
 #include "dusk/main.h"
 #include "dusk/mods/loader/loader.hpp"
+#include "dusk/save_manager.hpp"
 #include "dusk/utilities.hpp"
 #include "dusk/version.hpp"
 #include "m_Do/m_Do_MemCard.h"
@@ -83,22 +84,23 @@ std::filesystem::path legacy_sidecar_path() {
 }
 
 std::optional<std::filesystem::path> card_path() {
-    const size_t required = aurora_card_get_path(kCardChannel, nullptr, 0);
+    const auto cardType = aurora_card_get_type(kCardChannel);
+    if (cardType == AURORA_CARD_UNAVAILABLE) {
+        return std::nullopt;
+    }
+    const auto& diskId = version::getDiskID();
+    const std::string game{diskId.gameName, sizeof(diskId.gameName)};
+    const size_t required = aurora_card_get_path(game.c_str(), cardType, kCardChannel, nullptr, 0);
     if (required == 0) {
         return std::nullopt;
     }
     std::vector<char> buffer(required);
-    if (aurora_card_get_path(kCardChannel, buffer.data(), buffer.size()) != required) {
+    if (aurora_card_get_path(game.c_str(), cardType, kCardChannel, buffer.data(), buffer.size()) !=
+        required)
+    {
         return std::nullopt;
     }
     return borealis::io::fs_path_from_utf8(buffer.data());
-}
-
-std::string card_file_stem(std::string_view saveName) {
-    const auto& diskId = version::getDiskID();
-    const std::string_view maker{diskId.company, sizeof(diskId.company)};
-    const std::string_view game{diskId.gameName, sizeof(diskId.gameName)};
-    return fmt::format("{}-{}-{}", maker, game, saveName);
 }
 
 std::optional<std::filesystem::path> save_sidecar_directory(std::string_view saveName) {
@@ -107,13 +109,16 @@ std::optional<std::filesystem::path> save_sidecar_directory(std::string_view sav
         return std::nullopt;
     }
 
-    const auto stem = card_file_stem(saveName);
+    const auto& diskId = version::getDiskID();
+    const std::string_view maker{diskId.company, sizeof(diskId.company)};
+    const std::string_view game{diskId.gameName, sizeof(diskId.gameName)};
     switch (aurora_card_get_type(kCardChannel)) {
     case AURORA_CARD_GCI_DIRECTORY:
-        return *backingPath / (stem + ".mods");
+        return save_manager::save_sidecar_directory(
+            *backingPath, save_manager::StorageKind::GciDirectory, maker, game, saveName);
     case AURORA_CARD_RAW_IMAGE:
-        *backingPath += ".mods";
-        return *backingPath / stem;
+        return save_manager::save_sidecar_directory(
+            *backingPath, save_manager::StorageKind::RawImage, maker, game, saveName);
     case AURORA_CARD_UNAVAILABLE:
         return std::nullopt;
     }
@@ -478,6 +483,10 @@ void save_slot_erased(uint32_t slot) {
 void save_no_slot() {
     s_currentSlot = -1;
     item_gives_clear();
+}
+
+void invalidate_save(std::string_view saveName) {
+    s_saves.erase(std::string{saveName});
 }
 
 namespace {

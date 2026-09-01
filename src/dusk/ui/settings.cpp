@@ -8,6 +8,7 @@
 #include "number_button.hpp"
 #include "pane.hpp"
 #include "prelaunch.hpp"
+#include "saves_window.hpp"
 #include "touch_controls_editor.hpp"
 #include "ui.hpp"
 
@@ -659,6 +660,7 @@ SettingsWindow::SettingsWindow(bool prelaunch) : mPrelaunch(prelaunch) {
                             });
                     }
                 });
+            add_save_files_control(leftPane, rightPane);
         });
     }
 

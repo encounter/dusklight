@@ -5,6 +5,7 @@
 
 #include <borealis/log.hpp>
 #include "dusk/mods/loader/loader.hpp"
+#include "dusk/ui/drop.hpp"
 
 #include <SDL3/SDL_error.h>
 #include <SDL3/SDL_events.h>
@@ -227,6 +228,7 @@ constexpr WindowService s_windowService{
 }  // namespace
 
 bool window_dispatch_event(const SDL_Event& event) {
+    ui::drop::handle_event(event);
     SDL_Window* eventWindow = SDL_GetWindowFromEvent(&event);
     if (eventWindow == nullptr) {
         return false;
