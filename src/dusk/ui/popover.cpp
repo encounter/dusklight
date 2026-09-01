@@ -8,6 +8,7 @@ namespace {
 const Rml::String kDocumentSource = R"RML(
 <rml>
 <head>
+    <link type="text/rcss" href="res/rml/theme.rcss" />
     <link type="text/rcss" href="res/rml/popover.rcss" />
 </head>
 <body>

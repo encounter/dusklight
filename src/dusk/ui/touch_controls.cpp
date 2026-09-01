@@ -133,6 +133,7 @@ Rml::String touch_controls_document_source() {
     return Rml::String{R"RML(
 <rml>
 <head>
+    <link type="text/rcss" href="res/rml/theme.rcss" />
     <link type="text/rcss" href="res/rml/touch_controls.rcss" />
 </head>
 <body id="root">
@@ -1091,7 +1092,7 @@ void TouchControls::sync_control_displays() noexcept {
             return;
         }
         countElement->SetClass("visible", !label.empty());
-        countElement->SetInnerRML(label);
+        set_text_content(countElement, label);
     };
 
     syncCount(x.count, mButtonXCountLabel, Control::X, xState);

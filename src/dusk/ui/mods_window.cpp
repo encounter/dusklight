@@ -4,9 +4,12 @@
 #include "dusk/mods/svc/ui.hpp"
 #include "fmt/format.h"
 #include "logs_window.hpp"
+#include "mod_browser.hpp"
 #include "mod_texture_provider.hpp"
 #include "mods/svc/http.h"
 #include "pane.hpp"
+
+#include <borealis/http.hpp>
 
 #include "Z2AudioLib/Z2SeMgr.h"
 #include "m_Do/m_Do_audio.h"
@@ -64,28 +67,32 @@ class ModListEntry : public FluentComponent<ModListEntry> {
 public:
     ModListEntry(Rml::Element* parent, const mods::LoadedMod& mod)
         : FluentComponent{append(parent, "mod-entry")} {
-        Rml::String iconRml;
+        Rml::Element* icon = nullptr;
         if (!mod.metadata.iconPath.empty()) {
-            iconRml = fmt::format(R"(<img class="mod-icon" src="{}"/>)",
-                mod_image_source(mod, mod.metadata.iconPath));
+            icon = append(mRoot, "img");
+            icon->SetAttribute("src", mod_image_source(mod, mod.metadata.iconPath));
         } else {
-            iconRml = R"(<icon class="mod-icon placeholder"/>)";
+            icon = append(mRoot, "icon");
+            icon->SetClass("placeholder", true);
         }
+        icon->SetClass("mod-icon", true);
+
         const auto status = mod_status(mod);
-        const auto networkBadge = mod_uses_network(mod) ?
-                                      R"(<span class="mod-entry-network">Network</span>)" :
-                                      Rml::String{};
-        mRoot->SetInnerRML(fmt::format(
-            R"({})"
-            R"(<div class="mod-entry-info">)"
-            R"(<div class="mod-entry-name"><span class="mod-entry-name-text">{}</span>)"
-            R"(<span class="mod-entry-version">v{}</span></div>)"
-            R"(<div class="mod-entry-sub">{} - <span class="mod-entry-status {}">{}</span>{}</div>)"
-            R"(<div class="mod-entry-desc">{}</div>)"
-            R"(</div>)",
-            iconRml, escape(mod.metadata.name), escape(mod.metadata.version),
-            escape(mod.metadata.author), status.badgeClass, status.text, networkBadge,
-            escape(snippet(mod.metadata.description, 90))));
+        auto* info = append(mRoot, "mod-entry-info");
+        auto* name = append(info, "mod-entry-name");
+        append_text(append(name, "mod-entry-name-text"), mod.metadata.name);
+        append_text(append(name, "mod-entry-version"), "v" + mod.metadata.version);
+        auto* sub = append(info, "mod-entry-sub");
+        append_text(sub, mod.metadata.author + " - ");
+        auto* statusElement = append(sub, "mod-entry-status");
+        if (status.badgeClass[0] != '\0') {
+            statusElement->SetClass(status.badgeClass, true);
+        }
+        append_text(statusElement, status.text);
+        if (mod_uses_network(mod)) {
+            append_text(append(sub, "mod-entry-network"), "Network");
+        }
+        append_text(append(info, "mod-entry-desc"), snippet(mod.metadata.description, 90));
         mRoot->SetClass("inactive", !mod.active);
         mRoot->SetClass("failed", mod.loadFailed);
 
@@ -111,8 +118,7 @@ public:
                                                 mod_image_source(mod, mod.metadata.bannerPath)));
         }
 
-        auto* actions = append(mRoot, "div");
-        actions->SetClass("mod-actions", true);
+        auto* actions = append(mRoot, "mod-actions");
         const std::string modId = mod.metadata.id;
         if (mod_enabled(mod)) {
             if (!mod.inPlace) {
@@ -196,14 +202,33 @@ ModsWindow::ModsWindow() : Window{Props{.tabBar = false, .styleSheets = {"res/rm
 void ModsWindow::build_content(Rml::Element* content) {
     mEntries.clear();
     mEntryMods.clear();
+    mBrowserEntry = nullptr;
 
     auto& listPane = add_child<Pane>(content, Pane::Type::Controlled);
     listPane.root()->SetClass("mod-list", true);
     auto& detailPane = add_child<Pane>(content, Pane::Type::Uncontrolled);
     detailPane.root()->SetClass("mod-detail", true);
 
+    if (borealis::http::available()) {
+        auto& browse = listPane.add_button("Browse online mods");
+        mBrowserEntry = &browse;
+        browse.root()->SetClass("mod-browser-entry", true);
+        browse.on_pressed([this] { push(std::make_unique<ModBrowser>()); });
+        listPane.register_control(browse, detailPane, [this](Pane& pane) {
+            mBrowserSelected = true;
+            mSelectedMod = nullptr;
+            build_browser_detail(pane);
+            mark_current_entry();
+        });
+    }
+
     if (mods::ModLoader::instance().mods().empty()) {
         listPane.add_text("No mods installed.");
+        if (borealis::http::available()) {
+            mBrowserSelected = true;
+            build_browser_detail(detailPane);
+        }
+        mark_current_entry();
         return;
     }
 
@@ -212,6 +237,7 @@ void ModsWindow::build_content(Rml::Element* content) {
         mEntries.push_back(&entry);
         mEntryMods.push_back(&trackedMod);
         listPane.register_control(entry, detailPane, [this, tracked = &trackedMod](Pane& pane) {
+            mBrowserSelected = false;
             mSelectedMod = tracked;
             pane.clear();
             build_detail(pane, *tracked);
@@ -219,11 +245,22 @@ void ModsWindow::build_content(Rml::Element* content) {
         });
     }
 
-    if (mSelectedMod == nullptr) {
+    if (mBrowserSelected && mBrowserEntry != nullptr) {
+        mSelectedMod = nullptr;
+        build_browser_detail(detailPane);
+    } else if (mSelectedMod == nullptr) {
         mSelectedMod = mEntryMods.front();
+        build_detail(detailPane, *mSelectedMod);
+    } else {
+        build_detail(detailPane, *mSelectedMod);
     }
-    build_detail(detailPane, *mSelectedMod);
     mark_current_entry();
+}
+
+void ModsWindow::build_browser_detail(Pane& pane) {
+    pane.root()->RemoveAttribute("mod-id");
+    append_text(append(pane.root(), "mod-title"), "Browse Mods");
+    pane.add_text("Find published Dusklight mods in the online catalog.");
 }
 
 void ModsWindow::build_detail(Pane& pane, mods::LoadedMod& mod) {
@@ -231,27 +268,30 @@ void ModsWindow::build_detail(Pane& pane, mods::LoadedMod& mod) {
     pane.add_child<ModDetailHeader>(
         mod, [this, id = mod.metadata.id] { push(std::make_unique<LogsWindow>(id)); });
 
-    Rml::String statusBadge;
+    auto* title = append(pane.root(), "mod-title");
+    append_text(title, mod.metadata.name + " ");
+    append_text(append(title, "mod-title-version"), "v" + mod.metadata.version);
     if (mod.loadFailed || mod.suspendedByProvider) {
         const auto status = mod_status(mod);
-        statusBadge = fmt::format(
-            R"(&nbsp;<span class="status-badge {}">{}</span>)", status.badgeClass, status.text);
+        append_text(title, "\u00a0");
+        auto* badge = append(title, "status-badge");
+        badge->SetClass(status.badgeClass, true);
+        append_text(badge, status.text);
     }
     if (mod_uses_network(mod)) {
-        statusBadge += R"(&nbsp;<span class="status-badge network">Network</span>)";
+        append_text(title, "\u00a0");
+        auto* badge = append(title, "status-badge");
+        badge->SetClass("network", true);
+        append_text(badge, "Network");
     }
-    pane.add_rml(fmt::format(R"(<div class="mod-title">{} )"
-                             R"(<span class="mod-title-version">v{}</span>{}</div>)"
-                             R"(<div class="mod-author">by {}</div>)",
-        escape(mod.metadata.name), escape(mod.metadata.version), statusBadge,
-        escape(mod.metadata.author)));
+    append_text(append(pane.root(), "mod-author"), "by " + mod.metadata.author);
 
     if (mod.loadFailed && !mod.failureReason.empty()) {
-        pane.add_rml(fmt::format(R"(<div class="mod-info-row">)"
-                                 R"(<span class="mod-info-label failed">Reason</span>)"
-                                 R"(<span class="mod-info-value">{}</span>)"
-                                 R"(</div>)",
-            escape(mod.failureReason)));
+        auto* row = append(pane.root(), "mod-info-row");
+        auto* label = append(row, "mod-info-label");
+        label->SetClass("failed", true);
+        append_text(label, "Reason");
+        append_text(append(row, "mod-info-value"), mod.failureReason);
     } else if (mod.suspendedByProvider) {
         std::string providers;
         for (const auto& edge : mod.dependencies) {
@@ -262,11 +302,9 @@ void ModsWindow::build_detail(Pane& pane, mods::LoadedMod& mod) {
                 providers += edge.mod->metadata.name;
             }
         }
-        pane.add_rml(fmt::format(R"(<div class="mod-info-row">)"
-                                 R"(<span class="mod-info-label">Waiting on</span>)"
-                                 R"(<span class="mod-info-value">{}</span>)"
-                                 R"(</div>)",
-            escape(providers)));
+        auto* row = append(pane.root(), "mod-info-row");
+        append_text(append(row, "mod-info-label"), "Waiting on");
+        append_text(append(row, "mod-info-value"), providers);
     }
 
     std::string activeDependents;
@@ -279,12 +317,13 @@ void ModsWindow::build_detail(Pane& pane, mods::LoadedMod& mod) {
         }
     }
     if (mod.active && !activeDependents.empty()) {
-        pane.add_rml(fmt::format(R"(<div class="mod-restart-note">{}</div>)",
-            escape(fmt::format("Disabling or reloading also restarts: {}", activeDependents))));
+        append_text(append(pane.root(), "mod-restart-note"),
+            fmt::format("Disabling or reloading also restarts: {}", activeDependents));
     }
 
     if (!mod.metadata.description.empty()) {
-        pane.add_text(mod.metadata.description)->SetClass("mod-description", true);
+        auto* description = append(pane.root(), "mod-description");
+        append_text(description, mod.metadata.description);
     }
 
     if (mod.active) {
@@ -293,6 +332,9 @@ void ModsWindow::build_detail(Pane& pane, mods::LoadedMod& mod) {
 }
 
 void ModsWindow::mark_current_entry() {
+    if (mBrowserEntry != nullptr) {
+        mBrowserEntry->root()->SetClass("current", mBrowserSelected);
+    }
     for (size_t i = 0; i < mEntries.size(); ++i) {
         mEntries[i]->root()->SetClass("current", mEntryMods[i] == mSelectedMod);
     }
@@ -325,10 +367,14 @@ void ModsWindow::update() {
         }
         rebuild_content();
         if (hadContentFocus) {
-            for (size_t i = 0; i < mEntryMods.size(); ++i) {
-                if (mEntryMods[i] == mSelectedMod) {
-                    mEntries[i]->focus();
-                    break;
+            if (mBrowserSelected && mBrowserEntry != nullptr) {
+                mBrowserEntry->focus();
+            } else {
+                for (size_t i = 0; i < mEntryMods.size(); ++i) {
+                    if (mEntryMods[i] == mSelectedMod) {
+                        mEntries[i]->focus();
+                        break;
+                    }
                 }
             }
         }

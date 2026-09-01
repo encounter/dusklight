@@ -46,6 +46,7 @@ Rml::String touch_controls_editor_document_source() {
     return Rml::String{R"RML(
 <rml>
 <head>
+    <link type="text/rcss" href="res/rml/theme.rcss" />
     <link type="text/rcss" href="res/rml/touch_controls.rcss" />
     <link type="text/rcss" href="res/rml/touch_controls_editor.rcss" />
 </head>
@@ -594,7 +595,8 @@ void TouchControlsEditor::request_reset() {
     auto dismiss = [](Modal& modal) { modal.pop(); };
     push(std::make_unique<Modal>(Modal::Props{
         .title = "Reset Touch Layout?",
-        .bodyRml = "Reset controls to their default layout. This will not be saved until you press Save.",
+        .bodyText =
+            "Reset controls to their default layout. This will not be saved until you press Save.",
         .actions =
             {
                 ModalAction{

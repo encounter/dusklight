@@ -1482,6 +1482,8 @@ set(DUSK_FILES
         src/dusk/mods/loader/native_module.hpp
         src/dusk/mods/loader/prepatch.cpp
         src/dusk/mods/loader/prepatch.hpp
+        src/dusk/mods/catalog.cpp
+        src/dusk/mods/catalog.hpp
         src/dusk/mods/item.hpp
         src/dusk/mods/item_checks.cpp
         src/dusk/mods/item_gives.cpp
@@ -1563,8 +1565,14 @@ set(DUSK_FILES
         src/dusk/ui/list.hpp
         src/dusk/ui/menu_bar.cpp
         src/dusk/ui/menu_bar.hpp
+        src/dusk/ui/mod_browser.cpp
+        src/dusk/ui/mod_browser.hpp
         src/dusk/ui/mod_texture_provider.cpp
         src/dusk/ui/mod_texture_provider.hpp
+        src/dusk/ui/remote_texture_provider.cpp
+        src/dusk/ui/remote_texture_provider.hpp
+        src/dusk/ui/runtime_image.cpp
+        src/dusk/ui/runtime_image.hpp
         src/dusk/ui/mod_window.cpp
         src/dusk/ui/mod_window.hpp
         src/dusk/ui/modal.cpp

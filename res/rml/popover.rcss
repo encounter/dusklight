@@ -3,6 +3,8 @@
 }
 
 body {
+    --button-background: rgba(var(--color-control-rgb), 35%);
+
     width: 100%;
     height: 100%;
     z-index: 10;
@@ -12,12 +14,13 @@ popover {
     position: absolute;
     display: flex;
     flex-flow: column;
-    font-family: "Fira Sans";
-    font-size: 14dp;
-    color: #E0DBC8;
-    border-radius: 14dp;
-    border: 2dp #92875B;
-    background-color: rgba(21, 22, 16, 96%);
+    font-family: var(--font-family-body);
+    font-size: var(--font-size-sm);
+    color: var(--color-text);
+    border-radius: var(--radius-window);
+    border-width: 2dp;
+    border-color: var(--color-border);
+    background-color: rgba(var(--color-surface-rgb), 96%);
     backdrop-filter: blur(5dp);
     box-shadow: 0 6dp 24dp 2dp rgba(0, 0, 0, 55%);
     filter: opacity(0);
@@ -43,7 +46,7 @@ color-sv {
     position: relative;
     width: 240dp;
     height: 150dp;
-    border-radius: 8dp;
+    border-radius: var(--radius-panel);
     box-shadow: rgba(146, 135, 91, 50%) 0 0 0 1dp;
     drag: drag;
     focus: auto;
@@ -55,7 +58,7 @@ color-alpha {
     position: relative;
     width: 240dp;
     height: 14dp;
-    border-radius: 7dp;
+    border-radius: var(--radius-control);
     box-shadow: rgba(146, 135, 91, 50%) 0 0 0 1dp;
     drag: drag;
     focus: auto;
@@ -82,20 +85,21 @@ color-cursor {
     position: absolute;
     width: 14dp;
     height: 14dp;
-    border-radius: 7dp;
-    border: 2dp #ffffff;
+    border-radius: var(--radius-control);
+    border-width: 2dp;
+    border-color: var(--color-white);
     box-shadow: 0 0 4dp 1dp rgba(0, 0, 0, 70%);
     pointer-events: none;
 }
 
 color-heading {
     display: block;
-    margin-top: 2dp;
-    font-family: "Fira Sans Condensed";
+    margin-top: var(--space-2xs);
+    font-family: var(--font-family-heading);
     font-weight: bold;
-    font-size: 13dp;
+    font-size: var(--font-size-xs);
     text-transform: uppercase;
-    color: rgba(224, 219, 200, 55%);
+    color: rgba(var(--color-text-rgb), 55%);
 }
 
 color-presets {
@@ -114,7 +118,7 @@ button.color-swatch-button {
     width: 25dp;
     height: 25dp;
     padding: 0;
-    border-radius: 7dp;
+    border-radius: var(--radius-control);
 }
 
 color-chip {
@@ -129,56 +133,56 @@ color-chip {
 button.color-swatch-button color-chip {
     width: 25dp;
     height: 25dp;
-    border-radius: 7dp;
+    border-radius: var(--radius-control);
 }
 
 color-chip.empty,
 color-swatch.empty {
-    background-color: rgba(224, 219, 200, 12%);
-    decorator: linear-gradient(135deg, rgba(224, 219, 200, 0) 45%,
-        rgba(194, 164, 45, 70%) 48%, rgba(194, 164, 45, 70%) 52%,
-        rgba(224, 219, 200, 0) 55%);
+    background-color: rgba(var(--color-text-rgb), 12%);
+    decorator: linear-gradient(135deg, rgba(var(--color-text-rgb), 0) 45%,
+        rgba(var(--color-accent-rgb), 70%) 48%, rgba(var(--color-accent-rgb), 70%) 52%,
+        rgba(var(--color-text-rgb), 0) 55%);
 }
 
 color-footer {
     display: flex;
     align-items: center;
     gap: 6dp;
-    padding-top: 2dp;
+    padding-top: var(--space-2xs);
 }
 
 button {
-    background-color: rgba(17, 16, 10, 35%);
-    padding: 4dp 8dp;
-    border-radius: 8dp;
+    background-color: var(--button-background);
+    padding: var(--space-xs) var(--space-sm);
+    border-radius: var(--radius-panel);
     box-shadow: rgba(146, 135, 91, 30%) 0 0 0 1dp;
-    color: #E0DBC8;
+    color: var(--button-color);
     cursor: pointer;
     focus: auto;
 }
 
 button:hover,
 button:focus-visible {
-    background-color: rgba(204, 184, 119, 20%);
+    background-color: var(--button-background-hover);
     box-shadow: #C2A42D 0 0 0 2dp;
 }
 
 button:active {
-    background-color: rgba(204, 184, 119, 40%);
+    background-color: var(--button-background-active);
 }
 
 color-value {
     display: block;
     flex: 1 1 auto;
     text-align: right;
-    font-family: "Noto Mono";
-    font-size: 12dp;
-    color: #FFFFFF;
+    font-family: var(--font-family-monospace);
+    font-size: var(--font-size-2xs);
+    color: var(--color-white);
     cursor: pointer;
     focus: auto;
 }
 
 color-value:hover,
 color-value:focus-visible {
-    color: #C2A42D;
+    color: var(--color-accent);
 }

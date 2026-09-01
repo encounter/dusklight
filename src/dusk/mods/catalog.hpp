@@ -1,0 +1,131 @@
+#pragma once
+
+#include <borealis/http.hpp>
+
+#include <cstdint>
+#include <optional>
+#include <string>
+#include <vector>
+
+namespace dusk::mods::catalog {
+
+enum class Sort {
+    Downloads,
+    Endorsements,
+    Updated,
+    Newest,
+    Name,
+};
+
+struct Query {
+    std::string search;
+    std::string category;
+    Sort sort = Sort::Downloads;
+    int page = 1;
+    bool thisDevice = true;
+};
+
+struct Category {
+    std::string slug;
+    std::string name;
+    std::uint64_t modCount = 0;
+};
+
+struct Tag {
+    std::string slug;
+    std::string name;
+};
+
+struct Author {
+    std::string name;
+    std::string handle;
+    bool official = false;
+};
+
+struct ImageSource {
+    std::uint32_t width = 0;
+    std::string pngUrl;
+};
+
+struct Image {
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    std::vector<ImageSource> sources;
+};
+
+struct Mod {
+    std::string id;
+    std::string name;
+    std::string version;
+    Author author;
+    std::string summary;
+    std::optional<Category> category;
+    std::vector<Tag> tags;
+    std::uint64_t downloads = 0;
+    std::uint64_t endorsements = 0;
+    std::string publishedAt;
+    std::string updatedAt;
+    std::uint64_t packageSize = 0;
+    bool containsNativeCode = false;
+    std::vector<std::string> supportedPlatforms;
+    std::optional<Image> icon;
+    std::optional<Image> banner;
+};
+
+struct Screenshot {
+    std::string altText;
+    Image image;
+};
+
+struct ServiceImport {
+    std::string id;
+    std::uint16_t major = 0;
+    std::uint16_t minMinor = 0;
+    bool optional = false;
+};
+
+struct Detail {
+    Mod mod;
+    std::string slug;
+    std::string siteUrl;
+    std::optional<std::string> sourceUrl;
+    std::optional<std::string> license;
+    std::string descriptionHtml;
+    std::string changelogHtml;
+    std::string packageSha256;
+    std::optional<std::uint32_t> modAbi;
+    std::optional<Image> banner;
+    std::vector<Screenshot> screenshots;
+    std::vector<ServiceImport> serviceImports;
+};
+
+struct Pagination {
+    int page = 1;
+    int pageSize = 0;
+    int pageCount = 0;
+    std::uint64_t total = 0;
+};
+
+struct Page {
+    std::vector<Category> categories;
+    std::vector<Mod> mods;
+    Pagination pagination;
+};
+
+struct FetchResult {
+    std::optional<Page> page;
+    std::string error;
+};
+
+struct DetailFetchResult {
+    std::optional<Detail> detail;
+    std::string error;
+};
+
+/** Fetches one filtered page from the configured Dusklight catalog. */
+borealis::Task<FetchResult> fetch_page(Query query);
+
+/** Fetches the full catalog record for one mod. */
+borealis::Task<DetailFetchResult> fetch_detail(std::string id);
+
+}  // namespace dusk::mods::catalog

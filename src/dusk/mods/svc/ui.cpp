@@ -114,9 +114,10 @@ struct UiSlot {
     std::string styleId;
     // Cached rendered values for element setters. These make the natural "set every update"
     // style cheap when the displayed value has not changed.
-    std::string elementRml;
+    std::string elementValue;
     float elementFloat = 0.0f;
     bool hasElementValue = false;
+    bool elementValueIsRml = false;
 };
 
 SlotMap<UiSlot> s_slots;
@@ -550,7 +551,7 @@ ModResult ui_pane_add_text(LoadedMod& mod, uint64_t pane, const char* text, uint
     auto* elem = slot->pane->add_text(text);
     if (outElem != nullptr) {
         auto& elemSlot = alloc_slot(mod, UiSlotKind::Text, *outElem);
-        elemSlot.elementRml = ui::escape(text);
+        elemSlot.elementValue = text;
         elemSlot.hasElementValue = true;
         track_element(*outElem, elemSlot, *elem);
     }
@@ -565,8 +566,9 @@ ModResult ui_pane_add_rml(LoadedMod& mod, uint64_t pane, const char* rml, uint64
     auto* elem = slot->pane->add_rml(rml);
     if (outElem != nullptr) {
         auto& elemSlot = alloc_slot(mod, UiSlotKind::Text, *outElem);
-        elemSlot.elementRml = rml;
+        elemSlot.elementValue = rml;
         elemSlot.hasElementValue = true;
+        elemSlot.elementValueIsRml = true;
         track_element(*outElem, elemSlot, *elem);
     }
     return MOD_OK;
@@ -797,13 +799,13 @@ ModResult ui_elem_set_text(LoadedMod& mod, uint64_t elem, const char* text) {
     if (slot == nullptr) {
         return MOD_INVALID_ARGUMENT;
     }
-    const std::string rml = ui::escape(text);
-    if (slot->hasElementValue && slot->elementRml == rml) {
+    if (slot->hasElementValue && !slot->elementValueIsRml && slot->elementValue == text) {
         return MOD_OK;
     }
-    slot->elementRml = rml;
+    slot->elementValue = text;
     slot->hasElementValue = true;
-    slot->element->SetInnerRML(slot->elementRml);
+    slot->elementValueIsRml = false;
+    ui::set_text_content(slot->element, slot->elementValue);
     return MOD_OK;
 }
 
@@ -812,11 +814,12 @@ ModResult ui_elem_set_rml(LoadedMod& mod, uint64_t elem, const char* rml) {
     if (slot == nullptr) {
         return MOD_INVALID_ARGUMENT;
     }
-    if (slot->hasElementValue && slot->elementRml == rml) {
+    if (slot->hasElementValue && slot->elementValueIsRml && slot->elementValue == rml) {
         return MOD_OK;
     }
-    slot->elementRml = rml;
+    slot->elementValue = rml;
     slot->hasElementValue = true;
+    slot->elementValueIsRml = true;
     slot->element->SetInnerRML(rml);
     return MOD_OK;
 }
@@ -940,7 +943,7 @@ ModResult ui_dialog_push(LoadedMod& mod, const UiDialogDesc& desc, uint64_t& out
     default:
         break;
     }
-    props.title = ui::escape(desc.title);
+    props.title = desc.title;
     props.bodyRml = desc.body_rml;
     props.icon = desc.icon != nullptr ? desc.icon : defaultIcon;
     props.onDismiss = [modPtr = &mod, handle, fn = desc.on_dismiss, userData = desc.user_data](

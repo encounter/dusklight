@@ -26,13 +26,16 @@ private:
     };
 
     void build_content(Rml::Element* content);
+    void build_browser_detail(Pane& pane);
     void build_detail(Pane& pane, mods::LoadedMod& mod);
     void mark_current_entry();
 
     std::vector<ModSnapshot> mSnapshot;
     std::vector<Component*> mEntries;
     std::vector<mods::LoadedMod*> mEntryMods;
+    Component* mBrowserEntry = nullptr;
     mods::LoadedMod* mSelectedMod = nullptr;
+    bool mBrowserSelected = false;
 };
 
 }  // namespace dusk::ui

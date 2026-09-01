@@ -104,6 +104,10 @@ std::filesystem::path resource_path(const std::filesystem::path& filename) noexc
 std::string escape(std::string_view str) noexcept;
 Rml::Element* append(Rml::Element* parent, const Rml::String& tag) noexcept;
 Rml::Element* append_text(Rml::Element* parent, const Rml::String& text) noexcept;
+Rml::Element* append_text_element(
+    Rml::Element* parent, const Rml::String& tag, const Rml::String& text) noexcept;
+void clear_children(Rml::Element* parent) noexcept;
+void set_text_content(Rml::Element* parent, const Rml::String& text) noexcept;
 
 NavCommand map_nav_event(const Rml::Event& event) noexcept;
 Insets safe_area_insets(Rml::Context* context) noexcept;

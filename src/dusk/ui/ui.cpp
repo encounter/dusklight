@@ -14,15 +14,16 @@
 #include <filesystem>
 #include <ranges>
 
+#include <borealis/io.hpp>
 #include "aurora/lib/window.hpp"
 #include "dusk/config.hpp"
 #include "dusk/io.hpp"
-#include <borealis/io.hpp>
 #include "command_console.hpp"
 #include "icon_provider.hpp"
 #include "input.hpp"
 #include "mod_texture_provider.hpp"
 #include "prelaunch.hpp"
+#include "remote_texture_provider.hpp"
 #include "window.hpp"
 
 namespace dusk::ui {
@@ -98,11 +99,13 @@ bool initialize() noexcept {
 
     register_icon_texture_provider();
     register_mod_texture_provider();
+    register_remote_texture_provider();
     sInitialized = true;
     return true;
 }
 
 void shutdown() noexcept {
+    unregister_remote_texture_provider();
     unregister_mod_texture_provider();
     unregister_icon_texture_provider();
     sDocumentStack.clear();
@@ -361,6 +364,7 @@ void update() noexcept {
         return;
     }
 
+    update_remote_texture_provider();
     input::update_input();
     const auto update_documents = [](auto& documents) {
         const std::size_t count = documents.size();
@@ -447,6 +451,29 @@ Rml::Element* append_text(Rml::Element* parent, const Rml::String& text) noexcep
         return nullptr;
     }
     return parent->AppendChild(doc->CreateTextNode(text));
+}
+
+Rml::Element* append_text_element(
+    Rml::Element* parent, const Rml::String& tag, const Rml::String& text) noexcept {
+    auto* element = append(parent, tag);
+    append_text(element, text);
+    return element;
+}
+
+void clear_children(Rml::Element* parent) noexcept {
+    if (parent == nullptr) {
+        return;
+    }
+    while (parent->GetNumChildren() > 0) {
+        parent->RemoveChild(parent->GetFirstChild());
+    }
+}
+
+void set_text_content(Rml::Element* parent, const Rml::String& text) noexcept {
+    clear_children(parent);
+    if (!text.empty()) {
+        append_text(parent, text);
+    }
 }
 
 NavCommand map_nav_event(const Rml::Event& event) noexcept {
