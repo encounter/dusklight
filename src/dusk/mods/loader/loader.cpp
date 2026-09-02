@@ -22,6 +22,7 @@
 #include "dusk/io.hpp"
 #include "dusk/mods/log_buffer.hpp"
 #include "dusk/mods/path.hpp"
+#include "dusk/mods/queue.hpp"
 #include "dusk/mods/svc/config.hpp"
 #include "dusk/mods/svc/hook.hpp"
 #include "dusk/mods/svc/registry.hpp"
@@ -1781,6 +1782,7 @@ void ModLoader::apply_pending_requests() {
             }
 
             const auto removedName = mod->metadata.name;
+            const auto removedId = mod->metadata.id;
             std::error_code error;
             if (!fs::remove(mod->modPath, error)) {
                 complete_operation(uninstall->operation, false,
@@ -1788,11 +1790,12 @@ void ModLoader::apply_pending_requests() {
                 continue;
             }
             forget_mod(*mod);
+            queue::remove_by_mod_id(removedId);
             complete_operation(uninstall->operation);
             ui::push_toast({
                 .title = "Mod uninstalled",
                 .content = removedName,
-                .duration = std::chrono::seconds{4},
+                .duration = std::chrono::seconds{2},
             });
             continue;
         }

@@ -18,12 +18,19 @@ enum class State {
     Retrying,
     Verifying,
     Handoff,
+    Installed,
+    InstallFailed,
     Failed,
     Canceled,
 };
 
 [[nodiscard]] constexpr bool is_terminal(State state) noexcept {
-    return state == State::Failed || state == State::Canceled;
+    return state == State::Installed || state == State::InstallFailed || state == State::Failed ||
+           state == State::Canceled;
+}
+
+[[nodiscard]] constexpr bool is_install_result(State state) noexcept {
+    return state == State::Installed || state == State::InstallFailed;
 }
 
 struct Url {
@@ -38,11 +45,18 @@ struct LocalFile {
 
 using Source = std::variant<Url, LocalFile>;
 
+struct Icon {
+    std::string url;
+    uint32_t width = 0;
+    uint32_t height = 0;
+};
+
 struct Request {
     std::string id;
     std::string name;
     std::string version;
     Source source;
+    std::optional<Icon> icon;
 };
 
 struct Item {
@@ -57,6 +71,7 @@ struct Item {
     std::string message;
     int retrySeconds = 0;
     bool local = false;
+    std::optional<Icon> icon;
 };
 
 /** Adds an install, replacing failed or canceled work for the same package ID. */
@@ -78,6 +93,8 @@ void pause(std::string_view id);
 void resume(std::string_view id);
 void retry(std::string_view id);
 void cancel(std::string_view id);
+void clear(std::string_view id);
+void remove_by_mod_id(std::string_view id);
 void pause_all();
 void clear_finished();
 

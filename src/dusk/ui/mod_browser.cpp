@@ -143,6 +143,21 @@ std::string image_source(const mods::catalog::Image& image, uint32_t preferredWi
     return image.sources.empty() ? std::string{} : image.sources.back().pngUrl;
 }
 
+std::optional<mods::queue::Icon> queue_icon(const std::optional<mods::catalog::Image>& image) {
+    if (!image) {
+        return std::nullopt;
+    }
+    auto source = image_source(*image, 128);
+    if (source.empty()) {
+        return std::nullopt;
+    }
+    return mods::queue::Icon{
+        .url = std::move(source),
+        .width = image->width,
+        .height = image->height,
+    };
+}
+
 void set_image(Rml::Element* element, const mods::catalog::Image& image, uint32_t preferredWidth,
     std::string_view fit = "cover") {
     if (element == nullptr) {
@@ -436,6 +451,7 @@ public:
                                                                 .sha256 = detail.download.sha256,
                                                                 .size = detail.download.size,
                                                             },
+                                                        .icon = queue_icon(detail.mod.icon),
                                                     } {
         mRoot->SetClass("catalog-install-action", true);
         mCaption = append(parent, "catalog-install-caption");
@@ -502,6 +518,9 @@ public:
                 caption = "Applying package";
                 progress = 1.0f;
                 disabled = true;
+                break;
+            case Installed:
+            case InstallFailed:
                 break;
             case Failed:
                 glyph = "\uE5D5";
@@ -571,7 +590,12 @@ public:
 private:
     std::optional<mods::queue::Item> matching_queue_item() const {
         auto item = mods::queue::find_by_mod_id(mRequest.id);
-        return item && item->version == mRequest.version ? item : std::nullopt;
+        if (!item || item->version != mRequest.version ||
+            mods::queue::is_install_result(item->state))
+        {
+            return std::nullopt;
+        }
+        return item;
     }
 
     void press() {

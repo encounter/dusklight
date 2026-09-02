@@ -110,8 +110,8 @@ public:
         auto* info = append(mRoot, "mod-entry-info");
         auto* name = append(info, "mod-entry-name");
         append_text(append(name, "mod-entry-name-text"), "Browse online mods");
-        append_text(append(info, "mod-entry-sub"), "Dusklight catalog");
-        append_text(append(info, "mod-entry-desc"), "Discover and install published mods.");
+        append_text(
+            append(info, "mod-entry-desc"), "Discover and install mods from the community.");
 
         on_nav_command([callback = std::move(onOpen)](Rml::Event&, NavCommand cmd) {
             if (cmd != NavCommand::Confirm) {
@@ -290,7 +290,6 @@ void ModsWindow::build_content(Rml::Element* content) {
             mBrowserSelected = true;
             mSelectedMod = nullptr;
             mSelectedModId.clear();
-            build_browser_detail(pane);
             mark_current_entry();
         });
     }
@@ -311,7 +310,6 @@ void ModsWindow::build_content(Rml::Element* content) {
         mSelectedModId.clear();
         if (borealis::http::available()) {
             mBrowserSelected = true;
-            build_browser_detail(detailPane);
         }
         mark_current_entry();
         return;
@@ -334,7 +332,6 @@ void ModsWindow::build_content(Rml::Element* content) {
     if (mBrowserSelected && mBrowserEntry != nullptr) {
         mSelectedMod = nullptr;
         mSelectedModId.clear();
-        build_browser_detail(detailPane);
     } else {
         mSelectedMod = nullptr;
         if (!mSelectedModId.empty()) {
@@ -351,12 +348,6 @@ void ModsWindow::build_content(Rml::Element* content) {
         build_detail(detailPane, *mSelectedMod);
     }
     mark_current_entry();
-}
-
-void ModsWindow::build_browser_detail(Pane& pane) {
-    pane.root()->RemoveAttribute("mod-id");
-    append_text(append(pane.root(), "mod-title"), "Browse Mods");
-    pane.add_text("Find published Dusklight mods in the online catalog.");
 }
 
 void ModsWindow::build_detail(Pane& pane, mods::LoadedMod& mod) {

@@ -477,6 +477,7 @@ Item snapshot(const QueueItem& item) {
         .total = item.total,
         .message = item.message,
         .local = local_source(item) != nullptr,
+        .icon = item.request.icon,
     };
     if (item.task) {
         result.completed = std::max(result.completed, item.task.progress().completed);
@@ -553,10 +554,13 @@ void update() {
         if (item->state == State::Handoff && item->operation &&
             item->operation->state != ModOperation::State::Pending)
         {
-            item = queueItems.erase(item);
-        } else {
-            ++item;
+            item->message = item->operation->message;
+            item->state = item->operation->state == ModOperation::State::Succeeded ?
+                              State::Installed :
+                              State::InstallFailed;
+            item->operation.reset();
         }
+        ++item;
     }
 
     for (auto& item : queueItems) {
@@ -678,7 +682,23 @@ void resume(std::string_view id) {
 
 void retry(std::string_view id) {
     auto* item = find_queue_item(id);
-    if (item == nullptr || item->state != State::Failed) {
+    if (item == nullptr) {
+        return;
+    }
+    if (item->state == State::InstallFailed) {
+        auto* mod = ModLoader::instance().find_mod(item->request.id);
+        if (mod != nullptr) {
+            if (mod->activation_failed()) {
+                item->message.clear();
+                item->state = State::Handoff;
+                item->operation = ModLoader::instance().request_reactivate(item->request.id);
+            } else {
+                item->message.clear();
+                item->state = State::Installed;
+            }
+            return;
+        }
+    } else if (item->state != State::Failed) {
         return;
     }
     remove_partial(*item);
@@ -690,7 +710,7 @@ void retry(std::string_view id) {
 
 void cancel(std::string_view id) {
     auto* item = find_queue_item(id);
-    if (item == nullptr || item->state == State::Handoff) {
+    if (item == nullptr || item->state == State::Handoff || is_terminal(item->state)) {
         return;
     }
     if (item->task) {
@@ -711,6 +731,19 @@ void cancel(std::string_view id) {
     item->state = State::Canceled;
 }
 
+void clear(std::string_view id) {
+    const auto item = std::ranges::find(
+        queueItems, id, [](const QueueItem& candidate) { return std::string_view{candidate.key}; });
+    if (item != queueItems.end() && is_terminal(item->state)) {
+        queueItems.erase(item);
+    }
+}
+
+void remove_by_mod_id(std::string_view id) {
+    std::erase_if(queueItems,
+        [id](const QueueItem& item) { return std::string_view{item.request.id} == id; });
+}
+
 void pause_all() {
     std::vector<std::string> ids;
     for (const auto& item : queueItems) {
@@ -726,7 +759,7 @@ void pause_all() {
 }
 
 void clear_finished() {
-    std::erase_if(queueItems, [](const QueueItem& item) { return item.state == State::Canceled; });
+    std::erase_if(queueItems, [](const QueueItem& item) { return is_terminal(item.state); });
 }
 
 }  // namespace dusk::mods::queue

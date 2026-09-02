@@ -16,16 +16,21 @@ class PackageRow : public Component {
 public:
     explicit PackageRow(Rml::Element* parent);
 
-    void set_package(std::string name, std::string status, std::string detail,
+    void set_package(std::string name, std::string version, std::string status, std::string detail,
         std::string stateClass, std::optional<float> progress = {});
+    void set_icon(std::string source);
     Rml::Element* actions_root();
 
 private:
+    Rml::Element* mIcon = nullptr;
     Rml::Element* mName = nullptr;
+    Rml::Element* mVersion = nullptr;
     Rml::Element* mState = nullptr;
     Rml::Element* mProgress = nullptr;
     Rml::Element* mDetail = nullptr;
+    Rml::Element* mFooter = nullptr;
     Rml::Element* mActions = nullptr;
+    std::string mIconSource;
 };
 
 }  // namespace dusk::ui

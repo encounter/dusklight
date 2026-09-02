@@ -411,6 +411,10 @@ icon.verifying {
     decorator: text("&#xe8b5;" center center);
 }
 
+icon.download {
+    decorator: text("&#xe2c4;" center center);
+}
+
 icon.celebration {
     decorator: text("&#xea65;" center center);
 }
@@ -631,7 +635,7 @@ modal-content pane > * {
 }
 
 window.modal.install-queue {
-    max-height: 720dp;
+    max-height: 768dp;
 }
 
 window.modal.drop-install {
@@ -643,19 +647,62 @@ window.modal.drop-install package-row {
 }
 
 window.modal.install-queue modal-body {
-    font-size: var(--font-size-sm);
-    color: rgba(var(--color-text-rgb), 60%);
+    display: none;
+}
+
+window.modal.install-queue modal-content pane {
+    gap: 0;
+    padding-right: 14dp;
+    padding-bottom: 6dp;
 }
 
 package-row {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
+    align-items: flex-start;
     position: relative;
     width: 100%;
-    gap: var(--space-2xs);
-    padding: var(--space-sm) 78dp var(--space-sm) 0;
+    gap: 10dp;
+    padding: var(--space-md) 0;
     border-bottom-width: 1dp;
-    border-bottom-color: rgba(var(--color-border-rgb), 25%);
+    border-bottom-color: rgba(var(--color-border-rgb), 30%);
+}
+
+package-row-icon {
+    display: none;
+    flex: 0 0 36dp;
+    width: 36dp;
+    height: 36dp;
+    margin-top: var(--space-2xs);
+    overflow: hidden;
+    border-radius: var(--radius-panel);
+    background-color: rgba(var(--color-control-rgb), 45%);
+    color: rgba(var(--color-text-rgb), 45%);
+    font-family: var(--font-family-icons);
+    font-size: var(--font-size-4xl);
+    decorator: text("&#xe87b;" center center);
+}
+
+package-row-icon.visible {
+    display: block;
+}
+
+package-row-icon.has-image {
+    background-color: transparent;
+}
+
+package-row.paused package-row-icon,
+package-row.retrying package-row-icon,
+package-row.failed package-row-icon {
+    filter: grayscale(1);
+    opacity: 0.55;
+}
+
+package-row-info {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 0;
+    min-width: 0;
 }
 
 package-row-heading {
@@ -663,23 +710,46 @@ package-row-heading {
     width: 100%;
     gap: var(--space-sm);
     align-items: center;
+    padding-bottom: 6dp;
+}
+
+package-row-identity {
+    display: flex;
+    align-items: baseline;
+    flex: 1 1 auto;
+    min-width: 0;
+    gap: var(--space-xs);
+    overflow: hidden;
 }
 
 package-row-name {
     display: block;
-    flex: 1 1 auto;
+    flex: 0 1 auto;
     min-width: 0;
     font-weight: bold;
+    color: var(--color-white);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
-package-row-state {
+package-row-version {
     display: block;
     flex: 0 0 auto;
     font-size: var(--font-size-xs);
+    font-weight: normal;
+    color: rgba(var(--color-text-rgb), 50%);
+}
+
+package-row-state {
+    display: block;
+    flex: 0 0 auto;
+    font-size: var(--font-size-sm);
     color: rgba(var(--color-text-rgb), 60%);
+}
+
+package-row.downloading package-row-state {
+    color: var(--color-accent);
 }
 
 package-row.retrying package-row-state {
@@ -697,23 +767,43 @@ package-row.installed package-row-detail {
 }
 
 package-row progress {
-    height: 4dp;
-    margin: var(--space-2xs) 0;
+    width: 100%;
+    height: 6dp;
+    margin: 0 0 var(--space-sm) 0;
+    border-radius: 3dp;
 }
 
 package-row.failed progress fill {
     background-color: var(--color-error);
 }
 
+package-row.paused progress fill {
+    background-color: rgba(var(--color-text-rgb), 35%);
+}
+
+package-row.retrying progress fill {
+    background-color: rgba(var(--color-warning-rgb), 55%);
+}
+
 package-row.installed progress fill {
     background-color: var(--color-success);
 }
 
+package-row-footer {
+    display: flex;
+    align-items: flex-start;
+    width: 100%;
+    min-width: 0;
+    gap: var(--space-sm);
+}
+
 package-row-detail {
     display: block;
+    flex: 1 1 0;
     min-width: 0;
-    font-size: var(--font-size-2xs);
-    color: rgba(var(--color-text-rgb), 48%);
+    font-size: var(--font-size-xs);
+    line-height: 1;
+    color: rgba(var(--color-text-rgb), 45%);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -721,16 +811,54 @@ package-row-detail {
 
 package-row-actions {
     display: flex;
-    position: absolute;
-    right: 0;
-    top: 22dp;
-    gap: var(--space-2xs);
+    flex: 0 0 auto;
+    gap: 6dp;
 }
 
-package-row-actions button {
-    min-width: 34dp;
-    padding: 4dp 7dp;
-    font-size: var(--font-size-3xs);
+package-row-actions button.package-row-icon-action {
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 30dp;
+    width: 30dp;
+    min-width: 30dp;
+    height: 26dp;
+    padding: 0;
+    border-radius: 14dp;
+    font-size: var(--font-size-md);
+}
+
+package-row-actions button.package-row-icon-action icon {
+    flex: 0 0 var(--font-size-md);
+    width: var(--font-size-md);
+    height: var(--font-size-md);
+    font-size: var(--font-size-md);
+    line-height: 1;
+}
+
+package-row.installed {
+    align-items: center;
+}
+
+package-row.installed package-row-icon {
+    margin-top: 0;
+}
+
+package-row.installed package-row-info {
+    padding-right: 38dp;
+}
+
+package-row.installed package-row-state {
+    display: none;
+}
+
+package-row.installed package-row-actions {
+    position: absolute;
+    top: 17dp;
+    right: 0;
+}
+
+package-row.installed package-row-actions button.package-row-icon-action {
+    opacity: 0.45;
 }
 
 verification-progress {

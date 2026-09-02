@@ -106,12 +106,14 @@ DropInstallModal::DropInstallModal(std::vector<DropPackage> packages, PreparedTa
         auto& row = pane.add_child<PackageRow>();
         const auto name = package.metadata.name.empty() ?
                               borealis::io::fs_path_to_string(package.path.filename()) :
-                              fmt::format("{} {}", package.metadata.name, package.metadata.version);
+                              package.metadata.name;
+        const auto version =
+            package.metadata.name.empty() ? std::string{} : package.metadata.version;
         const auto detail =
             package.metadata.author.empty() ?
                 format_bytes(package.size) :
                 fmt::format("{} · {}", package.metadata.author, format_bytes(package.size));
-        row.set_package(name, package.status, detail, package.valid ? "queued" : "failed");
+        row.set_package(name, version, package.status, detail, package.valid ? "queued" : "failed");
         row.set_disabled(!package.valid);
     }
 }

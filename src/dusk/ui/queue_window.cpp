@@ -1,11 +1,14 @@
 #include "queue_window.hpp"
 
 #include "button.hpp"
+#include "dusk/mod_loader.hpp"
 #include "dusk/mods/queue.hpp"
 #include "fmt/format.h"
 #include "format.hpp"
+#include "mod_texture_provider.hpp"
 #include "package_row.hpp"
 #include "pane.hpp"
+#include "remote_texture_provider.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -17,12 +20,27 @@
 namespace dusk::ui {
 namespace {
 
+void set_icon_button(Button& button, const Rml::String& glyph, const Rml::String& label,
+    Rml::String& currentGlyph, Rml::String& currentLabel) {
+    if (currentGlyph != glyph) {
+        clear_children(button.root());
+        append_text(append(button.root(), "icon"), glyph);
+        currentGlyph = glyph;
+    }
+    if (currentLabel != label) {
+        button.root()->SetAttribute("aria-label", label);
+        button.root()->SetAttribute("title", label);
+        currentLabel = label;
+    }
+}
+
 class QueueRow final : public PackageRow {
 public:
     QueueRow(Rml::Element* parent, std::string id) : PackageRow{parent}, mId{std::move(id)} {
         auto* actions = actions_root();
-        auto pause = std::make_unique<Button>(actions, "Pause");
+        auto pause = std::make_unique<Button>(actions, "");
         mPause = pause.get();
+        mPause->root()->SetClass("package-row-icon-action", true);
         mPause->on_pressed([this] {
             const auto item = mods::queue::find(mId);
             if (!item) {
@@ -33,6 +51,7 @@ public:
                 mods::queue::resume(mId);
                 break;
             case mods::queue::State::Failed:
+            case mods::queue::State::InstallFailed:
                 mods::queue::retry(mId);
                 break;
             default:
@@ -42,18 +61,29 @@ public:
         });
         mChildren.push_back(std::move(pause));
 
-        auto cancel = std::make_unique<Button>(actions, "Cancel");
+        auto cancel = std::make_unique<Button>(actions, "");
         mCancel = cancel.get();
+        mCancel->root()->SetClass("package-row-icon-action", true);
         mCancel->on_pressed([this] {
             const auto item = mods::queue::find(mId);
             if (!item) {
                 return;
             }
-            mods::queue::cancel(mId);
             if (mods::queue::is_terminal(item->state)) {
-                mods::queue::clear_finished();
+                if (item->state == mods::queue::State::InstallFailed) {
+                    auto& loader = mods::ModLoader::instance();
+                    if (const auto* mod = loader.find_mod(item->modId);
+                        mod != nullptr && loader.can_uninstall(*mod))
+                    {
+                        loader.request_uninstall(item->modId);
+                    }
+                }
+                mods::queue::clear(mId);
+                return;
             }
+            mods::queue::cancel(mId);
         });
+        set_icon_button(*mCancel, "\uE5CD", "Cancel", mCancelGlyph, mCancelLabel);
         mChildren.push_back(std::move(cancel));
         update();
     }
@@ -79,30 +109,58 @@ public:
         } else {
             detail = format_bytes(item->total);
         }
-        if (!item->message.empty()) {
+        if (!item->message.empty() && (item->state == mods::queue::State::Failed ||
+                                          item->state == mods::queue::State::InstallFailed))
+        {
+            detail = item->message;
+        } else if (!item->message.empty()) {
             detail = fmt::format("{} · {}", detail, item->message);
         }
-        const auto name =
-            item->version.empty() ? item->name : fmt::format("{} {}", item->name, item->version);
-        set_package(name, state_label(*item), detail, queue_state_class(item->state), progress);
+        auto status = state_label(*item);
+        if (item->state == mods::queue::State::Installed) {
+            status.clear();
+            detail = fmt::format("Installed · {}", format_bytes(item->total));
+        }
+        const std::optional<float> progressValue =
+            item->state == mods::queue::State::Installed ||
+                    item->state == mods::queue::State::Canceled ?
+                std::nullopt :
+                std::optional{progress};
+        set_package(item->name, item->version, std::move(status), detail,
+            queue_state_class(item->state), progressValue);
+
+        std::string iconSource;
+        if (item->icon && !item->icon->url.empty()) {
+            iconSource =
+                remote_image_source(item->icon->url, item->icon->width, item->icon->height);
+        } else if (const auto* mod = mods::ModLoader::instance().find_mod(item->modId);
+            mod != nullptr && !mod->metadata.iconPath.empty())
+        {
+            iconSource = mod_image_source(*mod, mod->metadata.iconPath);
+        }
+        set_icon(std::move(iconSource));
 
         const bool pauseVisible = (!item->local && item->state == mods::queue::State::Queued) ||
                                   item->state == mods::queue::State::Downloading ||
                                   item->state == mods::queue::State::Paused ||
                                   item->state == mods::queue::State::Retrying ||
-                                  item->state == mods::queue::State::Failed;
-        mPause->root()->SetProperty("display", pauseVisible ? "block" : "none");
+                                  item->state == mods::queue::State::Failed ||
+                                  item->state == mods::queue::State::InstallFailed;
+        mPause->root()->SetProperty("display", pauseVisible ? "flex" : "none");
         if (item->state == mods::queue::State::Paused) {
-            mPause->set_text("Resume");
-        } else if (item->state == mods::queue::State::Failed) {
-            mPause->set_text("Retry");
+            set_icon_button(*mPause, "\uE037", "Resume", mPauseGlyph, mPauseLabel);
+        } else if (item->state == mods::queue::State::Failed ||
+                   item->state == mods::queue::State::InstallFailed)
+        {
+            set_icon_button(*mPause, "\uE5D5", "Retry", mPauseGlyph, mPauseLabel);
         } else {
-            mPause->set_text("Pause");
+            set_icon_button(*mPause, "\uE034", "Pause", mPauseGlyph, mPauseLabel);
         }
 
         mCancel->root()->SetProperty(
-            "display", item->state == mods::queue::State::Handoff ? "none" : "block");
-        mCancel->set_text(mods::queue::is_terminal(item->state) ? "Clear" : "Cancel");
+            "display", item->state == mods::queue::State::Handoff ? "none" : "flex");
+        set_icon_button(*mCancel, "\uE5CD",
+            mods::queue::is_terminal(item->state) ? "Clear" : "Cancel", mCancelGlyph, mCancelLabel);
         Component::update();
     }
 
@@ -110,22 +168,27 @@ private:
     std::string mId;
     Button* mPause = nullptr;
     Button* mCancel = nullptr;
+    Rml::String mPauseGlyph;
+    Rml::String mPauseLabel;
+    Rml::String mCancelGlyph;
+    Rml::String mCancelLabel;
 };
 
 }  // namespace
 
 QueueWindow::QueueWindow(std::string focusId)
     : Modal{Props{
-          .title = "Installs",
-          .bodyText = "Preparing installs...",
+          .title = "Download queue",
           .actions =
               {
                   ModalAction{"Close", [](Modal& modal) { modal.pop(); }, {}},
                   ModalAction{"Pause all", [](Modal&) { mods::queue::pause_all(); },
                       [] { return !mods::queue::has_active_items(); }},
-                  ModalAction{"Clear finished", [](Modal&) { mods::queue::clear_finished(); }, {}},
+                  ModalAction{"Clear finished", [](Modal&) { mods::queue::clear_finished(); },
+                      [] { return mods::queue::item_count() == mods::queue::active_count(); }},
               },
           .variant = "install-queue",
+          .icon = "download",
       }},
       mFocusId{std::move(focusId)} {
     content_pane();

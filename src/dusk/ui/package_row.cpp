@@ -25,6 +25,10 @@ const char* queue_state_class(mods::queue::State state) {
         return "installing";
     case Handoff:
         return "installing";
+    case Installed:
+        return "installed";
+    case InstallFailed:
+        return "failed";
     case Failed:
         return "failed";
     case Canceled:
@@ -50,8 +54,12 @@ std::string state_label(const mods::queue::Item& item) {
         return "Verifying";
     case Handoff:
         return "Installing";
+    case Installed:
+        return "Installed";
+    case InstallFailed:
+        return "Failed";
     case Failed:
-        return item.local ? "Package failed" : "Download failed";
+        return "Failed";
     case Canceled:
         return "Canceled";
     }
@@ -59,17 +67,24 @@ std::string state_label(const mods::queue::Item& item) {
 }
 
 PackageRow::PackageRow(Rml::Element* parent) : Component{create_row(parent)} {
-    auto* heading = append(mRoot, "package-row-heading");
-    mName = append(heading, "package-row-name");
+    mIcon = append(mRoot, "package-row-icon");
+    auto* info = append(mRoot, "package-row-info");
+    auto* heading = append(info, "package-row-heading");
+    auto* identity = append(heading, "package-row-identity");
+    mName = append(identity, "package-row-name");
+    mVersion = append(identity, "package-row-version");
     mState = append(heading, "package-row-state");
-    mProgress = append(mRoot, "progress");
-    mDetail = append(mRoot, "package-row-detail");
+    mProgress = append(info, "progress");
+    mFooter = append(info, "package-row-footer");
+    mDetail = append(mFooter, "package-row-detail");
 }
 
-void PackageRow::set_package(std::string name, std::string status, std::string detail,
-    std::string stateClass, std::optional<float> progress) {
+void PackageRow::set_package(std::string name, std::string version, std::string status,
+    std::string detail, std::string stateClass, std::optional<float> progress) {
     mRoot->SetClassNames(fmt::format("package-row {}", stateClass));
     set_text_content(mName, name);
+    set_text_content(mVersion, version);
+    mVersion->SetProperty("display", version.empty() ? "none" : "block");
     set_text_content(mState, status);
     set_text_content(mDetail, detail);
     if (progress) {
@@ -80,9 +95,25 @@ void PackageRow::set_package(std::string name, std::string status, std::string d
     }
 }
 
+void PackageRow::set_icon(std::string source) {
+    mIcon->SetClass("visible", true);
+    if (mIconSource == source) {
+        return;
+    }
+    mIconSource = std::move(source);
+    if (mIconSource.empty()) {
+        mIcon->RemoveProperty("decorator");
+        mIcon->SetClass("has-image", false);
+        return;
+    }
+    mIcon->SetProperty(
+        "decorator", fmt::format(R"(image("{}" cover center center))", escape(mIconSource)));
+    mIcon->SetClass("has-image", true);
+}
+
 Rml::Element* PackageRow::actions_root() {
     if (mActions == nullptr) {
-        mActions = append(mRoot, "package-row-actions");
+        mActions = append(mFooter, "package-row-actions");
     }
     return mActions;
 }

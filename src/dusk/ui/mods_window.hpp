@@ -28,7 +28,6 @@ private:
     };
 
     void build_content(Rml::Element* content);
-    void build_browser_detail(Pane& pane);
     void build_detail(Pane& pane, mods::LoadedMod& mod);
     void confirm_uninstall(const mods::LoadedMod& mod);
     void refresh_snapshot();
