@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <optional>
@@ -16,15 +17,13 @@ enum class State {
     Paused,
     Retrying,
     Verifying,
-    Installing,
-    Activating,
-    Installed,
     Failed,
-    InstallFailed,
-    ActivationFailed,
-    Uninstalling,
     Canceled,
 };
+
+[[nodiscard]] constexpr bool is_terminal(State state) noexcept {
+    return state == State::Failed || state == State::Canceled;
+}
 
 struct Url {
     std::string url;
@@ -59,7 +58,7 @@ struct Item {
     bool local = false;
 };
 
-/** Adds an install, replacing terminal URL history for the same package ID. */
+/** Adds an install, replacing failed or canceled work for the same package ID. */
 bool enqueue(Request request, std::string* key = nullptr);
 
 /** Polls transfer and verification work. Call once per UI frame on the main thread. */
@@ -70,6 +69,10 @@ void shutdown() noexcept;
 [[nodiscard]] std::optional<Item> find(std::string_view key);
 [[nodiscard]] std::optional<Item> find_by_mod_id(std::string_view id);
 [[nodiscard]] bool has_active_items();
+[[nodiscard]] size_t item_count() noexcept;
+[[nodiscard]] size_t active_count() noexcept;
+[[nodiscard]] std::optional<Item> first_active();
+[[nodiscard]] size_t active_items_ahead(std::string_view id) noexcept;
 
 void pause(std::string_view id);
 void resume(std::string_view id);

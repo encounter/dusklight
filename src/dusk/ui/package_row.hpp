@@ -9,8 +9,7 @@
 
 namespace dusk::ui {
 
-std::string format_bytes(uint64_t bytes);
-const char* state_class(mods::queue::State state);
+const char* queue_state_class(mods::queue::State state);
 std::string state_label(const mods::queue::Item& item);
 
 class PackageRow : public Component {

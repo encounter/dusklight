@@ -14,7 +14,7 @@ public:
     void update() override;
 
 private:
-    void rebuild_rows();
+    void refresh_queue();
 
     std::string mFocusId;
     std::vector<std::string> mItemIds;

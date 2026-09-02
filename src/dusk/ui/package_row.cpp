@@ -12,23 +12,7 @@ Rml::Element* create_row(Rml::Element* parent) {
 
 }  // namespace
 
-std::string format_bytes(uint64_t bytes) {
-    constexpr double kiB = 1024.0;
-    constexpr double miB = kiB * 1024.0;
-    constexpr double giB = miB * 1024.0;
-    if (bytes >= static_cast<uint64_t>(giB)) {
-        return fmt::format("{:.1f} GiB", static_cast<double>(bytes) / giB);
-    }
-    if (bytes >= static_cast<uint64_t>(miB)) {
-        return fmt::format("{:.1f} MiB", static_cast<double>(bytes) / miB);
-    }
-    if (bytes >= static_cast<uint64_t>(kiB)) {
-        return fmt::format("{:.0f} KiB", static_cast<double>(bytes) / kiB);
-    }
-    return fmt::format("{} B", bytes);
-}
-
-const char* state_class(mods::queue::State state) {
+const char* queue_state_class(mods::queue::State state) {
     using enum mods::queue::State;
     switch (state) {
     case Downloading:
@@ -38,15 +22,8 @@ const char* state_class(mods::queue::State state) {
     case Retrying:
         return "retrying";
     case Verifying:
-    case Installing:
-    case Activating:
-    case Uninstalling:
         return "installing";
-    case Installed:
-        return "installed";
     case Failed:
-    case InstallFailed:
-    case ActivationFailed:
         return "failed";
     case Canceled:
         return "canceled";
@@ -69,20 +46,8 @@ std::string state_label(const mods::queue::Item& item) {
         return fmt::format("Retrying in {}s", item.retrySeconds);
     case Verifying:
         return "Verifying";
-    case Installing:
-        return "Installing";
-    case Activating:
-        return "Activating";
-    case Installed:
-        return "Installed";
     case Failed:
         return item.local ? "Package failed" : "Download failed";
-    case InstallFailed:
-        return "Install failed";
-    case ActivationFailed:
-        return "Activation failed";
-    case Uninstalling:
-        return "Uninstalling";
     case Canceled:
         return "Canceled";
     }

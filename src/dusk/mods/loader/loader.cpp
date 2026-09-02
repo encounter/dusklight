@@ -21,6 +21,7 @@
 #include "dusk/data.hpp"
 #include "dusk/io.hpp"
 #include "dusk/mods/log_buffer.hpp"
+#include "dusk/mods/path.hpp"
 #include "dusk/mods/svc/config.hpp"
 #include "dusk/mods/svc/hook.hpp"
 #include "dusk/mods/svc/registry.hpp"
@@ -204,20 +205,6 @@ void complete_operation(const std::shared_ptr<ModOperation>& operation, const bo
     operation->message = std::move(message);
 }
 
-std::string safe_filename(std::string_view id) {
-    std::string result{id};
-    std::ranges::replace_if(
-        result,
-        [](char character) {
-            return !((character >= 'a' && character <= 'z') ||
-                     (character >= 'A' && character <= 'Z') ||
-                     (character >= '0' && character <= '9') || character == '.' ||
-                     character == '_' || character == '-');
-        },
-        '_');
-    return result;
-}
-
 LoadedMod::FileIdentity file_identity(const fs::path& path) {
     std::error_code error;
     const bool isDirectory = fs::is_directory(path, error);
@@ -235,13 +222,6 @@ LoadedMod::FileIdentity file_identity(const fs::path& path) {
     return {.size = size, .modified = modified, .valid = true};
 }
 
-bool same_path(const fs::path& lhs, const fs::path& rhs) {
-    std::error_code error;
-    if (fs::equivalent(lhs, rhs, error)) {
-        return true;
-    }
-    return fs::absolute(lhs).lexically_normal() == fs::absolute(rhs).lexically_normal();
-}
 }  // namespace
 
 ModLoader& ModLoader::instance() {
@@ -617,7 +597,7 @@ void ModLoader::load_native(
     fs::path libPath;
     fs::path runtimeDir;
     DirectoryRollback runtimeDirRollback;
-    if (mod.inPlace) {
+    if (mod.nativeInPlace) {
         if (!dllEntry.empty()) {
             libPath = mod.modPath / dllEntry;
         } else if (auto external = external_native_lib_path(mod); !external.empty()) {
@@ -750,7 +730,7 @@ bool ModLoader::load_native_if_present(LoadedMod& mod) {
     }
 
     const auto& native = std::get<NativeRuntimeLocation>(result);
-    if (!native.anyLibs && !(mod.inPlace && !external_native_lib_path(mod).empty())) {
+    if (!native.anyLibs && !(mod.nativeInPlace && !external_native_lib_path(mod).empty())) {
         mod.nativeStatus = NativeModStatus::None;
         return true;
     }
@@ -765,7 +745,7 @@ bool ModLoader::load_native_if_present(LoadedMod& mod) {
 }
 
 void ModLoader::unload_native(LoadedMod& mod) {
-    if (!mod.native || mod.inPlace) {
+    if (!mod.native || mod.nativeInPlace) {
         return;
     }
     // Deferred dlclose: this mod's code may still be on the stack below the current tick
@@ -900,10 +880,7 @@ LoadedMod* ModLoader::try_load_mod(const fs::path& modPath, bool fromDir, uint32
     mod.active = true;
     mod.modPath = fs::absolute(modPath);
     mod.searchDirIndex = searchDirIndex;
-    mod.inPlace = m_searchDirs[searchDirIndex].inPlaceNative && fromDir;
-    mod.origin = searchDirIndex == 0 ? ModOrigin::User :
-                 mod.inPlace         ? ModOrigin::BundledInPlace :
-                                       ModOrigin::Bundled;
+    mod.nativeInPlace = m_searchDirs[searchDirIndex].inPlaceNative && fromDir;
     mod.fileIdentity = file_identity(modPath);
     mod.metadata = std::move(*metadata);
     mod.bundle = std::move(bundle);
@@ -1093,7 +1070,7 @@ void ModLoader::init() {
             });
 
         for (auto& entry : entries) {
-            (void)sync_path(entry.path(), false, static_cast<uint32_t>(dirIndex));
+            (void)try_load_mod(entry.path(), entry.is_directory(), static_cast<uint32_t>(dirIndex));
         }
     }
 
@@ -1166,10 +1143,19 @@ void ModLoader::init() {
     m_startupComplete = true;
 }
 
-LoadedMod* ModLoader::find_mod(std::string_view id) const {
-    for (auto& mod : mods()) {
-        if (mod.metadata.id == id) {
-            return &mod;
+LoadedMod* ModLoader::find_mod(std::string_view id) {
+    for (auto& mod : m_mods) {
+        if (mod->metadata.id == id) {
+            return mod.get();
+        }
+    }
+    return nullptr;
+}
+
+const LoadedMod* ModLoader::find_mod(std::string_view id) const {
+    for (const auto& mod : m_mods) {
+        if (mod->metadata.id == id) {
+            return mod.get();
         }
     }
     return nullptr;
@@ -1189,13 +1175,10 @@ void ModLoader::request_disable(std::string_view id) {
 
 ModOperationHandle ModLoader::request_reload(std::string_view id) {
     auto operation = std::make_shared<ModOperation>();
-    if (auto* mod = find_mod(id)) {
-        m_pendingRequests.push_back({
+    if (find_mod(id) != nullptr) {
+        m_pendingRequests.push_back(ReloadRequest{
             .modId = std::string{id},
-            .kind = RequestKind::Sync,
-            .path = mod->modPath,
             .operation = operation,
-            .force = true,
         });
     } else {
         complete_operation(operation, false, "The mod is no longer installed");
@@ -1205,9 +1188,8 @@ ModOperationHandle ModLoader::request_reload(std::string_view id) {
 
 ModOperationHandle ModLoader::request_install(fs::path path) {
     auto operation = std::make_shared<ModOperation>();
-    m_pendingRequests.push_back({
-        .kind = RequestKind::Install,
-        .path = std::move(path),
+    m_pendingRequests.push_back(InstallRequest{
+        .stagedPath = std::move(path),
         .operation = operation,
     });
     return operation;
@@ -1215,14 +1197,10 @@ ModOperationHandle ModLoader::request_install(fs::path path) {
 
 ModOperationHandle ModLoader::request_uninstall(std::string_view id) {
     auto operation = std::make_shared<ModOperation>();
-    if (auto* mod = find_mod(id)) {
-        m_pendingRequests.push_back({
+    if (find_mod(id) != nullptr) {
+        m_pendingRequests.push_back(UninstallRequest{
             .modId = std::string{id},
-            .kind = RequestKind::Sync,
-            .path = mod->modPath,
             .operation = operation,
-            .force = false,
-            .remove = true,
         });
     } else {
         complete_operation(operation);
@@ -1232,9 +1210,9 @@ ModOperationHandle ModLoader::request_uninstall(std::string_view id) {
 
 ModOperationHandle ModLoader::request_reactivate(std::string_view id) {
     auto operation = std::make_shared<ModOperation>();
-    m_pendingRequests.push_back({
+    m_pendingRequests.push_back(LifecycleRequest{
         .modId = std::string{id},
-        .kind = RequestKind::Reactivate,
+        .action = LifecycleAction::Reactivate,
         .operation = operation,
     });
     return operation;
@@ -1245,7 +1223,7 @@ fs::path ModLoader::user_mods_dir() const {
 }
 
 bool ModLoader::can_uninstall(const LoadedMod& mod) const {
-    return mod.origin == ModOrigin::User && !mod.inPlace && mod.modPath.extension() == ".dusk";
+    return mod.searchDirIndex == 0 && mod.modPath.extension() == ".dusk";
 }
 
 void ModLoader::notify_mod_failure(LoadedMod& mod, bool firstFailure) {
@@ -1256,7 +1234,10 @@ void ModLoader::notify_mod_failure(LoadedMod& mod, bool firstFailure) {
     if (!m_startupComplete) {
         return;
     }
-    m_pendingRequests.push_back({mod.metadata.id, RequestKind::Disable});
+    m_pendingRequests.push_back(LifecycleRequest{
+        .modId = mod.metadata.id,
+        .action = LifecycleAction::Disable,
+    });
 }
 
 void ModLoader::flush_toasts() {
@@ -1473,8 +1454,11 @@ void ModLoader::on_enabled_changed(LoadedMod& mod) {
         }
         return;
     }
-    m_pendingRequests.push_back({mod.metadata.id,
-        mod.cvarIsEnabled->getValue() ? RequestKind::Enable : RequestKind::Disable});
+    m_pendingRequests.push_back(LifecycleRequest{
+        .modId = mod.metadata.id,
+        .action =
+            mod.cvarIsEnabled->getValue() ? LifecycleAction::Enable : LifecycleAction::Disable,
+    });
 }
 
 void ModLoader::forget_mod(LoadedMod& mod) {
@@ -1542,121 +1526,99 @@ void ModLoader::forget_mod(LoadedMod& mod) {
     log::write(modId, LOG_LEVEL_INFO, "forgot removed package");
 }
 
-ModLoader::SyncResult ModLoader::sync_path(
-    const fs::path& requestedPath, const bool force, const uint32_t searchDirIndex) {
+ModLoader::OperationResult ModLoader::load_runtime_mod(const fs::path& requestedPath) {
     const auto path = fs::absolute(requestedPath).lexically_normal();
-    auto loaded = std::ranges::find_if(
-        m_mods, [&](const auto& candidate) { return same_path(candidate->modPath, path); });
-    LoadedMod* mod = loaded == m_mods.end() ? nullptr : loaded->get();
-
     std::error_code error;
     const auto status = fs::status(path, error);
-    const bool exists = !error && fs::exists(status);
-    if (!exists) {
-        const bool isGone = error == std::errc::no_such_file_or_directory
-#if defined(_WIN32)
-                            || error == std::errc::permission_denied
-#endif
-            ;
-        if (error && !isGone) {
-            return {
-                .success = false,
-                .message = fmt::format("Could not inspect the package: {}", error.message()),
-            };
-        }
-        if (mod != nullptr) {
-            forget_mod(*mod);
-        }
-        return {};
-    }
-
-    const auto identity = file_identity(path);
-    if (mod != nullptr) {
-        if (!force && identity.valid && identity == mod->fileIdentity) {
-            return {.mod = mod};
-        }
-        if (mod->inPlace) {
-            return {
-                .success = false,
-                .message = "Built-in mods cannot be updated in-game",
-                .mod = mod,
-            };
-        }
-        apply_lifecycle_change(*mod, true);
-        ++m_generation;
-    } else {
-        const bool fromDir = fs::is_directory(status);
-        std::unique_ptr<ModBundle> bundle;
-        std::optional<ModMetadata> metadata;
-        try {
-            bundle = load_bundle(path, fromDir);
-            metadata = load_metadata(path, *bundle);
-        } catch (const std::exception& exception) {
-            return {
-                .success = false,
-                .message = fmt::format("Invalid mod package: {}", exception.what()),
-            };
-        }
-        if (const auto* duplicate = find_mod(metadata->id)) {
-            return {
-                .success = false,
-                .message = fmt::format("A mod with this ID is already loaded from {}",
-                    data::abbreviated_path_string(duplicate->modPath)),
-            };
-        }
-        mod = try_load_mod(path, fromDir, searchDirIndex, std::move(bundle), std::move(metadata));
-        if (mod == nullptr) {
-            return {
-                .success = false,
-                .message = "The mod could not be loaded",
-            };
-        }
-
-        if (m_startupComplete) {
-            mod->enabledSubscription = Register(*mod->cvarIsEnabled,
-                [this, mod](const bool&, const bool&) { on_enabled_changed(*mod); });
-            loader::sort_mods(m_mods);
-            if (!mod->cvarIsEnabled->getValue()) {
-                mod->active = false;
-                mod->suspendedByProvider = false;
-                log::write(mod->metadata.id, LOG_LEVEL_INFO, "installed disabled by config");
-            } else if (!mod->loadFailed) {
-                mod->active = false;
-                apply_lifecycle_change(*mod, false);
-            }
-            ++m_generation;
-            log::write(mod->metadata.id, LOG_LEVEL_INFO, "installed at runtime");
-        }
-    }
-
-    if (!m_startupComplete) {
-        return {.mod = mod};
-    }
-    if (mod->loadFailed) {
+    if (error || !fs::exists(status)) {
         return {
             .success = false,
-            .message =
-                mod->failureReason.empty() ? "The mod failed to activate" : mod->failureReason,
-            .mod = mod,
+            .message = error ? fmt::format("Could not inspect the package: {}", error.message()) :
+                               "The package was not found",
         };
     }
-    if (mod->cvarIsEnabled->getValue() && !mod->active) {
+
+    const bool fromDir = fs::is_directory(status);
+    std::unique_ptr<ModBundle> bundle;
+    std::optional<ModMetadata> metadata;
+    try {
+        bundle = load_bundle(path, fromDir);
+        metadata = load_metadata(path, *bundle);
+    } catch (const std::exception& exception) {
+        return {
+            .success = false,
+            .message = fmt::format("Invalid mod package: {}", exception.what()),
+        };
+    }
+    if (const auto* duplicate = find_mod(metadata->id)) {
+        return {
+            .success = false,
+            .message = fmt::format("A mod with this ID is already loaded from {}",
+                data::abbreviated_path_string(duplicate->modPath)),
+        };
+    }
+    auto* mod = try_load_mod(path, fromDir, 0, std::move(bundle), std::move(metadata));
+    if (mod == nullptr) {
+        return {
+            .success = false,
+            .message = "The mod could not be loaded",
+        };
+    }
+
+    mod->enabledSubscription = Register(
+        *mod->cvarIsEnabled, [this, mod](const bool&, const bool&) { on_enabled_changed(*mod); });
+    loader::sort_mods(m_mods);
+    if (!mod->cvarIsEnabled->getValue()) {
+        mod->active = false;
+        mod->suspendedByProvider = false;
+        log::write(mod->metadata.id, LOG_LEVEL_INFO, "installed disabled by config");
+    } else if (!mod->loadFailed) {
+        mod->active = false;
+        apply_lifecycle_change(*mod, false);
+    }
+    ++m_generation;
+    log::write(mod->metadata.id, LOG_LEVEL_INFO, "installed at runtime");
+    return runtime_result(*mod);
+}
+
+ModLoader::OperationResult ModLoader::reload_runtime_mod(LoadedMod& mod) {
+    if (mod.nativeInPlace) {
+        return {
+            .success = false,
+            .message = "Built-in mods cannot be updated in-game",
+            .mod = &mod,
+        };
+    }
+    apply_lifecycle_change(mod, true);
+    ++m_generation;
+    return runtime_result(mod);
+}
+
+ModLoader::OperationResult ModLoader::runtime_result(LoadedMod& mod) {
+    if (mod.loadFailed) {
+        return {
+            .success = false,
+            .message = mod.failureReason.empty() ? "The mod failed to activate" : mod.failureReason,
+            .mod = &mod,
+        };
+    }
+    if (mod.cvarIsEnabled->getValue() && !mod.active) {
         return {
             .success = false,
             .message = "A required provider is unavailable",
-            .mod = mod,
+            .mod = &mod,
         };
     }
-    if (!mod->cvarIsEnabled->getValue()) {
+    if (!mod.cvarIsEnabled->getValue()) {
         return {
             .message = "Installed, disabled by config",
-            .mod = mod,
+            .mod = &mod,
         };
     }
-    return {.mod = mod};
+    return {.mod = &mod};
 }
 
-ModLoader::SyncResult ModLoader::install_staged(const fs::path& requestedPath) {
+ModLoader::OperationResult ModLoader::install_staged(const fs::path& requestedPath) {
     if (m_searchDirs.empty()) {
         return {
             .success = false,
@@ -1695,7 +1657,8 @@ ModLoader::SyncResult ModLoader::install_staged(const fs::path& requestedPath) {
     }
 
     fs::path destination;
-    if (auto* installed = find_mod(metadata.id)) {
+    auto* installed = find_mod(metadata.id);
+    if (installed != nullptr) {
         if (!can_uninstall(*installed)) {
             return {
                 .success = false,
@@ -1734,7 +1697,8 @@ ModLoader::SyncResult ModLoader::install_staged(const fs::path& requestedPath) {
             .message = std::move(replaceError),
         };
     }
-    auto result = sync_path(destination, true);
+    auto result =
+        installed != nullptr ? reload_runtime_mod(*installed) : load_runtime_mod(destination);
     if (hadDestination) {
         fs::remove(aside, error);
     }
@@ -1746,7 +1710,7 @@ ModLoader::SyncResult ModLoader::install_staged(const fs::path& requestedPath) {
             .message = std::move(replaceError),
         };
     }
-    return sync_path(destination, true);
+    return installed != nullptr ? reload_runtime_mod(*installed) : load_runtime_mod(destination);
 #endif
 }
 
@@ -1758,55 +1722,90 @@ void ModLoader::apply_pending_requests() {
         return;
     }
 
-    // Path mutations retain queue order. Enable/disable/reactivate can still coalesce per mod.
+    // Package mutations retain request order. Enable/disable/reactivate can still coalesce per mod.
     const auto requests = std::exchange(m_pendingRequests, {});
-    std::vector<Request> coalesced;
+    std::vector<LifecycleRequest> coalesced;
     for (const auto& request : requests) {
-        if (request.kind == RequestKind::Install) {
-            auto result = install_staged(request.path);
-            complete_operation(request.operation, result.success, std::move(result.message));
-            continue;
-        }
-        if (request.kind == RequestKind::Sync) {
-            std::string removedName;
-            if (request.remove) {
-                auto* mod = find_mod(request.modId);
-                if (mod == nullptr) {
-                    complete_operation(request.operation);
-                    continue;
-                }
-                if (!can_uninstall(*mod)) {
-                    complete_operation(
-                        request.operation, false, "The mod is part of this Dusklight installation");
-                    continue;
-                }
-                removedName = mod->metadata.name;
-                std::error_code error;
-                if (!fs::remove(request.path, error)) {
-                    complete_operation(request.operation, false,
-                        error ? error.message() : "The package was not found");
-                    continue;
-                }
-            }
-            auto result = sync_path(request.path, request.force);
-            complete_operation(request.operation, result.success, std::move(result.message));
-            if (request.remove && result.success) {
+        if (const auto* install = std::get_if<InstallRequest>(&request)) {
+            auto result = install_staged(install->stagedPath);
+            if (result.success && result.mod != nullptr) {
                 ui::push_toast({
-                    .title = "Mod uninstalled",
-                    .content = std::move(removedName),
+                    .title = "Mod installed",
+                    .content = fmt::format(
+                        "{} {}", result.mod->metadata.name, result.mod->metadata.version),
                     .duration = std::chrono::seconds{4},
                 });
+            } else if (!result.success && result.mod == nullptr) {
+                ui::push_toast({
+                    .type = "warning",
+                    .title = "Mod install failed",
+                    .content =
+                        result.message.empty() ? "The loader rejected the package" : result.message,
+                    .duration = std::chrono::seconds{6},
+                });
             }
+            if (!result.success && !m_searchDirs.empty()) {
+                // request_install owns only files under the configured staging directory.
+                std::error_code error;
+                const auto userDir = fs::weakly_canonical(m_searchDirs.front().path, error);
+                if (!error) {
+                    const auto stagedPath = fs::weakly_canonical(install->stagedPath, error);
+                    if (!error && stagedPath.parent_path() == userDir / ".staging") {
+                        fs::remove(stagedPath, error);
+                    }
+                }
+            }
+            complete_operation(install->operation, result.success, std::move(result.message));
             continue;
         }
-        const auto existing = std::ranges::find_if(
-            coalesced, [&](const Request& r) { return r.modId == request.modId; });
+        if (const auto* reload = std::get_if<ReloadRequest>(&request)) {
+            auto* mod = find_mod(reload->modId);
+            if (mod == nullptr) {
+                complete_operation(reload->operation, false, "The mod is no longer installed");
+                continue;
+            }
+            auto result = reload_runtime_mod(*mod);
+            complete_operation(reload->operation, result.success, std::move(result.message));
+            continue;
+        }
+        if (const auto* uninstall = std::get_if<UninstallRequest>(&request)) {
+            auto* mod = find_mod(uninstall->modId);
+            if (mod == nullptr) {
+                complete_operation(uninstall->operation);
+                continue;
+            }
+            if (!can_uninstall(*mod)) {
+                complete_operation(
+                    uninstall->operation, false, "The mod is part of this Dusklight installation");
+                continue;
+            }
+
+            const auto removedName = mod->metadata.name;
+            std::error_code error;
+            if (!fs::remove(mod->modPath, error)) {
+                complete_operation(uninstall->operation, false,
+                    error ? error.message() : "The package was not found");
+                continue;
+            }
+            forget_mod(*mod);
+            complete_operation(uninstall->operation);
+            ui::push_toast({
+                .title = "Mod uninstalled",
+                .content = removedName,
+                .duration = std::chrono::seconds{4},
+            });
+            continue;
+        }
+
+        const auto& lifecycle = std::get<LifecycleRequest>(request);
+        const auto existing =
+            std::ranges::find(coalesced, lifecycle.modId, &LifecycleRequest::modId);
         if (existing != coalesced.end()) {
             complete_operation(
                 existing->operation, false, "Superseded by a newer lifecycle request");
-            *existing = request;
+            *existing = lifecycle;
         } else {
-            coalesced.push_back(request);
+            coalesced.push_back(lifecycle);
         }
     }
 
@@ -1817,14 +1816,14 @@ void ModLoader::apply_pending_requests() {
             complete_operation(request.operation, false, "The mod is no longer installed");
             continue;
         }
-        if (request.kind == RequestKind::Enable && mod->enabledApplied) {
+        if (request.action == LifecycleAction::Enable && mod->enabledApplied) {
             continue;
         }
-        if (request.kind == RequestKind::Disable && !mod->enabledApplied && !mod->active) {
+        if (request.action == LifecycleAction::Disable && !mod->enabledApplied && !mod->active) {
             continue;
         }
 
-        if (request.kind == RequestKind::Reactivate) {
+        if (request.action == LifecycleAction::Reactivate) {
             mod->loadFailed = false;
             mod->failureReason.clear();
             mod->suspendedByProvider = false;
@@ -1834,7 +1833,7 @@ void ModLoader::apply_pending_requests() {
         }
         apply_lifecycle_change(*mod, false);
 
-        if (request.kind == RequestKind::Reactivate) {
+        if (request.action == LifecycleAction::Reactivate) {
             std::string error;
             if (mod->loadFailed) {
                 error =

@@ -2,6 +2,7 @@
 
 #include "dusk/mods/loader/loader.hpp"
 #include "dusk/mods/queue.hpp"
+#include "format.hpp"
 #include "package_row.hpp"
 #include "queue_window.hpp"
 
@@ -12,15 +13,6 @@
 
 namespace dusk::ui {
 namespace {
-
-const mods::LoadedMod* installed_mod(std::string_view id) {
-    for (const auto& mod : mods::ModLoader::instance().mods()) {
-        if (mod.metadata.id == id) {
-            return &mod;
-        }
-    }
-    return nullptr;
-}
 
 size_t valid_count(const std::vector<DropPackage>& packages) {
     return std::ranges::count(packages, true, &DropPackage::valid);
@@ -36,14 +28,12 @@ std::vector<DropPackage> prepare_packages(std::vector<DropPackage> packages) {
         } else if (package.hasNative && !mods::EnableCodeMods) {
             package.status = "Native mods cannot be installed on this platform";
         } else if (const auto queued = mods::queue::find_by_mod_id(package.metadata.id);
-            queued && queued->state != mods::queue::State::Installed &&
-            queued->state != mods::queue::State::Failed &&
-            queued->state != mods::queue::State::InstallFailed &&
-            queued->state != mods::queue::State::ActivationFailed &&
-            queued->state != mods::queue::State::Canceled)
+            queued && !mods::queue::is_terminal(queued->state))
         {
             package.status = "Already in the install queue";
-        } else if (const auto* installed = installed_mod(package.metadata.id)) {
+        } else if (const auto* installed =
+                       mods::ModLoader::instance().find_mod(package.metadata.id))
+        {
             if (!mods::ModLoader::instance().can_uninstall(*installed)) {
                 package.status = "Bundled mods cannot be updated in-game";
             } else if (installed->metadata.version == package.metadata.version) {

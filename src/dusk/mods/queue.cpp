@@ -2,6 +2,7 @@
 
 #include "dusk/hash.hpp"
 #include "dusk/mod_loader.hpp"
+#include "dusk/mods/path.hpp"
 #include "dusk/ui/ui.hpp"
 
 #include <borealis/http.hpp>
@@ -20,6 +21,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace dusk::mods::queue {
@@ -34,12 +36,14 @@ struct VerifyResult {
     bool canceled = false;
 };
 
+enum class PendingIntent { None, Pause, Cancel };
+
 struct QueueItem {
     std::string key;
     Request request;
     State state = State::Queued;
     std::filesystem::path partialPath;
-    std::filesystem::path installPath;
+    std::filesystem::path stagedPath;
     uint64_t completed = 0;
     uint64_t total = 0;
     std::string message;
@@ -47,18 +51,11 @@ struct QueueItem {
     clock::time_point retryAt{};
     borealis::Task<borealis::http::Result> task;
     borealis::Task<VerifyResult> verification;
-    ModOperationHandle operation;
-    bool packagePublished = false;
-    bool removeAfterOperation = false;
-    bool pauseRequested = false;
-    bool resumeRequested = false;
-    bool cancelRequested = false;
+    PendingIntent pendingIntent = PendingIntent::None;
 };
 
 std::vector<QueueItem> queueItems;
 uint64_t nextLocalKey = 1;
-
-bool terminal(State state);
 
 QueueItem* find_queue_item(std::string_view key) {
     const auto item = std::ranges::find(queueItems, key,
@@ -80,15 +77,6 @@ const LocalFile* local_source(const QueueItem& item) {
     return std::get_if<LocalFile>(&item.request.source);
 }
 
-const LoadedMod* find_loaded_mod(std::string_view id) {
-    for (const auto& mod : ModLoader::instance().mods()) {
-        if (mod.metadata.id == id) {
-            return &mod;
-        }
-    }
-    return nullptr;
-}
-
 std::string lowercase(std::string value) {
     std::ranges::transform(value, value.begin(), [](char character) {
         return character >= 'A' && character <= 'Z' ? static_cast<char>(character + ('a' - 'A')) :
@@ -102,20 +90,6 @@ bool valid_sha256(std::string_view value) {
         return (character >= '0' && character <= '9') || (character >= 'a' && character <= 'f') ||
                (character >= 'A' && character <= 'F');
     });
-}
-
-std::string safe_filename(std::string_view id) {
-    std::string result{id};
-    std::ranges::replace_if(
-        result,
-        [](char character) {
-            return !((character >= 'a' && character <= 'z') ||
-                     (character >= 'A' && character <= 'Z') ||
-                     (character >= '0' && character <= '9') || character == '.' ||
-                     character == '_' || character == '-');
-        },
-        '_');
-    return result;
 }
 
 std::string sha256_file(
@@ -273,29 +247,23 @@ void remove_partial(const QueueItem& item) {
         metadataPath += ".borealis-resume.json";
         std::filesystem::remove(metadataPath, ec);
     }
-    if (!item.installPath.empty()) {
-        std::filesystem::remove(item.installPath, ec);
+    if (!item.stagedPath.empty()) {
+        std::filesystem::remove(item.stagedPath, ec);
     }
 }
 
-void fail(QueueItem& item, State state, std::string message, bool discardPartial) {
+void fail(QueueItem& item, std::string message, bool discardPartial) {
     item.task = {};
     item.verification = {};
-    item.operation.reset();
-    item.state = state;
+    item.state = State::Failed;
     item.message = std::move(message);
-    item.pauseRequested = false;
-    item.resumeRequested = false;
-    item.cancelRequested = false;
-    item.removeAfterOperation = false;
+    item.pendingIntent = PendingIntent::None;
     if (discardPartial) {
         remove_partial(item);
         item.completed = 0;
     }
-    const char* title = state == State::ActivationFailed ? "Mod activation failed" :
-                        state == State::InstallFailed    ? "Mod install failed" :
-                        local_source(item) != nullptr    ? "Mod package failed" :
-                                                           "Mod download failed";
+    const char* title =
+        local_source(item) != nullptr ? "Mod package failed" : "Mod download failed";
     ui::push_toast({
         .type = "warning",
         .title = title,
@@ -327,12 +295,12 @@ void schedule_retry(QueueItem& item, std::string message) {
 void start_download(QueueItem& item) {
     const auto* source = url_source(item);
     if (source == nullptr) {
-        fail(item, State::Failed, "The install source is not a URL", false);
+        fail(item, "The install source is not a URL", false);
         return;
     }
     const auto userDir = ModLoader::instance().user_mods_dir();
     if (userDir.empty()) {
-        fail(item, State::Failed, "No writable mods directory is configured", false);
+        fail(item, "No writable mods directory is configured", false);
         return;
     }
 
@@ -341,14 +309,11 @@ void start_download(QueueItem& item) {
     std::error_code ec;
     std::filesystem::create_directories(item.partialPath.parent_path(), ec);
     if (ec) {
-        fail(item, State::Failed,
-            fmt::format("Could not create the download directory: {}", ec.message()), false);
+        fail(item, fmt::format("Could not create the download directory: {}", ec.message()), false);
         return;
     }
 
-    item.pauseRequested = false;
-    item.resumeRequested = false;
-    item.cancelRequested = false;
+    item.pendingIntent = PendingIntent::None;
     item.message.clear();
     item.total = source->size;
     item.state = State::Downloading;
@@ -364,12 +329,12 @@ void start_download(QueueItem& item) {
 void start_local_verification(QueueItem& item) {
     const auto* source = local_source(item);
     if (source == nullptr) {
-        fail(item, State::Failed, "The install source is not a local file", false);
+        fail(item, "The install source is not a local file", false);
         return;
     }
     const auto userDir = ModLoader::instance().user_mods_dir();
     if (userDir.empty()) {
-        fail(item, State::Failed, "No writable mods directory is configured", false);
+        fail(item, "No writable mods directory is configured", false);
         return;
     }
     item.state = State::Verifying;
@@ -390,39 +355,36 @@ void finish_download(QueueItem& item) {
     item.completed = std::max(item.completed, progress.completed);
 
     std::optional<borealis::http::Result> completed;
+    std::string taskError;
+    bool taskFailed = false;
     try {
         completed = item.task.try_take();
     } catch (const std::exception& exception) {
-        item.task = {};
-        if (item.cancelRequested) {
-            remove_partial(item);
-            item.state = State::Canceled;
-            return;
-        }
-        if (item.pauseRequested) {
-            item.state = item.resumeRequested ? State::Queued : State::Paused;
-            item.pauseRequested = false;
-            item.resumeRequested = false;
-            return;
-        }
-        schedule_retry(item, exception.what());
-        return;
+        taskError = exception.what();
+        taskFailed = true;
+    } catch (...) {
+        taskError = "The download failed";
+        taskFailed = true;
     }
-    if (!completed) {
+    if (!completed && !taskFailed) {
         return;
     }
     item.task = {};
 
-    if (item.cancelRequested) {
+    switch (std::exchange(item.pendingIntent, PendingIntent::None)) {
+    case PendingIntent::Cancel:
         remove_partial(item);
         item.completed = 0;
         item.state = State::Canceled;
         return;
+    case PendingIntent::Pause:
+        return;
+    case PendingIntent::None:
+        break;
     }
-    if (item.pauseRequested) {
-        item.state = item.resumeRequested ? State::Queued : State::Paused;
-        item.pauseRequested = false;
-        item.resumeRequested = false;
+
+    if (taskFailed) {
+        schedule_retry(item, std::move(taskError));
         return;
     }
 
@@ -437,14 +399,14 @@ void finish_download(QueueItem& item) {
         if (retryable(*completed)) {
             schedule_retry(item, message);
         } else {
-            fail(item, State::Failed, message, true);
+            fail(item, message, true);
         }
         return;
     }
 
     const auto* source = url_source(item);
     if (source == nullptr) {
-        fail(item, State::Failed, "The install source changed", true);
+        fail(item, "The install source changed", true);
         return;
     }
     item.completed = source->size;
@@ -458,23 +420,12 @@ void finish_download(QueueItem& item) {
         });
 }
 
-void start_install(QueueItem& item) {
-    auto& loader = ModLoader::instance();
-    item.state = State::Installing;
-    item.message.clear();
-    item.operation = loader.request_install(item.installPath);
-}
-
-void publish_verified(QueueItem& item) {
-    start_install(item);
-}
-
-void finish_verification(QueueItem& item) {
+bool finish_verification(QueueItem& item) {
     VerifyResult result;
     try {
         auto completed = item.verification.try_take();
         if (!completed) {
-            return;
+            return false;
         }
         result = std::move(*completed);
     } catch (const std::exception& exception) {
@@ -483,7 +434,8 @@ void finish_verification(QueueItem& item) {
         result.error = "Package verification failed";
     }
     item.verification = {};
-    if (result.canceled || item.cancelRequested) {
+    if (result.canceled || item.pendingIntent == PendingIntent::Cancel) {
+        item.pendingIntent = PendingIntent::None;
         if (!result.stagedPath.empty()) {
             std::error_code error;
             std::filesystem::remove(result.stagedPath, error);
@@ -491,81 +443,31 @@ void finish_verification(QueueItem& item) {
         remove_partial(item);
         item.state = State::Canceled;
         item.completed = 0;
-        return;
+        return false;
     }
     if (!result.error.empty()) {
-        fail(item, State::Failed, std::move(result.error), true);
-        return;
+        fail(item, std::move(result.error), true);
+        return false;
     }
     if (const auto duplicate = find_queue_item_by_mod_id(result.metadata.id);
-        duplicate != nullptr && duplicate != &item && !terminal(duplicate->state))
+        duplicate != nullptr && duplicate != &item && !is_terminal(duplicate->state))
     {
-        fail(item, State::InstallFailed, "This mod already has an active install", true);
-        return;
+        fail(item, "This mod already has an active install", true);
+        return false;
     }
     if (local_source(item) != nullptr && !item.request.id.empty() &&
         (item.request.id != result.metadata.id || item.request.version != result.metadata.version))
     {
-        fail(item, State::InstallFailed, "The local package changed after confirmation", true);
-        return;
+        fail(item, "The local package changed after confirmation", true);
+        return false;
     }
     item.request.id = result.metadata.id;
     item.request.name = result.metadata.name;
     item.request.version = result.metadata.version;
-    item.installPath = std::move(result.stagedPath);
+    item.stagedPath = std::move(result.stagedPath);
     item.completed = item.total;
-    publish_verified(item);
-}
-
-void update_install(QueueItem& item) {
-    if (item.operation == nullptr || item.operation->state == ModOperation::State::Pending) {
-        return;
-    }
-
-    const auto* mod = find_loaded_mod(item.request.id);
-    item.packagePublished = mod != nullptr && mod->metadata.version == item.request.version;
-    if (item.operation->state == ModOperation::State::Failed) {
-        const bool activationFailed =
-            item.packagePublished &&
-            (mod->loadFailed || (mod->cvarIsEnabled->getValue() && !mod->active));
-        fail(item, activationFailed ? State::ActivationFailed : State::InstallFailed,
-            item.operation->message.empty() ? "The mod could not be installed" :
-                                              item.operation->message,
-            false);
-        return;
-    }
-
-    item.message = item.operation->message;
-    item.operation.reset();
-    if (mod == nullptr || mod->metadata.version != item.request.version) {
-        fail(item, State::InstallFailed, "The installed package was not loaded", false);
-        return;
-    }
-
-    item.state = State::Installed;
-    ui::push_toast({
-        .title = "Mod installed",
-        .content = fmt::format("{} {}", item.request.name, item.request.version),
-        .duration = std::chrono::seconds{4},
-    });
-}
-
-void update_uninstall(QueueItem& item) {
-    if (item.operation == nullptr || item.operation->state == ModOperation::State::Pending) {
-        return;
-    }
-    if (item.operation->state == ModOperation::State::Failed) {
-        fail(item, State::ActivationFailed,
-            item.operation->message.empty() ?
-                "The mod could not be uninstalled" :
-                fmt::format("Uninstall failed: {}", item.operation->message),
-            false);
-        return;
-    }
-
-    item.operation.reset();
-    item.state = State::Canceled;
-    item.message.clear();
+    ModLoader::instance().request_install(std::exchange(item.stagedPath, std::filesystem::path{}));
+    return true;
 }
 
 Item snapshot(const QueueItem& item) {
@@ -598,11 +500,6 @@ Item snapshot(const QueueItem& item) {
     return result;
 }
 
-bool terminal(State state) {
-    return state == State::Installed || state == State::Failed || state == State::InstallFailed ||
-           state == State::ActivationFailed || state == State::Canceled;
-}
-
 }  // namespace
 
 bool enqueue(Request request, std::string* keyOut) {
@@ -623,7 +520,7 @@ bool enqueue(Request request, std::string* keyOut) {
     }
 
     if (auto* existing = find_queue_item_by_mod_id(request.id)) {
-        if (!terminal(existing->state)) {
+        if (!is_terminal(existing->state)) {
             return false;
         }
         existing->request = std::move(request);
@@ -631,15 +528,10 @@ bool enqueue(Request request, std::string* keyOut) {
         existing->completed = 0;
         existing->total = total;
         existing->partialPath.clear();
-        existing->installPath.clear();
+        existing->stagedPath.clear();
         existing->message.clear();
         existing->retryCount = 0;
-        existing->operation.reset();
-        existing->packagePublished = false;
-        existing->removeAfterOperation = false;
-        existing->pauseRequested = false;
-        existing->resumeRequested = false;
-        existing->cancelRequested = false;
+        existing->pendingIntent = PendingIntent::None;
         if (keyOut != nullptr) {
             *keyOut = existing->key;
         }
@@ -655,52 +547,27 @@ bool enqueue(Request request, std::string* keyOut) {
 }
 
 void update() {
-    for (auto& item : queueItems) {
-        if (item.task && item.task.ready()) {
-            finish_download(item);
+    for (auto item = queueItems.begin(); item != queueItems.end();) {
+        if (item->task && item->task.ready()) {
+            finish_download(*item);
         }
-        if (item.state == State::Verifying && item.verification && item.verification.ready()) {
-            finish_verification(item);
-        }
-        if (item.state == State::Installing) {
-            update_install(item);
-        }
-        if (item.state == State::Activating) {
-            update_install(item);
-        }
-        if (item.state == State::Uninstalling) {
-            update_uninstall(item);
-        }
-        if (item.state == State::ActivationFailed && item.packagePublished) {
-            const auto* mod = find_loaded_mod(item.request.id);
-            if (mod != nullptr && mod->active && mod->metadata.version == item.request.version) {
-                item.state = State::Installed;
-                item.message.clear();
-            }
+        if (item->state == State::Verifying && item->verification && item->verification.ready() &&
+            finish_verification(*item))
+        {
+            item = queueItems.erase(item);
+        } else {
+            ++item;
         }
     }
-
-    std::erase_if(queueItems, [](const QueueItem& item) {
-        if (item.removeAfterOperation && item.state == State::Canceled) {
-            return true;
-        }
-        const bool trackedInstalledState =
-            item.state == State::Installed || item.state == State::ActivationFailed;
-        return item.packagePublished && trackedInstalledState &&
-               find_loaded_mod(item.request.id) == nullptr;
-    });
 
     for (auto& item : queueItems) {
         if (item.task || item.verification) {
             return;
         }
-        if (terminal(item.state) || item.state == State::Paused) {
+        if (is_terminal(item.state) || item.state == State::Paused) {
             continue;
         }
-        if (item.state == State::Downloading || item.state == State::Verifying ||
-            item.state == State::Installing || item.state == State::Activating ||
-            item.state == State::Uninstalling)
-        {
+        if (item.state == State::Downloading || item.state == State::Verifying) {
             return;
         }
         if (item.state == State::Retrying && clock::now() < item.retryAt) {
@@ -750,12 +617,42 @@ std::optional<Item> find_by_mod_id(std::string_view id) {
 
 bool has_active_items() {
     return std::ranges::any_of(
-        queueItems, [](const QueueItem& item) { return !terminal(item.state); });
+        queueItems, [](const QueueItem& item) { return !is_terminal(item.state); });
+}
+
+size_t item_count() noexcept {
+    return queueItems.size();
+}
+
+size_t active_count() noexcept {
+    return static_cast<size_t>(std::ranges::count_if(
+        queueItems, [](const QueueItem& item) { return !is_terminal(item.state); }));
+}
+
+std::optional<Item> first_active() {
+    const auto item = std::ranges::find_if(
+        queueItems, [](const QueueItem& candidate) { return !is_terminal(candidate.state); });
+    return item == queueItems.end() ? std::nullopt : std::optional<Item>{snapshot(*item)};
+}
+
+size_t active_items_ahead(std::string_view id) noexcept {
+    size_t result = 0;
+    for (const auto& item : queueItems) {
+        if (item.request.id == id) {
+            break;
+        }
+        if (!is_terminal(item.state)) {
+            ++result;
+        }
+    }
+    return result;
 }
 
 void pause(std::string_view id) {
     auto* item = find_queue_item(id);
-    if (item == nullptr || local_source(*item) != nullptr) {
+    if (item == nullptr || local_source(*item) != nullptr ||
+        item->pendingIntent == PendingIntent::Cancel)
+    {
         return;
     }
     if (item->state == State::Queued || item->state == State::Retrying) {
@@ -764,7 +661,7 @@ void pause(std::string_view id) {
     }
     if (item->state == State::Downloading && item->task) {
         item->completed = std::max(item->completed, item->task.progress().completed);
-        item->pauseRequested = true;
+        item->pendingIntent = PendingIntent::Pause;
         item->state = State::Paused;
         item->task.cancel();
     }
@@ -772,91 +669,45 @@ void pause(std::string_view id) {
 
 void resume(std::string_view id) {
     auto* item = find_queue_item(id);
-    if (item == nullptr || item->state != State::Paused) {
+    if (item == nullptr || item->state != State::Paused ||
+        item->pendingIntent == PendingIntent::Cancel)
+    {
         return;
     }
-    if (item->task) {
-        item->resumeRequested = true;
-    } else {
-        item->state = State::Queued;
-    }
+    item->state = State::Queued;
 }
 
 void retry(std::string_view id) {
     auto* item = find_queue_item(id);
-    if (item == nullptr) {
+    if (item == nullptr || item->state != State::Failed) {
         return;
     }
-
-    if (item->state == State::ActivationFailed) {
-        item->message.clear();
-        item->state = State::Activating;
-        item->operation = ModLoader::instance().request_reactivate(item->request.id);
-        return;
-    }
-    if (item->state == State::InstallFailed) {
-        item->message.clear();
-        std::error_code ec;
-        if (!item->installPath.empty() && std::filesystem::is_regular_file(item->installPath, ec)) {
-            start_install(*item);
-        } else {
-            item->completed = 0;
-            item->state = State::Queued;
-        }
-        return;
-    }
-    if (item->state == State::Failed) {
-        remove_partial(*item);
-        item->completed = 0;
-        item->retryCount = 0;
-        item->message.clear();
-        item->state = State::Queued;
-    }
+    remove_partial(*item);
+    item->completed = 0;
+    item->retryCount = 0;
+    item->message.clear();
+    item->state = State::Queued;
 }
 
 void cancel(std::string_view id) {
     auto* item = find_queue_item(id);
-    if (item == nullptr || item->state == State::Installing || item->state == State::Activating ||
-        item->state == State::Uninstalling)
-    {
-        return;
-    }
-    if ((item->state == State::ActivationFailed || item->state == State::InstallFailed) &&
-        item->packagePublished)
-    {
-        const auto* mod = find_loaded_mod(item->request.id);
-        if (mod == nullptr) {
-            std::error_code ec;
-            if (!std::filesystem::remove(item->installPath, ec) && ec) {
-                fail(*item, State::InstallFailed, fmt::format("Uninstall failed: {}", ec.message()),
-                    false);
-                return;
-            }
-            item->state = State::Canceled;
-            item->message.clear();
-            return;
-        }
-        item->message.clear();
-        item->state = State::Uninstalling;
-        item->removeAfterOperation = true;
-        item->operation = ModLoader::instance().request_uninstall(item->request.id);
+    if (item == nullptr) {
         return;
     }
     if (item->task) {
-        item->cancelRequested = true;
-        item->pauseRequested = false;
-        item->resumeRequested = false;
+        item->pendingIntent = PendingIntent::Cancel;
         item->message = "Canceling...";
         item->task.cancel();
         return;
     }
     if (item->verification) {
-        item->cancelRequested = true;
+        item->pendingIntent = PendingIntent::Cancel;
         item->message = "Canceling...";
         item->verification.cancel();
         return;
     }
     remove_partial(*item);
+    item->pendingIntent = PendingIntent::None;
     item->completed = 0;
     item->state = State::Canceled;
 }
@@ -876,9 +727,7 @@ void pause_all() {
 }
 
 void clear_finished() {
-    std::erase_if(queueItems, [](const QueueItem& item) {
-        return item.state == State::Installed || item.state == State::Canceled;
-    });
+    std::erase_if(queueItems, [](const QueueItem& item) { return item.state == State::Canceled; });
 }
 
 }  // namespace dusk::mods::queue

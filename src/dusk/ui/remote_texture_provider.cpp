@@ -1,5 +1,16 @@
 #include "remote_texture_provider.hpp"
 
+#include <fmt/format.h>
+
+namespace dusk::ui {
+
+std::string remote_image_source(std::string_view url, uint32_t width, uint32_t height) {
+    url = url.substr(0, url.find('#'));
+    return fmt::format("{}#size={}x{}", url, width == 0 ? 1 : width, height == 0 ? 1 : height);
+}
+
+}  // namespace dusk::ui
+
 #ifdef AURORA_ENABLE_RMLUI
 
 #include "dusk/app_info.hpp"
@@ -12,6 +23,7 @@
 
 #include <algorithm>
 #include <array>
+#include <charconv>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -21,6 +33,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <unordered_map>
 
 namespace dusk::ui {
@@ -55,6 +68,12 @@ struct Entry {
     uint32_t placeholderHeight = 1;
 };
 
+struct RemoteSource {
+    std::string_view requestUrl;
+    uint32_t placeholderWidth = 1;
+    uint32_t placeholderHeight = 1;
+};
+
 std::unordered_map<std::string, Entry>& image_cache() {
     static auto* cache = new std::unordered_map<std::string, Entry>();
     return *cache;
@@ -63,6 +82,48 @@ std::unordered_map<std::string, Entry>& image_cache() {
 uint64_t& use_counter() {
     static auto* counter = new uint64_t{};
     return *counter;
+}
+
+RemoteSource parse_remote_source(std::string_view source) noexcept {
+    constexpr std::string_view marker{"#size="};
+    const auto fragment = source.find('#');
+    RemoteSource result{.requestUrl = source.substr(0, fragment)};
+    if (fragment == std::string_view::npos || !source.substr(fragment).starts_with(marker)) {
+        return result;
+    }
+
+    const auto dimensions = source.substr(fragment + marker.size());
+    const auto separator = dimensions.find('x');
+    if (separator == std::string_view::npos) {
+        return result;
+    }
+    uint32_t width = 0;
+    uint32_t height = 0;
+    const auto widthResult =
+        std::from_chars(dimensions.data(), dimensions.data() + separator, width);
+    const auto heightResult = std::from_chars(
+        dimensions.data() + separator + 1, dimensions.data() + dimensions.size(), height);
+    if (widthResult.ec != std::errc{} || widthResult.ptr != dimensions.data() + separator ||
+        heightResult.ec != std::errc{} ||
+        heightResult.ptr != dimensions.data() + dimensions.size() || width == 0 || height == 0)
+    {
+        return result;
+    }
+
+    const auto maxDimension = std::max(width, height);
+    if (maxDimension > kPlaceholderMaxDimension) {
+        width = std::max(
+            1u, static_cast<uint32_t>(
+                    (static_cast<uint64_t>(width) * kPlaceholderMaxDimension + maxDimension / 2) /
+                    maxDimension));
+        height = std::max(
+            1u, static_cast<uint32_t>(
+                    (static_cast<uint64_t>(height) * kPlaceholderMaxDimension + maxDimension / 2) /
+                    maxDimension));
+    }
+    result.placeholderWidth = width;
+    result.placeholderHeight = height;
+    return result;
 }
 
 bool make_cache_room() {
@@ -108,7 +169,8 @@ borealis::Task<borealis::http::Result> start_request(std::string source) {
 }
 
 std::optional<aurora::rmlui::RuntimeTexture> remote_texture_provider(std::string_view source) {
-    if (!source.starts_with(kAllowedPrefix)) {
+    const auto parsed = parse_remote_source(source);
+    if (!parsed.requestUrl.starts_with(kAllowedPrefix)) {
         return std::nullopt;
     }
 
@@ -118,12 +180,21 @@ std::optional<aurora::rmlui::RuntimeTexture> remote_texture_provider(std::string
     if (iter == cache.end()) {
         if (!make_cache_room()) {
             Log.warn("Remote image cache is full; skipping '{}'", source);
-            return transparent_texture(Entry{});
+            return transparent_texture(Entry{
+                .placeholderWidth = parsed.placeholderWidth,
+                .placeholderHeight = parsed.placeholderHeight,
+            });
         }
-        iter = cache.emplace(key, Entry{}).first;
+        iter = cache
+                   .emplace(key,
+                       Entry{
+                           .placeholderWidth = parsed.placeholderWidth,
+                           .placeholderHeight = parsed.placeholderHeight,
+                       })
+                   .first;
     }
     if (iter->second.state == State::Unrequested) {
-        iter->second.request = start_request(key);
+        iter->second.request = start_request(std::string{parsed.requestUrl});
         iter->second.state = State::Pending;
     }
     iter->second.lastUsed = ++use_counter();
@@ -197,36 +268,6 @@ void update_remote_texture_provider() noexcept {
     }
 }
 
-void set_remote_texture_dimensions(
-    std::string_view source, uint32_t width, uint32_t height) noexcept {
-    if (!source.starts_with(kAllowedPrefix) || width == 0 || height == 0) {
-        return;
-    }
-
-    auto& cache = image_cache();
-    auto iter = cache.find(std::string{source});
-    if (iter == cache.end()) {
-        if (!make_cache_room()) {
-            return;
-        }
-        iter = cache.emplace(std::string{source}, Entry{}).first;
-    }
-
-    const auto maxDimension = std::max(width, height);
-    if (maxDimension > kPlaceholderMaxDimension) {
-        width = std::max(
-            1u, static_cast<uint32_t>(
-                    (static_cast<uint64_t>(width) * kPlaceholderMaxDimension + maxDimension / 2) /
-                    maxDimension));
-        height = std::max(
-            1u, static_cast<uint32_t>(
-                    (static_cast<uint64_t>(height) * kPlaceholderMaxDimension + maxDimension / 2) /
-                    maxDimension));
-    }
-    iter->second.placeholderWidth = width;
-    iter->second.placeholderHeight = height;
-}
-
 }  // namespace dusk::ui
 
 #else
@@ -236,7 +277,6 @@ namespace dusk::ui {
 void register_remote_texture_provider() noexcept {}
 void unregister_remote_texture_provider() noexcept {}
 void update_remote_texture_provider() noexcept {}
-void set_remote_texture_dimensions(std::string_view, uint32_t, uint32_t) noexcept {}
 
 }  // namespace dusk::ui
 

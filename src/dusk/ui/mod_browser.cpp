@@ -6,7 +6,9 @@
 #include "dusk/mods/queue.hpp"
 #include "dusk/mods/svc/registry.hpp"
 #include "fmt/format.h"
+#include "format.hpp"
 #include "nav_group.hpp"
+#include "package_row.hpp"
 #include "queue_window.hpp"
 #include "remote_texture_provider.hpp"
 #include "string_button.hpp"
@@ -53,22 +55,6 @@ std::string format_count(uint64_t value) {
         return fmt::format("{:.1f}k", static_cast<double>(value) / 1'000.0);
     }
     return fmt::format("{}", value);
-}
-
-std::string format_bytes(uint64_t bytes) {
-    constexpr double kiB = 1024.0;
-    constexpr double miB = kiB * 1024.0;
-    constexpr double giB = miB * 1024.0;
-    if (bytes >= static_cast<uint64_t>(giB)) {
-        return fmt::format("{:.1f} GiB", static_cast<double>(bytes) / giB);
-    }
-    if (bytes >= static_cast<uint64_t>(miB)) {
-        return fmt::format("{:.1f} MiB", static_cast<double>(bytes) / miB);
-    }
-    if (bytes >= static_cast<uint64_t>(kiB)) {
-        return fmt::format("{:.0f} KiB", static_cast<double>(bytes) / kiB);
-    }
-    return fmt::format("{} B", bytes);
 }
 
 std::string display_date(std::string_view timestamp) {
@@ -120,17 +106,6 @@ std::string relative_date(std::string_view timestamp) {
     return fmt::format("{} years ago", age / 365);
 }
 
-std::string snippet(std::string_view text, size_t maxBytes) {
-    if (text.size() <= maxBytes) {
-        return std::string{text};
-    }
-    size_t end = maxBytes;
-    while (end > 0 && (static_cast<unsigned char>(text[end]) & 0xc0) == 0x80) {
-        --end;
-    }
-    return fmt::format("{}...", text.substr(0, end));
-}
-
 void add_list_markers(Rml::Element* fragment) {
     Rml::ElementList lists;
     fragment->QuerySelectorAll(lists, "ul, ol");
@@ -168,32 +143,25 @@ std::string image_source(const mods::catalog::Image& image, uint32_t preferredWi
     return image.sources.empty() ? std::string{} : image.sources.back().pngUrl;
 }
 
-void set_image(Rml::Element* element, const mods::catalog::Image& image,
-    uint32_t preferredWidth, std::string_view fit = "cover") {
+void set_image(Rml::Element* element, const mods::catalog::Image& image, uint32_t preferredWidth,
+    std::string_view fit = "cover") {
     if (element == nullptr) {
         return;
     }
-    const auto source = image_source(image, preferredWidth);
+    auto source = image_source(image, preferredWidth);
     if (!source.empty()) {
-        set_remote_texture_dimensions(source, image.width, image.height);
+        source = remote_image_source(source, image.width, image.height);
         element->SetProperty(
             "decorator", fmt::format(R"(image("{}" {} center center))", escape(source), fit));
         element->SetClass("has-image", true);
     }
 }
 
-bool installed(std::string_view id) {
-    return std::ranges::any_of(mods::ModLoader::instance().mods(),
-        [id](const mods::LoadedMod& mod) { return mod.metadata.id == id; });
-}
-
-const mods::LoadedMod* installed_mod(std::string_view id) {
-    for (const auto& mod : mods::ModLoader::instance().mods()) {
-        if (mod.metadata.id == id) {
-            return &mod;
-        }
+std::string_view activation_failure(const mods::LoadedMod& mod) {
+    if (!mod.failureReason.empty()) {
+        return mod.failureReason;
     }
-    return nullptr;
+    return mod.suspendedByProvider ? "A required provider is unavailable" : "Activation failed";
 }
 
 bool safe_web_url(std::string_view url) {
@@ -240,7 +208,7 @@ public:
         : Button{parent, Props{}} {
         mRoot->SetClass("catalog-card", true);
         const auto category = mod.category ? mod.category->name : "Uncategorized";
-        const auto isInstalled = installed(mod.id);
+        const auto isInstalled = mods::ModLoader::instance().find_mod(mod.id) != nullptr;
         const auto installedLabel = isInstalled ? "Installed" : format_bytes(mod.packageSize);
 
         auto* art = append(mRoot, "catalog-card-art");
@@ -476,13 +444,13 @@ public:
     }
 
     void update() override {
-        auto queued = mods::queue::find_by_mod_id(mRequest.id);
-        const auto* local = installed_mod(mRequest.id);
-        if (queued && (queued->version != mRequest.version ||
-                          (queued->state == mods::queue::State::Installed &&
-                              (local == nullptr || local->metadata.version != mRequest.version))))
-        {
-            queued.reset();
+        auto queued = matching_queue_item();
+        const auto* local = mods::ModLoader::instance().find_mod(mRequest.id);
+        const bool activationPending =
+            mActivationOperation != nullptr &&
+            mActivationOperation->state == mods::ModOperation::State::Pending;
+        if (mActivationOperation != nullptr && !activationPending) {
+            mActivationOperation.reset();
         }
         std::string glyph = "\uE2C4";
         std::string label;
@@ -493,7 +461,7 @@ public:
 
         if (queued && queued->state != mods::queue::State::Canceled) {
             using enum mods::queue::State;
-            state = state_class(queued->state);
+            state = queue_state_class(queued->state);
             progress = queued->total == 0 ? 0.0f :
                                             std::clamp(static_cast<float>(queued->completed) /
                                                            static_cast<float>(queued->total),
@@ -502,7 +470,7 @@ public:
             case Queued:
                 glyph = "\uE8B5";
                 label = "Queued";
-                if (const auto ahead = queue_items_ahead(mRequest.id); ahead != 0) {
+                if (const auto ahead = mods::queue::active_items_ahead(mRequest.id); ahead != 0) {
                     caption = fmt::format("{} ahead · opens the queue", ahead);
                 } else {
                     caption = "Next · opens the queue";
@@ -528,46 +496,10 @@ public:
                 label = "Verifying…";
                 caption = "Checking package integrity";
                 break;
-            case Installing:
-                glyph = "\uE8B5";
-                label = "Installing…";
-                caption = "Installing and activating";
-                break;
-            case Activating:
-                glyph = "\uE8B5";
-                label = "Activating…";
-                caption = "Retrying mod activation";
-                break;
-            case Installed:
-                glyph = "\uE86C";
-                label = "Installed";
-                caption = fmt::format("Installed · {} · {}", format_bytes(queued->total),
-                    local != nullptr && local->active ? "enabled" : "disabled");
-                progress = 1.0f;
-                disabled = true;
-                break;
             case Failed:
                 glyph = "\uE5D5";
-                label = "Retry download";
-                caption = queued->message.empty() ? "Download failed" : queued->message;
-                progress = 1.0f;
-                break;
-            case InstallFailed:
-                glyph = "\uE5D5";
-                label = "Retry install";
-                caption = queued->message.empty() ? "Install failed" : queued->message;
-                progress = 1.0f;
-                break;
-            case ActivationFailed:
-                glyph = "\uE5D5";
-                label = "Retry activation";
-                caption = queued->message.empty() ? "Activation failed" : queued->message;
-                progress = 1.0f;
-                break;
-            case Uninstalling:
-                glyph = "\uE8B5";
-                label = "Uninstalling…";
-                caption = "Removing the installed package";
+                label = queued->local ? "Retry package" : "Retry download";
+                caption = queued->message.empty() ? "Package preparation failed" : queued->message;
                 progress = 1.0f;
                 break;
             case Canceled:
@@ -577,9 +509,22 @@ public:
 
         if (label.empty()) {
             const bool current = local != nullptr && local->metadata.version == mRequest.version;
-            const bool updateable = local != nullptr && !current &&
-                                    local->origin == mods::ModOrigin::User && !local->inPlace;
-            if (current || (local != nullptr && !updateable)) {
+            const bool updateable =
+                local != nullptr && !current && mods::ModLoader::instance().can_uninstall(*local);
+            if (activationPending) {
+                glyph = "\uE8B5";
+                label = "Activating…";
+                caption = "Retrying mod activation";
+                state = "installing";
+                progress = 1.0f;
+                disabled = true;
+            } else if (current && local->activation_failed()) {
+                glyph = "\uE5D5";
+                label = "Retry activation";
+                caption = activation_failure(*local);
+                state = "failed";
+                progress = 1.0f;
+            } else if (current || (local != nullptr && !updateable)) {
                 glyph = "\uE86C";
                 label = "Installed";
                 caption = fmt::format("Installed · {} · {}", format_bytes(package_size()),
@@ -593,7 +538,7 @@ public:
         }
 
         if (mLabel != label || mGlyph != glyph) {
-            ::dusk::ui::clear_children(mRoot);
+            ui::clear_children(mRoot);
             append_text(append(mRoot, "icon"), glyph);
             append_text_element(mRoot, "catalog-action-label", label);
             mProgress = append(mRoot, "progress");
@@ -617,65 +562,22 @@ public:
     }
 
 private:
-    static size_t queue_items_ahead(std::string_view id) {
-        size_t result = 0;
-        for (const auto& item : mods::queue::items()) {
-            if (item.modId == id) {
-                break;
-            }
-            if (item.state != mods::queue::State::Installed &&
-                item.state != mods::queue::State::Failed &&
-                item.state != mods::queue::State::InstallFailed &&
-                item.state != mods::queue::State::ActivationFailed &&
-                item.state != mods::queue::State::Canceled)
-            {
-                ++result;
-            }
-        }
-        return result;
-    }
-
-    static std::string state_class(mods::queue::State state) {
-        using enum mods::queue::State;
-        switch (state) {
-        case Queued:
-            return "queued";
-        case Downloading:
-            return "downloading";
-        case Paused:
-            return "paused";
-        case Retrying:
-            return "retrying";
-        case Verifying:
-        case Installing:
-        case Activating:
-        case Uninstalling:
-            return "installing";
-        case Installed:
-            return "installed";
-        case Failed:
-        case InstallFailed:
-        case ActivationFailed:
-            return "failed";
-        case Canceled:
-            return "idle";
-        }
-        return "idle";
+    std::optional<mods::queue::Item> matching_queue_item() const {
+        auto item = mods::queue::find_by_mod_id(mRequest.id);
+        return item && item->version == mRequest.version ? item : std::nullopt;
     }
 
     void press() {
-        auto queued = mods::queue::find_by_mod_id(mRequest.id);
-        const auto* local = installed_mod(mRequest.id);
-        if (queued && (queued->version != mRequest.version ||
-                          (queued->state == mods::queue::State::Installed &&
-                              (local == nullptr || local->metadata.version != mRequest.version))))
-        {
-            queued.reset();
-        }
-        if (queued && queued->state != mods::queue::State::Canceled &&
-            queued->state != mods::queue::State::Installed)
-        {
+        auto queued = matching_queue_item();
+        const auto* local = mods::ModLoader::instance().find_mod(mRequest.id);
+        if (queued && queued->state != mods::queue::State::Canceled) {
             mWindow.show_downloads(queued->id);
+            return;
+        }
+        if (local != nullptr && local->metadata.version == mRequest.version &&
+            local->activation_failed())
+        {
+            mActivationOperation = mods::ModLoader::instance().request_reactivate(mRequest.id);
             return;
         }
         if (!mods::queue::enqueue(mRequest)) {
@@ -694,6 +596,7 @@ private:
     Rml::Element* mProgress = nullptr;
     std::string mLabel;
     std::string mGlyph;
+    mods::ModOperationHandle mActivationOperation;
 
     uint64_t package_size() const { return std::get<mods::queue::Url>(mRequest.source).size; }
 };

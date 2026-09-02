@@ -5,6 +5,7 @@
 #include "dusk/mods/svc/ui.hpp"
 #include "fmt/format.h"
 #include "fmt/ranges.h"
+#include "format.hpp"
 #include "logs_window.hpp"
 #include "mod_browser.hpp"
 #include "mod_texture_provider.hpp"
@@ -19,6 +20,7 @@
 #include "m_Do/m_Do_audio.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <memory>
 #include <ranges>
 #include <string>
@@ -32,10 +34,6 @@ struct ModStatus {
     const char* badgeClass = "";
     const char* text = "";
 };
-
-bool mod_enabled(const mods::LoadedMod& mod) {
-    return mod.cvarIsEnabled != nullptr && mod.cvarIsEnabled->getValue();
-}
 
 ModStatus mod_status(const mods::LoadedMod& mod) {
     if (mod.loadFailed) {
@@ -55,18 +53,6 @@ bool mod_uses_network(const mods::LoadedMod& mod) {
         mod.manifestInfo.imports, [](const mods::ModManifestInfo::Import& serviceImport) {
             return serviceImport.id == HTTP_SERVICE_ID;
         });
-}
-
-// Truncates to at most maxBytes without splitting a UTF-8 sequence.
-std::string snippet(std::string_view text, size_t maxBytes) {
-    if (text.size() <= maxBytes) {
-        return std::string{text};
-    }
-    size_t end = maxBytes;
-    while (end > 0 && (static_cast<unsigned char>(text[end]) & 0xC0) == 0x80) {
-        --end;
-    }
-    return fmt::format("{}...", text.substr(0, end));
 }
 
 class ModListEntry : public FluentComponent<ModListEntry> {
@@ -163,26 +149,12 @@ public:
     }
 
     void update() override {
-        const auto queueItems = mods::queue::items();
-        const mods::queue::Item* current = nullptr;
-        size_t active = 0;
-        for (const auto& item : queueItems) {
-            if (item.state == mods::queue::State::Installed ||
-                item.state == mods::queue::State::Failed ||
-                item.state == mods::queue::State::InstallFailed ||
-                item.state == mods::queue::State::ActivationFailed ||
-                item.state == mods::queue::State::Canceled)
-            {
-                continue;
-            }
-            ++active;
-            if (current == nullptr) {
-                current = &item;
-            }
-        }
+        const auto current = mods::queue::first_active();
+        const auto activeCount = mods::queue::active_count();
+        const auto totalCount = mods::queue::item_count();
 
-        if (current == nullptr) {
-            set_text_content(mSummary, fmt::format("{} finished", queueItems.size()));
+        if (!current) {
+            set_text_content(mSummary, fmt::format("0 active · {} total", totalCount));
             mProgress->SetProperty("display", "none");
         } else {
             const float progress = current->total == 0 ?
@@ -191,7 +163,7 @@ public:
                                                       static_cast<float>(current->total),
                                            0.0f, 1.0f);
             set_text_content(
-                mSummary, fmt::format("{} in queue · {:.0f}%", active, progress * 100.0f));
+                mSummary, fmt::format("{} in queue · {:.0f}%", activeCount, progress * 100.0f));
             mProgress->SetAttribute("value", progress);
             mProgress->SetProperty("display", "block");
         }
@@ -217,8 +189,15 @@ public:
 
         auto* actions = append(mRoot, "mod-actions");
         const std::string modId = mod.metadata.id;
-        if (mod_enabled(mod)) {
-            if (!mod.inPlace) {
+        if (mod.activation_failed()) {
+            make_button(actions, "Retry").on_pressed([modId] {
+                mods::ModLoader::instance().request_reactivate(modId);
+            });
+            make_button(actions, "Disable").on_pressed([modId] {
+                mods::ModLoader::instance().request_disable(modId);
+            });
+        } else if (mod.is_enabled()) {
+            if (!mod.nativeInPlace) {
                 make_button(actions, "Reload").on_pressed([modId] {
                     mods::ModLoader::instance().request_reload(modId);
                 });
@@ -286,7 +265,7 @@ ModsWindow::ModsWindow() : Window{Props{.tabBar = false, .styleSheets = {"res/rm
     mRoot->SetClass("mods", true);
 
     refresh_snapshot();
-    mQueueItemCount = mods::queue::items().size();
+    mQueueItemCount = mods::queue::item_count();
 
     set_content([this](Rml::Element* content) { build_content(content); });
 }
@@ -485,7 +464,7 @@ void ModsWindow::refresh_snapshot() {
             .mod = &trackedMod,
             .active = trackedMod.active,
             .loadFailed = trackedMod.loadFailed,
-            .enabled = mod_enabled(trackedMod),
+            .enabled = trackedMod.is_enabled(),
             .suspended = trackedMod.suspendedByProvider,
             .cacheGeneration = trackedMod.cacheGeneration,
         });
@@ -511,20 +490,20 @@ void ModsWindow::update() {
         for (auto& snapshot : mSnapshot) {
             const auto& mod = *snapshot.mod;
             if (mod.active != snapshot.active || mod.loadFailed != snapshot.loadFailed ||
-                mod_enabled(mod) != snapshot.enabled ||
+                mod.is_enabled() != snapshot.enabled ||
                 mod.suspendedByProvider != snapshot.suspended ||
                 mod.cacheGeneration != snapshot.cacheGeneration)
             {
                 snapshot.active = mod.active;
                 snapshot.loadFailed = mod.loadFailed;
-                snapshot.enabled = mod_enabled(mod);
+                snapshot.enabled = mod.is_enabled();
                 snapshot.suspended = mod.suspendedByProvider;
                 snapshot.cacheGeneration = mod.cacheGeneration;
                 dirty = true;
             }
         }
     }
-    const auto queueItemCount = mods::queue::items().size();
+    const auto queueItemCount = mods::queue::item_count();
     if (queueItemCount != mQueueItemCount) {
         mQueueItemCount = queueItemCount;
         dirty = true;

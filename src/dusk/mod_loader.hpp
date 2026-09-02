@@ -6,6 +6,7 @@
 #include <ranges>
 #include <string>
 #include <string_view>
+#include <variant>
 #include <vector>
 
 #include "dusk/config.hpp"
@@ -67,12 +68,6 @@ struct ModSearchDir {
     bool inPlaceNative = false;
     // Native library location for platforms that restrict placement (e.g. iOS/tvOS Frameworks/)
     std::filesystem::path nativeLibDir;
-};
-
-enum class ModOrigin : u8 {
-    User,
-    Bundled,
-    BundledInPlace,
 };
 
 struct ModOperation {
@@ -199,9 +194,8 @@ struct LoadedMod {
     std::string dataDirUtf8;
 
     uint32_t searchDirIndex = 0;
-    ModOrigin origin = ModOrigin::User;
     // Native lib is dlopen'd in place and stays resident for the session. Reload is unsupported.
-    bool inPlace = false;
+    bool nativeInPlace = false;
     FileIdentity fileIdentity;
 
     std::unique_ptr<ConfigVar<bool>> cvarIsEnabled;
@@ -243,6 +237,11 @@ struct LoadedMod {
     // Mods this mod imports services from, and mods importing services from this mod.
     std::vector<ModDependencyEdge> dependencies;
     std::vector<ModDependencyEdge> dependents;
+
+    [[nodiscard]] bool is_enabled() const {
+        return cvarIsEnabled != nullptr && cvarIsEnabled->getValue();
+    }
+    [[nodiscard]] bool activation_failed() const { return loadFailed || (is_enabled() && !active); }
 };
 
 class ModLoader {
@@ -265,6 +264,8 @@ public:
 
     [[nodiscard]] std::filesystem::path user_mods_dir() const;
     [[nodiscard]] bool can_uninstall(const LoadedMod& mod) const;
+    [[nodiscard]] LoadedMod* find_mod(std::string_view id);
+    [[nodiscard]] const LoadedMod* find_mod(std::string_view id) const;
     [[nodiscard]] uint64_t generation() const noexcept { return m_generation; }
 
     [[nodiscard]] auto mods() const {
@@ -276,16 +277,27 @@ public:
     }
 
 private:
-    enum class RequestKind : u8 { Enable, Disable, Sync, Install, Reactivate };
-    struct Request {
+    enum class LifecycleAction : u8 { Enable, Disable, Reactivate };
+    struct LifecycleRequest {
         std::string modId;
-        RequestKind kind;
-        std::filesystem::path path;
+        LifecycleAction action;
         std::shared_ptr<ModOperation> operation;
-        bool force = false;
-        bool remove = false;
     };
-    struct SyncResult {
+    struct InstallRequest {
+        std::filesystem::path stagedPath;
+        std::shared_ptr<ModOperation> operation;
+    };
+    struct ReloadRequest {
+        std::string modId;
+        std::shared_ptr<ModOperation> operation;
+    };
+    struct UninstallRequest {
+        std::string modId;
+        std::shared_ptr<ModOperation> operation;
+    };
+    using Request = std::variant<LifecycleRequest, InstallRequest, ReloadRequest, UninstallRequest>;
+
+    struct OperationResult {
         bool success = true;
         std::string message;
         LoadedMod* mod = nullptr;
@@ -329,12 +341,12 @@ private:
     [[nodiscard]] std::string describe_missing_import(
         const char* serviceId, uint16_t majorVersion, uint16_t minMinorVersion) const;
 
-    LoadedMod* find_mod(std::string_view id) const;
     void drain_retired_natives();
     void apply_pending_requests();
-    [[nodiscard]] SyncResult install_staged(const std::filesystem::path& path);
-    [[nodiscard]] SyncResult sync_path(
-        const std::filesystem::path& path, bool force, uint32_t searchDirIndex = 0);
+    [[nodiscard]] OperationResult install_staged(const std::filesystem::path& path);
+    [[nodiscard]] OperationResult load_runtime_mod(const std::filesystem::path& path);
+    [[nodiscard]] OperationResult reload_runtime_mod(LoadedMod& mod);
+    [[nodiscard]] OperationResult runtime_result(LoadedMod& mod);
     void forget_mod(LoadedMod& mod);
     void flush_toasts();
     void on_enabled_changed(LoadedMod& mod);

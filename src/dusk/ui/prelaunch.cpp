@@ -8,6 +8,7 @@
 #include "dusk/language.hpp"
 #include "dusk/main.h"
 #include "dusk/settings.h"
+#include "dusk/ui/format.hpp"
 #include "dusk/ui/menu_bar.hpp"
 #include "modal.hpp"
 #include "mods_window.hpp"
@@ -37,6 +38,7 @@
 namespace dusk::ui {
 namespace {
 constexpr borealis::Log PrelaunchLog{"dusk::ui::prelaunch"};
+constexpr ByteFormat verificationByteFormat{.gibFractionDigits = 2, .mibFractionDigits = 0};
 
 PrelaunchState sPrelaunchState;
 
@@ -161,22 +163,6 @@ DiscVerificationState verification_to_config(iso::ValidationError validation) {
     default:
         return DiscVerificationState::Unknown;
     }
-}
-
-std::string format_bytes(size_t bytes) {
-    constexpr double KiB = 1024.0;
-    constexpr double MiB = KiB * 1024.0;
-    constexpr double GiB = MiB * 1024.0;
-    if (bytes >= static_cast<size_t>(GiB)) {
-        return fmt::format("{:.2f} GiB", static_cast<double>(bytes) / GiB);
-    }
-    if (bytes >= static_cast<size_t>(MiB)) {
-        return fmt::format("{:.0f} MiB", static_cast<double>(bytes) / MiB);
-    }
-    if (bytes >= static_cast<size_t>(KiB)) {
-        return fmt::format("{:.0f} KiB", static_cast<double>(bytes) / KiB);
-    }
-    return fmt::format("{} B", bytes);
 }
 
 void begin_disc_verification(std::string path) noexcept {
@@ -466,8 +452,9 @@ private:
             mProgress->SetAttribute("value", fraction);
         }
         if (mDetail != nullptr) {
-            set_text_content(mDetail, fmt::format("{} / {} ({:.0f}%)", format_bytes(bytesRead),
-                                          format_bytes(bytesTotal), fraction * 100.0f));
+            set_text_content(mDetail,
+                fmt::format("{} / {} ({:.0f}%)", format_bytes(bytesRead, verificationByteFormat),
+                    format_bytes(bytesTotal, verificationByteFormat), fraction * 100.0f));
         }
     }
 

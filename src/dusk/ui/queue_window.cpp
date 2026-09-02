@@ -3,6 +3,7 @@
 #include "button.hpp"
 #include "dusk/mods/queue.hpp"
 #include "fmt/format.h"
+#include "format.hpp"
 #include "package_row.hpp"
 #include "pane.hpp"
 
@@ -32,8 +33,6 @@ public:
                 mods::queue::resume(mId);
                 break;
             case mods::queue::State::Failed:
-            case mods::queue::State::InstallFailed:
-            case mods::queue::State::ActivationFailed:
                 mods::queue::retry(mId);
                 break;
             default:
@@ -51,11 +50,7 @@ public:
                 return;
             }
             mods::queue::cancel(mId);
-            if (item->state == mods::queue::State::Installed ||
-                item->state == mods::queue::State::Failed ||
-                item->state == mods::queue::State::InstallFailed ||
-                item->state == mods::queue::State::Canceled)
-            {
+            if (mods::queue::is_terminal(item->state)) {
                 mods::queue::clear_finished();
             }
         });
@@ -89,38 +84,24 @@ public:
         }
         const auto name =
             item->version.empty() ? item->name : fmt::format("{} {}", item->name, item->version);
-        set_package(name, state_label(*item), detail, state_class(item->state), progress);
+        set_package(name, state_label(*item), detail, queue_state_class(item->state), progress);
 
         const bool pauseVisible = (!item->local && item->state == mods::queue::State::Queued) ||
                                   item->state == mods::queue::State::Downloading ||
                                   item->state == mods::queue::State::Paused ||
                                   item->state == mods::queue::State::Retrying ||
-                                  item->state == mods::queue::State::Failed ||
-                                  item->state == mods::queue::State::InstallFailed ||
-                                  item->state == mods::queue::State::ActivationFailed;
+                                  item->state == mods::queue::State::Failed;
         mPause->root()->SetProperty("display", pauseVisible ? "block" : "none");
         if (item->state == mods::queue::State::Paused) {
             mPause->set_text("Resume");
-        } else if (item->state == mods::queue::State::Failed ||
-                   item->state == mods::queue::State::InstallFailed ||
-                   item->state == mods::queue::State::ActivationFailed)
-        {
+        } else if (item->state == mods::queue::State::Failed) {
             mPause->set_text("Retry");
         } else {
             mPause->set_text("Pause");
         }
 
-        const bool cancelVisible = item->state != mods::queue::State::Installing &&
-                                   item->state != mods::queue::State::Activating &&
-                                   item->state != mods::queue::State::Uninstalling;
-        mCancel->root()->SetProperty("display", cancelVisible ? "block" : "none");
-        mCancel->set_text(item->state == mods::queue::State::Installed ||
-                                  item->state == mods::queue::State::Failed ||
-                                  item->state == mods::queue::State::InstallFailed ||
-                                  item->state == mods::queue::State::ActivationFailed ||
-                                  item->state == mods::queue::State::Canceled ?
-                              "Clear" :
-                              "Cancel");
+        mCancel->root()->SetProperty("display", "block");
+        mCancel->set_text(mods::queue::is_terminal(item->state) ? "Clear" : "Cancel");
         Component::update();
     }
 
@@ -147,50 +128,42 @@ QueueWindow::QueueWindow(std::string focusId)
       }},
       mFocusId{std::move(focusId)} {
     content_pane();
-    rebuild_rows();
+    refresh_queue();
 }
 
 void QueueWindow::update() {
+    refresh_queue();
+    Modal::update();
+}
+
+void QueueWindow::refresh_queue() {
     const auto queueItems = mods::queue::items();
     std::vector<std::string> ids;
     ids.reserve(queueItems.size());
     size_t active = 0;
     for (const auto& item : queueItems) {
         ids.push_back(item.id);
-        if (item.state != mods::queue::State::Installed &&
-            item.state != mods::queue::State::Failed &&
-            item.state != mods::queue::State::InstallFailed &&
-            item.state != mods::queue::State::ActivationFailed &&
-            item.state != mods::queue::State::Canceled)
-        {
+        if (!mods::queue::is_terminal(item.state)) {
             ++active;
         }
     }
     if (ids != mItemIds) {
-        rebuild_rows();
-    }
-    set_body_text(fmt::format("{} active · {} total", active, queueItems.size()));
-    Modal::update();
-}
-
-void QueueWindow::rebuild_rows() {
-    auto& pane = content_pane();
-    pane.clear();
-    mItemIds.clear();
-
-    const auto queueItems = mods::queue::items();
-    if (queueItems.empty()) {
-        pane.add_text("No installs.");
-        return;
-    }
-    for (const auto& item : queueItems) {
-        mItemIds.push_back(item.id);
-        auto& row = pane.add_child<QueueRow>(item.id);
-        if (!mFocusId.empty() && item.id == mFocusId) {
-            row.focus();
-            mFocusId.clear();
+        auto& pane = content_pane();
+        pane.clear();
+        mItemIds = std::move(ids);
+        if (queueItems.empty()) {
+            pane.add_text("No installs.");
+        } else {
+            for (const auto& item : queueItems) {
+                auto& row = pane.add_child<QueueRow>(item.id);
+                if (!mFocusId.empty() && item.id == mFocusId) {
+                    row.focus();
+                    mFocusId.clear();
+                }
+            }
         }
     }
+    set_body_text(fmt::format("{} active · {} total", active, queueItems.size()));
 }
 
 }  // namespace dusk::ui
