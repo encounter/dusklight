@@ -23,6 +23,8 @@ const char* queue_state_class(mods::queue::State state) {
         return "retrying";
     case Verifying:
         return "installing";
+    case Handoff:
+        return "installing";
     case Failed:
         return "failed";
     case Canceled:
@@ -46,6 +48,8 @@ std::string state_label(const mods::queue::Item& item) {
         return fmt::format("Retrying in {}s", item.retrySeconds);
     case Verifying:
         return "Verifying";
+    case Handoff:
+        return "Installing";
     case Failed:
         return item.local ? "Package failed" : "Download failed";
     case Canceled:

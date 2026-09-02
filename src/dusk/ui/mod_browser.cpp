@@ -496,6 +496,13 @@ public:
                 label = "Verifying…";
                 caption = "Checking package integrity";
                 break;
+            case Handoff:
+                glyph = "\uE8B5";
+                label = "Installing…";
+                caption = "Applying package";
+                progress = 1.0f;
+                disabled = true;
+                break;
             case Failed:
                 glyph = "\uE5D5";
                 label = queued->local ? "Retry package" : "Retry download";
@@ -679,7 +686,6 @@ DetailContent::DetailContent(
     auto* description = append(main, "section");
     description->SetClass("catalog-scroll-anchor", true);
     add_existing_item<ScrollAnchor>(description);
-    // append_text_element(description, "h2", "About this mod");
     auto* descriptionFragment = append(description, "catalog-fragment");
     if (detail.descriptionHtml.empty()) {
         append_text_element(descriptionFragment, "p", "No description provided.");

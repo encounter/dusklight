@@ -43,7 +43,6 @@ struct QueueItem {
     Request request;
     State state = State::Queued;
     std::filesystem::path partialPath;
-    std::filesystem::path stagedPath;
     uint64_t completed = 0;
     uint64_t total = 0;
     std::string message;
@@ -51,6 +50,7 @@ struct QueueItem {
     clock::time_point retryAt{};
     borealis::Task<borealis::http::Result> task;
     borealis::Task<VerifyResult> verification;
+    ModOperationHandle operation;
     PendingIntent pendingIntent = PendingIntent::None;
 };
 
@@ -247,9 +247,6 @@ void remove_partial(const QueueItem& item) {
         metadataPath += ".borealis-resume.json";
         std::filesystem::remove(metadataPath, ec);
     }
-    if (!item.stagedPath.empty()) {
-        std::filesystem::remove(item.stagedPath, ec);
-    }
 }
 
 void fail(QueueItem& item, std::string message, bool discardPartial) {
@@ -420,12 +417,12 @@ void finish_download(QueueItem& item) {
         });
 }
 
-bool finish_verification(QueueItem& item) {
+void finish_verification(QueueItem& item) {
     VerifyResult result;
     try {
         auto completed = item.verification.try_take();
         if (!completed) {
-            return false;
+            return;
         }
         result = std::move(*completed);
     } catch (const std::exception& exception) {
@@ -443,31 +440,30 @@ bool finish_verification(QueueItem& item) {
         remove_partial(item);
         item.state = State::Canceled;
         item.completed = 0;
-        return false;
+        return;
     }
     if (!result.error.empty()) {
         fail(item, std::move(result.error), true);
-        return false;
+        return;
     }
     if (const auto duplicate = find_queue_item_by_mod_id(result.metadata.id);
         duplicate != nullptr && duplicate != &item && !is_terminal(duplicate->state))
     {
         fail(item, "This mod already has an active install", true);
-        return false;
+        return;
     }
     if (local_source(item) != nullptr && !item.request.id.empty() &&
         (item.request.id != result.metadata.id || item.request.version != result.metadata.version))
     {
         fail(item, "The local package changed after confirmation", true);
-        return false;
+        return;
     }
     item.request.id = result.metadata.id;
     item.request.name = result.metadata.name;
     item.request.version = result.metadata.version;
-    item.stagedPath = std::move(result.stagedPath);
     item.completed = item.total;
-    ModLoader::instance().request_install(std::exchange(item.stagedPath, std::filesystem::path{}));
-    return true;
+    item.state = State::Handoff;
+    item.operation = ModLoader::instance().request_install(std::move(result.stagedPath));
 }
 
 Item snapshot(const QueueItem& item) {
@@ -528,9 +524,9 @@ bool enqueue(Request request, std::string* keyOut) {
         existing->completed = 0;
         existing->total = total;
         existing->partialPath.clear();
-        existing->stagedPath.clear();
         existing->message.clear();
         existing->retryCount = 0;
+        existing->operation.reset();
         existing->pendingIntent = PendingIntent::None;
         if (keyOut != nullptr) {
             *keyOut = existing->key;
@@ -551,8 +547,11 @@ void update() {
         if (item->task && item->task.ready()) {
             finish_download(*item);
         }
-        if (item->state == State::Verifying && item->verification && item->verification.ready() &&
-            finish_verification(*item))
+        if (item->state == State::Verifying && item->verification && item->verification.ready()) {
+            finish_verification(*item);
+        }
+        if (item->state == State::Handoff && item->operation &&
+            item->operation->state != ModOperation::State::Pending)
         {
             item = queueItems.erase(item);
         } else {
@@ -561,7 +560,7 @@ void update() {
     }
 
     for (auto& item : queueItems) {
-        if (item.task || item.verification) {
+        if (item.task || item.verification || item.operation) {
             return;
         }
         if (is_terminal(item.state) || item.state == State::Paused) {
@@ -691,7 +690,7 @@ void retry(std::string_view id) {
 
 void cancel(std::string_view id) {
     auto* item = find_queue_item(id);
-    if (item == nullptr) {
+    if (item == nullptr || item->state == State::Handoff) {
         return;
     }
     if (item->task) {

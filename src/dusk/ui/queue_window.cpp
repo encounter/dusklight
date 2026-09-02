@@ -100,7 +100,8 @@ public:
             mPause->set_text("Pause");
         }
 
-        mCancel->root()->SetProperty("display", "block");
+        mCancel->root()->SetProperty(
+            "display", item->state == mods::queue::State::Handoff ? "none" : "block");
         mCancel->set_text(mods::queue::is_terminal(item->state) ? "Clear" : "Cancel");
         Component::update();
     }

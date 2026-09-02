@@ -17,6 +17,7 @@ enum class State {
     Paused,
     Retrying,
     Verifying,
+    Handoff,
     Failed,
     Canceled,
 };
@@ -61,7 +62,6 @@ struct Item {
 /** Adds an install, replacing failed or canceled work for the same package ID. */
 bool enqueue(Request request, std::string* key = nullptr);
 
-/** Polls transfer and verification work. Call once per UI frame on the main thread. */
 void update();
 void shutdown() noexcept;
 

@@ -1,10 +1,6 @@
 window.mod-browser,
 window.mod-browser-detail,
 window.screenshot-viewer {
-    --color-official-badge: #46edd5;
-    --color-catalog-warning-background-rgb: 180, 107, 42;
-    --color-catalog-warning-text: #e8cba7;
-    --color-catalog-missing: #e8b177;
     background-color: rgba(var(--color-surface-rgb), 96%);
 }
 
@@ -156,7 +152,7 @@ catalog-official-badge {
     padding: var(--space-2xs) 5dp;
     border-radius: var(--radius-small);
     background-color: rgba(var(--color-accent-rgb), 28%);
-    color: var(--color-official-badge);
+    color: var(--color-info);
     font-style: normal;
     font-size: 9dp;
 }
@@ -191,7 +187,7 @@ catalog-card-icon {
     border-radius: var(--radius-panel);
     overflow: hidden;
     background-color: rgba(var(--color-border-rgb), 18%);
-    box-shadow: rgba(0, 0, 0, 60%) 0 6dp 16dp;
+    box-shadow: rgba(var(--color-black-rgb), 60%) 0 6dp 16dp;
 }
 
 catalog-card-icon-image {
@@ -437,29 +433,29 @@ button.catalog-install-action.paused progress fill {
 
 button.catalog-install-action.retrying {
     color: var(--color-warning);
-    box-shadow: rgba(255, 168, 38, 60%) 0 0 0 2dp;
+    box-shadow: rgba(var(--color-warning-rgb), 60%) 0 0 0 2dp;
 }
 
 button.catalog-install-action.retrying progress fill {
-    background-color: rgba(255, 168, 38, 60%);
+    background-color: rgba(var(--color-warning-rgb), 60%);
 }
 
 button.catalog-install-action.failed {
     color: var(--color-white);
-    --button-background: rgba(133, 34, 33, 20%);
-    --button-background-hover: rgba(133, 34, 33, 35%);
-    --button-background-selected: rgba(133, 34, 33, 35%);
-    --button-background-active: rgba(133, 34, 33, 35%);
-    box-shadow: #B3261E 0 0 0 2dp;
+    --button-background: rgba(var(--color-error-rgb), 20%);
+    --button-background-hover: rgba(var(--color-error-rgb), 35%);
+    --button-background-selected: rgba(var(--color-error-rgb), 35%);
+    --button-background-active: rgba(var(--color-error-rgb), 35%);
+    box-shadow: var(--color-error) 0 0 0 2dp;
 }
 
 button.catalog-install-action.failed progress fill {
-    background-color: rgba(179, 38, 30, 70%);
+    background-color: rgba(var(--color-error-rgb), 70%);
 }
 
 button.catalog-install-action.installed {
     color: var(--color-success);
-    box-shadow: rgba(68, 204, 85, 50%) 0 0 0 2dp;
+    box-shadow: rgba(var(--color-success-rgb), 50%) 0 0 0 2dp;
 }
 
 button.catalog-install-action.installed:disabled {
@@ -467,7 +463,7 @@ button.catalog-install-action.installed:disabled {
 }
 
 button.catalog-install-action.installing progress fill {
-    background-color: #2255BB;
+    background-color: rgba(var(--color-info-rgb), 80%);
 }
 
 catalog-install-control {
@@ -490,7 +486,7 @@ catalog-install-caption {
 }
 
 catalog-install-caption.failed {
-    color: #B3261E;
+    color: var(--color-error);
 }
 
 catalog-detail-identity {
@@ -509,7 +505,7 @@ catalog-detail-icon {
     border-radius: var(--radius-panel);
     overflow: hidden;
     background-color: rgba(var(--color-border-rgb), 25%);
-    box-shadow: rgba(0, 0, 0, 65%) 0 8dp 20dp;
+    box-shadow: rgba(var(--color-black-rgb), 65%) 0 8dp 20dp;
 }
 
 catalog-detail-icon-image {
@@ -588,39 +584,6 @@ catalog-stat-value {
     font-weight: bold;
 }
 
-/*catalog-native-warning {
-    display: flex;
-    align-items: center;
-    gap: 10dp;
-    margin: 18dp var(--space-xl) 0 var(--space-xl);
-    padding: 11dp 14dp;
-    border-radius: var(--radius-panel);
-    background-color: rgba(var(--color-catalog-warning-background-rgb), 18%);
-    box-shadow: rgba(206, 137, 67, 45%) 0 0 0 1dp;
-    color: var(--color-catalog-warning-text);
-}
-
-catalog-native-warning icon {
-    font-size: var(--font-size-4xl);
-}
-
-catalog-warning-copy {
-    display: flex;
-    flex-flow: column;
-    font-size: var(--font-size-2xs);
-}
-
-catalog-warning-title {
-    display: block;
-    font-size: var(--font-size-xs);
-    font-weight: bold;
-}
-
-catalog-warning-message {
-    display: block;
-    font-size: var(--font-size-3xs);
-}*/
-
 catalog-detail-body {
     display: flex;
     flex-flow: row;
@@ -647,7 +610,7 @@ catalog-detail-body section.catalog-scroll-anchor {
 
 catalog-detail-body section.catalog-scroll-anchor:focus-visible {
     border-radius: var(--radius-control);
-    box-shadow: rgba(194, 164, 45, 45%) 0 0 0 1dp;
+    box-shadow: rgba(var(--color-accent-rgb), 45%) 0 0 0 1dp;
 }
 
 catalog-detail-body h2,
@@ -774,7 +737,7 @@ catalog-dependency-status {
 }
 
 catalog-dependency.missing {
-    color: var(--color-catalog-missing);
+    color: var(--color-warning);
 }
 
 catalog-detail-body aside {
@@ -786,7 +749,7 @@ catalog-detail-body aside {
     gap: var(--space-md);
     border-radius: 9dp;
     background-color: rgba(var(--color-control-rgb), 42%);
-    box-shadow: rgba(146, 135, 91, 24%) 0 0 0 1dp;
+    box-shadow: rgba(var(--color-border-rgb), 24%) 0 0 0 1dp;
 }
 
 catalog-detail-body dl {
