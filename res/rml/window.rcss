@@ -668,7 +668,11 @@ package-row {
     border-bottom-color: rgba(var(--color-border-rgb), 30%);
 }
 
-package-row-icon {
+package-row:last-child {
+    border-bottom-width: 0;
+}
+
+package-row > mod-icon {
     display: none;
     flex: 0 0 36dp;
     width: 36dp;
@@ -683,46 +687,51 @@ package-row-icon {
     decorator: text("&#xe87b;" center center);
 }
 
-package-row-icon.visible {
+package-row > mod-icon.visible {
     display: block;
 }
 
-package-row-icon.has-image {
+package-row > mod-icon.has-image {
     background-color: transparent;
 }
 
-package-row.paused package-row-icon,
-package-row.retrying package-row-icon,
-package-row.failed package-row-icon {
+package-row.paused > mod-icon,
+package-row.retrying > mod-icon,
+package-row.failed > mod-icon {
     filter: grayscale(1);
     opacity: 0.55;
 }
 
-package-row-info {
+package-row > section {
     display: flex;
     flex-direction: column;
     flex: 1 1 0;
     min-width: 0;
+    margin: 0;
+    padding: 0;
 }
 
-package-row-heading {
+package-row > section > header {
     display: flex;
     width: 100%;
     gap: var(--space-sm);
     align-items: center;
-    padding-bottom: 6dp;
+    margin: 0;
+    padding: 0 0 6dp 0;
 }
 
-package-row-identity {
+package-row h3 {
     display: flex;
     align-items: baseline;
     flex: 1 1 auto;
     min-width: 0;
     gap: var(--space-xs);
+    margin: 0;
+    padding: 0;
     overflow: hidden;
 }
 
-package-row-name {
+package-row h3 > span {
     display: block;
     flex: 0 1 auto;
     min-width: 0;
@@ -733,7 +742,7 @@ package-row-name {
     white-space: nowrap;
 }
 
-package-row-version {
+package-row h3 > small {
     display: block;
     flex: 0 0 auto;
     font-size: var(--font-size-xs);
@@ -741,28 +750,28 @@ package-row-version {
     color: rgba(var(--color-text-rgb), 50%);
 }
 
-package-row-state {
+package-row header > small {
     display: block;
     flex: 0 0 auto;
     font-size: var(--font-size-sm);
     color: rgba(var(--color-text-rgb), 60%);
 }
 
-package-row.downloading package-row-state {
+package-row.downloading header > small {
     color: var(--color-accent);
 }
 
-package-row.retrying package-row-state {
+package-row.retrying header > small {
     color: var(--color-warning);
 }
 
-package-row.failed package-row-state,
-package-row.failed package-row-detail {
+package-row.failed header > small,
+package-row.failed footer > small {
     color: var(--color-error);
 }
 
-package-row.installed package-row-state,
-package-row.installed package-row-detail {
+package-row.installed header > small,
+package-row.installed footer > small {
     color: var(--color-success);
 }
 
@@ -789,15 +798,17 @@ package-row.installed progress fill {
     background-color: var(--color-success);
 }
 
-package-row-footer {
+package-row footer {
     display: flex;
     align-items: flex-start;
     width: 100%;
     min-width: 0;
     gap: var(--space-sm);
+    margin: 0;
+    padding: 0;
 }
 
-package-row-detail {
+package-row footer > small {
     display: block;
     flex: 1 1 0;
     min-width: 0;
@@ -809,13 +820,15 @@ package-row-detail {
     white-space: nowrap;
 }
 
-package-row-actions {
+package-row nav {
     display: flex;
     flex: 0 0 auto;
     gap: 6dp;
+    margin: 0;
+    padding: 0;
 }
 
-package-row-actions button.package-row-icon-action {
+package-row nav > button.icon-action {
     align-items: center;
     justify-content: center;
     flex: 0 0 30dp;
@@ -827,7 +840,7 @@ package-row-actions button.package-row-icon-action {
     font-size: var(--font-size-md);
 }
 
-package-row-actions button.package-row-icon-action icon {
+package-row nav > button.icon-action icon {
     flex: 0 0 var(--font-size-md);
     width: var(--font-size-md);
     height: var(--font-size-md);
@@ -839,25 +852,25 @@ package-row.installed {
     align-items: center;
 }
 
-package-row.installed package-row-icon {
+package-row.installed > mod-icon {
     margin-top: 0;
 }
 
-package-row.installed package-row-info {
+package-row.installed > section {
     padding-right: 38dp;
 }
 
-package-row.installed package-row-state {
+package-row.installed header > small {
     display: none;
 }
 
-package-row.installed package-row-actions {
+package-row.installed nav {
     position: absolute;
     top: 17dp;
     right: 0;
 }
 
-package-row.installed package-row-actions button.package-row-icon-action {
+package-row.installed nav > button.icon-action {
     opacity: 0.45;
 }
 

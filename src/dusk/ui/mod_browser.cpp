@@ -18,7 +18,6 @@
 
 #include <algorithm>
 #include <array>
-#include <charconv>
 #include <chrono>
 #include <cstddef>
 #include <exception>
@@ -45,65 +44,6 @@ constexpr std::array sortOptions{
 std::string_view sort_label(mods::catalog::Sort sort) noexcept {
     const auto iter = std::ranges::find(sortOptions, sort, &SortOption::value);
     return iter != sortOptions.end() ? iter->label : sortOptions.front().label;
-}
-
-std::string format_count(uint64_t value) {
-    if (value >= 1'000'000) {
-        return fmt::format("{:.1f}m", static_cast<double>(value) / 1'000'000.0);
-    }
-    if (value >= 1'000) {
-        return fmt::format("{:.1f}k", static_cast<double>(value) / 1'000.0);
-    }
-    return fmt::format("{}", value);
-}
-
-std::string display_date(std::string_view timestamp) {
-    return std::string{timestamp.substr(0, std::min<size_t>(timestamp.size(), 10))};
-}
-
-std::string relative_date(std::string_view timestamp) {
-    if (timestamp.size() < 10) {
-        return display_date(timestamp);
-    }
-    int yearValue = 0;
-    unsigned monthValue = 0;
-    unsigned dayValue = 0;
-    const auto parse = [](std::string_view text, auto& value) {
-        const auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), value);
-        return error == std::errc{} && end == text.data() + text.size();
-    };
-    if (!parse(timestamp.substr(0, 4), yearValue) || !parse(timestamp.substr(5, 2), monthValue) ||
-        !parse(timestamp.substr(8, 2), dayValue))
-    {
-        return display_date(timestamp);
-    }
-
-    const std::chrono::year_month_day date{
-        std::chrono::year{yearValue}, std::chrono::month{monthValue}, std::chrono::day{dayValue}};
-    if (!date.ok()) {
-        return display_date(timestamp);
-    }
-    const auto today = std::chrono::floor<std::chrono::days>(std::chrono::system_clock::now());
-    const auto age = (today - std::chrono::sys_days{date}).count();
-    if (age < 0) {
-        return display_date(timestamp);
-    }
-    if (age == 0) {
-        return "today";
-    }
-    if (age == 1) {
-        return "yesterday";
-    }
-    if (age < 7) {
-        return fmt::format("{} days ago", age);
-    }
-    if (age < 30) {
-        return fmt::format("{} weeks ago", age / 7);
-    }
-    if (age < 365) {
-        return fmt::format("{} months ago", age / 30);
-    }
-    return fmt::format("{} years ago", age / 365);
 }
 
 void add_list_markers(Rml::Element* fragment) {
@@ -179,12 +119,8 @@ std::string_view activation_failure(const mods::LoadedMod& mod) {
     return mod.suspendedByProvider ? "A required provider is unavailable" : "Activation failed";
 }
 
-bool safe_web_url(std::string_view url) {
-    return url.starts_with("https://") || url.starts_with("http://");
-}
-
 void open_web_url(const std::string& url) {
-    if (safe_web_url(url)) {
+    if (url.starts_with("https://")) {
         SDL_OpenURL(url.c_str());
     }
 }
@@ -192,21 +128,21 @@ void open_web_url(const std::string& url) {
 void set_icon_button_content(Button& button, const Rml::String& glyph, const Rml::String& label) {
     clear_children(button.root());
     append_text(append(button.root(), "icon"), glyph);
-    append_text_element(button.root(), "catalog-action-label", label);
+    append_text_element(button.root(), "span", label);
 }
 
 void append_status(Rml::Element* parent, const Rml::String& title, const Rml::String& message) {
-    append_text_element(parent, "catalog-status-title", title);
-    append_text_element(parent, "catalog-status-message", message);
+    append_text_element(parent, "h2", title);
+    append_text_element(parent, "p", message);
 }
 
 void append_stat(Rml::Element* parent, const Rml::String& glyph, const Rml::String& value,
     const Rml::String& suffix) {
-    auto* stat = append(parent, "catalog-detail-stat");
+    auto* stat = append(parent, "stat");
     if (!glyph.empty()) {
         append_text(append(stat, "icon"), glyph);
     }
-    append_text_element(stat, "catalog-stat-value", value);
+    append_text_element(stat, "b", value);
     append_text(stat, suffix);
 }
 
@@ -228,27 +164,25 @@ public:
 
         auto* art = append(mRoot, "catalog-card-art");
         append(art, "catalog-card-art-shadow");
-        auto* icon = append(art, "catalog-card-icon");
-        auto* iconImage = append(icon, "catalog-card-icon-image");
+        auto* icon = append(art, "mod-icon");
+        auto* iconImage = append(icon, "mod-icon-image");
 
         auto* body = append(mRoot, "catalog-card-body");
-        auto* kicker = append(body, "catalog-card-kicker");
-        append_text_element(kicker, "catalog-card-category", category);
-        append_text_element(kicker, "catalog-card-updated", relative_date(mod.updatedAt));
-
-        auto* identity = append(body, "catalog-card-identity");
-        append_text_element(identity, "catalog-card-title", mod.name);
-        append_text_element(identity, "catalog-card-author", fmt::format("by {}", mod.author.name));
-
-        append_text_element(body, "catalog-card-summary", snippet(mod.summary, 126));
-        auto* meta = append(body, "catalog-card-meta");
-        auto* downloads = append(meta, "catalog-card-stat");
+        append_text_element(body, "small", relative_date(mod.updatedAt));
+        auto* identity = append(body, "section");
+        append_text_element(identity, "b", category);
+        append_text_element(identity, "h2", mod.name);
+        append_text_element(identity, "small", fmt::format("by {}", mod.author.name));
+        append_text_element(body, "p", snippet(mod.summary, 126));
+        auto* meta = append(body, "footer");
+        auto* downloads = append(meta, "stat");
         append_text(append(downloads, "icon"), "\uF090");
         append_text(downloads, format_count(mod.downloads));
-        auto* endorsements = append(meta, "catalog-card-stat");
+        auto* endorsements = append(meta, "stat");
         append_text(append(endorsements, "icon"), "\uE87D");
         append_text(endorsements, format_count(mod.endorsements));
-        auto* size = append_text_element(meta, "catalog-card-size", installedLabel);
+        auto* size = append_text_element(meta, "small", installedLabel);
+        size->SetClass("size", true);
         if (isInstalled) {
             size->SetClass("installed", true);
         }
@@ -566,7 +500,7 @@ public:
         if (mLabel != label || mGlyph != glyph) {
             ui::clear_children(mRoot);
             append_text(append(mRoot, "icon"), glyph);
-            append_text_element(mRoot, "catalog-action-label", label);
+            append_text_element(mRoot, "span", label);
             mProgress = append(mRoot, "progress");
             mLabel = std::move(label);
             mGlyph = std::move(glyph);
@@ -664,11 +598,11 @@ DetailContent::DetailContent(
     open.on_pressed([url = detail.siteUrl] { open_web_url(url); });
 
     auto* identity = append(hero, "catalog-detail-identity");
-    auto* detailIcon = append(identity, "catalog-detail-icon");
-    auto* detailIconImage = append(detailIcon, "catalog-detail-icon-image");
-    auto* detailHeading = append(identity, "catalog-detail-heading");
-    append_text_element(detailHeading, "catalog-detail-category",
-        detail.mod.category ? detail.mod.category->name : "Uncategorized");
+    auto* detailIcon = append(identity, "mod-icon");
+    auto* detailIconImage = append(detailIcon, "mod-icon-image");
+    auto* detailHeading = append(identity, "header");
+    append_text_element(
+        detailHeading, "b", detail.mod.category ? detail.mod.category->name : "Uncategorized");
     auto* title = append(detailHeading, "h1");
     append_text(title, detail.mod.name);
     append_text_element(title, "small", fmt::format("v{}", detail.mod.version));
@@ -803,7 +737,7 @@ DetailContent::DetailContent(
     append_detail_field(detailList, "License", detail.license.value_or("Not specified"));
     append_detail_field(
         detailList, "Mod ABI", detail.modAbi ? fmt::format("{}", *detail.modAbi) : "Assets only");
-    if (detail.sourceUrl && safe_web_url(*detail.sourceUrl)) {
+    if (detail.sourceUrl && detail.sourceUrl->starts_with("https://")) {
         auto* sourceActions = append(sidebar, "catalog-source-actions");
         auto& sourceGroup =
             add_existing_item<NavGroup>(sourceActions, Props{
@@ -908,8 +842,8 @@ void ModBrowser::build_content(Rml::Element* content) {
     }();
     const uint64_t total = mPage ? mPage->pagination.total : 0;
     append_text_element(heading, "h1", categoryName);
-    append_text_element(heading, "catalog-results-summary",
-        fmt::format("{} mods · sorted by {}", total, sort_label(mQuery.sort)));
+    append_text_element(
+        heading, "small", fmt::format("{} mods · sorted by {}", total, sort_label(mQuery.sort)));
 
     Component* resultFocus = nullptr;
     Component* retryFocus = nullptr;

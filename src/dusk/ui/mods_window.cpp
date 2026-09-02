@@ -59,32 +59,28 @@ class ModListEntry : public FluentComponent<ModListEntry> {
 public:
     ModListEntry(Rml::Element* parent, const mods::LoadedMod& mod)
         : FluentComponent{append(parent, "mod-entry")} {
-        Rml::Element* icon = nullptr;
+        auto* icon = append(mRoot, "mod-icon");
         if (!mod.metadata.iconPath.empty()) {
-            icon = append(mRoot, "img");
-            icon->SetAttribute("src", mod_image_source(mod, mod.metadata.iconPath));
-        } else {
-            icon = append(mRoot, "icon");
-            icon->SetClass("placeholder", true);
+            auto* image = append(icon, "img");
+            image->SetAttribute("src", mod_image_source(mod, mod.metadata.iconPath));
         }
-        icon->SetClass("mod-icon", true);
 
         const auto status = mod_status(mod);
-        auto* info = append(mRoot, "mod-entry-info");
-        auto* name = append(info, "mod-entry-name");
-        append_text(append(name, "mod-entry-name-text"), mod.metadata.name);
-        append_text(append(name, "mod-entry-version"), fmt::format("v{}", mod.metadata.version));
-        auto* sub = append(info, "mod-entry-sub");
+        auto* info = append(mRoot, "mod-info");
+        auto* heading = append(info, "header");
+        append_text(append(heading, "b"), mod.metadata.name);
+        append_text(append(heading, "small"), fmt::format("v{}", mod.metadata.version));
+        auto* sub = append(info, "small");
         append_text(sub, fmt::format("{} - ", mod.metadata.author));
-        auto* statusElement = append(sub, "mod-entry-status");
+        auto* statusElement = append(sub, "mod-status");
         if (status.badgeClass[0] != '\0') {
             statusElement->SetClass(status.badgeClass, true);
         }
         append_text(statusElement, status.text);
         if (mod_uses_network(mod)) {
-            append_text(append(sub, "mod-entry-network"), "Network");
+            append_text(append(sub, "mod-network"), "Network");
         }
-        append_text(append(info, "mod-entry-desc"), snippet(mod.metadata.description, 90));
+        append_text(append(info, "p"), snippet(mod.metadata.description, 90));
         mRoot->SetClass("inactive", !mod.active);
         mRoot->SetClass("failed", mod.loadFailed);
 
@@ -102,16 +98,13 @@ class BrowseModsEntry final : public FluentComponent<BrowseModsEntry> {
 public:
     BrowseModsEntry(Rml::Element* parent, std::function<void()> onOpen)
         : FluentComponent{append(parent, "mod-entry")} {
-        mRoot->SetClass("mod-browser-entry", true);
-        auto* icon = append(mRoot, "icon");
-        icon->SetClass("mod-icon", true);
-        icon->SetClass("mod-browser-icon", true);
+        mRoot->SetClass("browser", true);
+        append(mRoot, "mod-icon");
 
-        auto* info = append(mRoot, "mod-entry-info");
-        auto* name = append(info, "mod-entry-name");
-        append_text(append(name, "mod-entry-name-text"), "Browse online mods");
-        append_text(
-            append(info, "mod-entry-desc"), "Discover and install mods from the community.");
+        auto* info = append(mRoot, "mod-info");
+        auto* heading = append(info, "header");
+        append_text(append(heading, "b"), "Browse online mods");
+        append_text(append(info, "p"), "Discover and install mods from the community.");
 
         on_nav_command([callback = std::move(onOpen)](Rml::Event&, NavCommand cmd) {
             if (cmd != NavCommand::Confirm) {
@@ -127,15 +120,13 @@ class InstallQueueEntry final : public FluentComponent<InstallQueueEntry> {
 public:
     InstallQueueEntry(Rml::Element* parent, std::function<void()> onOpen)
         : FluentComponent{append(parent, "mod-entry")} {
-        mRoot->SetClass("mod-installs-entry", true);
-        auto* icon = append(mRoot, "icon");
-        icon->SetClass("mod-icon", true);
-        icon->SetClass("mod-installs-icon", true);
+        mRoot->SetClass("installs", true);
+        append(mRoot, "mod-icon");
 
-        auto* info = append(mRoot, "mod-entry-info");
-        auto* name = append(info, "mod-entry-name");
-        append_text(append(name, "mod-entry-name-text"), "Installs");
-        mSummary = append(info, "mod-entry-sub");
+        auto* info = append(mRoot, "mod-info");
+        auto* heading = append(info, "header");
+        append_text(append(heading, "b"), "Installs");
+        mSummary = append(info, "small");
         mProgress = append(info, "progress");
 
         on_nav_command([callback = std::move(onOpen)](Rml::Event&, NavCommand cmd) {
@@ -183,7 +174,7 @@ public:
         const bool hasBanner = !mod.metadata.bannerPath.empty();
         mRoot->SetClass(hasBanner ? "has-banner" : "no-banner", true);
         if (hasBanner) {
-            mRoot->SetProperty("decorator", fmt::format(R"(image("{}" cover center top))",
+            mRoot->SetProperty("decorator", fmt::format(R"(image("{}" cover center center))",
                                                 mod_image_source(mod, mod.metadata.bannerPath)));
         }
 
@@ -358,7 +349,7 @@ void ModsWindow::build_detail(Pane& pane, mods::LoadedMod& mod) {
 
     auto* title = append(pane.root(), "mod-title");
     append_text(title, fmt::format("{} ", mod.metadata.name));
-    append_text(append(title, "mod-title-version"), fmt::format("v{}", mod.metadata.version));
+    append_text(append(title, "small"), fmt::format("v{}", mod.metadata.version));
     if (mod.loadFailed || mod.suspendedByProvider) {
         const auto status = mod_status(mod);
         append_text(title, "\u00a0");
@@ -376,10 +367,10 @@ void ModsWindow::build_detail(Pane& pane, mods::LoadedMod& mod) {
 
     if (mod.loadFailed && !mod.failureReason.empty()) {
         auto* row = append(pane.root(), "mod-info-row");
-        auto* label = append(row, "mod-info-label");
+        auto* label = append(row, "b");
         label->SetClass("failed", true);
         append_text(label, "Reason");
-        append_text(append(row, "mod-info-value"), mod.failureReason);
+        append_text(append(row, "span"), mod.failureReason);
     } else if (mod.suspendedByProvider) {
         std::vector<std::string_view> providers;
         for (const auto& edge : mod.dependencies) {
@@ -388,8 +379,8 @@ void ModsWindow::build_detail(Pane& pane, mods::LoadedMod& mod) {
             }
         }
         auto* row = append(pane.root(), "mod-info-row");
-        append_text(append(row, "mod-info-label"), "Waiting on");
-        append_text(append(row, "mod-info-value"), fmt::format("{}", fmt::join(providers, ", ")));
+        append_text(append(row, "b"), "Waiting on");
+        append_text(append(row, "span"), fmt::format("{}", fmt::join(providers, ", ")));
     }
 
     std::vector<std::string_view> activeDependents;

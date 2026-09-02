@@ -95,6 +95,9 @@ Rml::Element* create_toast(Rml::Element* parent, const Toast& toast) {
         } else if (toast.type == "warning") {
             auto* icon = append(heading, "icon");
             icon->SetClass("warning", true);
+        } else if (toast.type == "mod-installed") {
+            auto* icon = append(heading, "icon");
+            icon->SetClass("download-done", true);
         }
     }
     {

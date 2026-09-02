@@ -26,6 +26,7 @@
 #include "dusk/mods/svc/config.hpp"
 #include "dusk/mods/svc/hook.hpp"
 #include "dusk/mods/svc/registry.hpp"
+#include "dusk/ui/mod_texture_provider.hpp"
 #include "dusk/ui/mods_window.hpp"
 #include "dusk/ui/ui.hpp"
 #include "miniz.h"
@@ -1271,7 +1272,7 @@ void ModLoader::flush_toasts() {
     ui::push_toast(std::move(toast));
 }
 
-std::vector<LoadedMod*> ModLoader::collect_lifecycle_set(LoadedMod& target) {
+std::vector<LoadedMod*> ModLoader::collect_lifecycle_set(LoadedMod& target) const {
     std::vector included{&target};
     std::vector pending{&target};
     while (!pending.empty()) {
@@ -1730,10 +1731,19 @@ void ModLoader::apply_pending_requests() {
         if (const auto* install = std::get_if<InstallRequest>(&request)) {
             auto result = install_staged(install->stagedPath);
             if (result.success && result.mod != nullptr) {
+                const auto& metadata = result.mod->metadata;
+                const std::string iconRml =
+                    metadata.iconPath.empty() ?
+                        std::string{} :
+                        fmt::format(R"(<img src="{}" />)",
+                            ui::escape(ui::mod_image_source(*result.mod, metadata.iconPath)));
                 ui::push_toast({
+                    .type = "mod-installed",
                     .title = "Mod installed",
                     .content = fmt::format(
-                        "{} {}", result.mod->metadata.name, result.mod->metadata.version),
+                        R"(<row><mod-icon>{}</mod-icon><mod-info><mod-name><b>{}</b><small class="version">v{}</small></mod-name><small>{}</small></mod-info></row>)",
+                        iconRml, ui::escape(metadata.name), ui::escape(metadata.version),
+                        ui::escape(metadata.author)),
                     .duration = std::chrono::seconds{4},
                 });
             } else if (!result.success && result.mod == nullptr) {

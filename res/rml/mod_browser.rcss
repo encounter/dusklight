@@ -55,7 +55,7 @@ catalog-filters select-button input {
     font-size: var(--font-size-sm);
 }
 
-catalog-filters button.catalog-library-link {
+.catalog-library-link {
     padding: var(--space-sm) 10dp;
     border-radius: var(--radius-panel);
     text-align: left;
@@ -78,7 +78,7 @@ catalog-results header {
     padding-right: var(--space-2xl);
 }
 
-catalog-results header catalog-results-summary {
+catalog-results > header small {
     display: block;
     margin-top: var(--space-2xs);
     font-size: var(--font-size-xs);
@@ -101,7 +101,7 @@ catalog-grid {
     padding: var(--space-2xs);
 }
 
-button.catalog-card {
+.catalog-card {
     display: flex;
     flex-flow: column;
     flex: 0 0 48%;
@@ -134,18 +134,12 @@ catalog-card-art-shadow {
 
 catalog-card-body {
     display: flex;
+    position: relative;
     flex-flow: column;
     flex: 1 1 auto;
     min-height: 0;
-    padding: var(--space-xl) var(--space-lg) var(--space-md) var(--space-lg);
+    padding: var(--space-xl) var(--space-lg) var(--space-lg);
     gap: 7dp;
-}
-
-catalog-card-kicker {
-    display: flex;
-    align-items: center;
-    gap: 6dp;
-    font-size: var(--font-size-sm);
 }
 
 catalog-official-badge {
@@ -157,7 +151,8 @@ catalog-official-badge {
     font-size: 9dp;
 }
 
-catalog-card-kicker > catalog-card-category {
+catalog-card-body > section > b {
+    display: block;
     font-family: var(--font-family-heading);
     font-size: var(--font-size-sm);
     font-weight: bold;
@@ -165,18 +160,19 @@ catalog-card-kicker > catalog-card-category {
     color: var(--color-accent);
 }
 
-catalog-card-updated {
-    margin-left: auto;
+catalog-card-body > small {
+    position: absolute;
+    top: var(--space-md);
+    right: var(--space-lg);
+    margin: 0;
+    padding: 0;
+    font-size: var(--font-size-sm);
     font-weight: normal;
     text-transform: none;
     opacity: 0.45;
 }
 
-catalog-card-identity {
-    display: block;
-}
-
-catalog-card-icon {
+.catalog-card mod-icon {
     display: block;
     position: absolute;
     left: 14dp;
@@ -190,14 +186,22 @@ catalog-card-icon {
     box-shadow: rgba(var(--color-black-rgb), 60%) 0 6dp 16dp;
 }
 
-catalog-card-icon-image {
+mod-icon-image {
     display: block;
     width: 100%;
     height: 100%;
+    border-radius: var(--radius-panel);
 }
 
-catalog-card-title {
+catalog-card-body > section {
     display: block;
+    margin: 0;
+    padding: 0;
+}
+
+catalog-card-body > section h2 {
+    display: block;
+    margin: 0;
     font-family: var(--font-family-body);
     font-size: var(--font-size-3xl);
     font-weight: bold;
@@ -205,22 +209,23 @@ catalog-card-title {
     line-height: 1.5;
 }
 
-catalog-card-author {
+catalog-card-body > section small {
     display: block;
     font-size: var(--font-size-3xs);
     opacity: 0.55;
 }
 
-catalog-card-summary {
+catalog-card-body > p {
     flex: 1 1 auto;
     min-height: 0;
+    margin: 0;
     overflow: hidden;
     font-size: var(--font-size-base);
     line-height: 1.35;
     color: rgba(var(--color-text-rgb), 68%);
 }
 
-catalog-card-meta {
+catalog-card-body > footer {
     display: flex;
     align-items: center;
     gap: 10dp;
@@ -228,24 +233,24 @@ catalog-card-meta {
     opacity: 0.52;
 }
 
-catalog-card-stat {
+catalog-card-body > footer stat {
     display: flex;
     align-items: center;
     gap: 3dp;
 }
 
-catalog-card-meta icon {
+catalog-card-body > footer icon {
     flex: 0 0 13dp;
     font-size: var(--font-size-sm);
     line-height: 1;
 }
 
-catalog-card-size {
+catalog-card-body > footer .size {
     margin-left: auto;
     font-size: var(--font-size-sm);
 }
 
-catalog-card-size.installed {
+catalog-card-body > footer .size.installed {
     color: var(--color-success);
 }
 
@@ -280,15 +285,19 @@ catalog-detail-status {
     text-align: center;
 }
 
-catalog-status-title {
+catalog-results-status h2,
+catalog-detail-status h2 {
     display: block;
+    margin: 0;
     font-family: var(--font-family-heading);
     font-size: 25dp;
     font-weight: bold;
 }
 
-catalog-status-message {
+catalog-results-status p,
+catalog-detail-status p {
     display: block;
+    margin: 0;
     opacity: 0.58;
 }
 
@@ -364,7 +373,7 @@ catalog-source-actions button {
     line-height: 1;
 }
 
-button.catalog-install-action {
+.catalog-install-action {
     display: flex;
     position: relative;
     align-items: center;
@@ -383,33 +392,33 @@ button.catalog-install-action {
     box-shadow: var(--color-accent) 0 0 0 2dp;
 }
 
-button.catalog-install-action icon {
+.catalog-install-action icon {
     flex: 0 0 22dp;
     font-size: 22dp;
     line-height: 1;
 }
 
-button.catalog-install-action catalog-action-label {
+.catalog-install-action > span {
     white-space: nowrap;
 }
 
-button.catalog-install-action.idle {
+.catalog-install-action.idle {
     --button-background: rgba(var(--color-interactive-rgb), 40%);
     --button-background-hover: rgba(var(--color-interactive-rgb), 55%);
     --button-background-selected: rgba(var(--color-interactive-rgb), 55%);
     --button-background-active: rgba(var(--color-interactive-rgb), 55%);
 }
 
-button.catalog-install-action.paused {
+.catalog-install-action.paused {
     box-shadow: rgba(var(--color-border-rgb), 25%) 0 0 0 1dp;
 }
 
-button.catalog-install-action.paused:not(:disabled):hover,
-button.catalog-install-action.paused:not(:disabled):focus-visible {
+.catalog-install-action.paused:not(:disabled):hover,
+.catalog-install-action.paused:not(:disabled):focus-visible {
     box-shadow: var(--color-accent) 0 0 0 2dp;
 }
 
-button.catalog-install-action progress {
+.catalog-install-action progress {
     position: absolute;
     left: 0;
     right: 0;
@@ -422,25 +431,25 @@ button.catalog-install-action progress {
     background-color: rgba(var(--color-white-rgb), 10%);
 }
 
-button.catalog-install-action progress fill {
+.catalog-install-action progress fill {
     border-radius: 0;
     background-color: rgba(var(--color-accent-rgb), 80%);
 }
 
-button.catalog-install-action.paused progress fill {
+.catalog-install-action.paused progress fill {
     background-color: rgba(var(--color-text-rgb), 35%);
 }
 
-button.catalog-install-action.retrying {
+.catalog-install-action.retrying {
     color: var(--color-warning);
     box-shadow: rgba(var(--color-warning-rgb), 60%) 0 0 0 2dp;
 }
 
-button.catalog-install-action.retrying progress fill {
+.catalog-install-action.retrying progress fill {
     background-color: rgba(var(--color-warning-rgb), 60%);
 }
 
-button.catalog-install-action.failed {
+.catalog-install-action.failed {
     color: var(--color-white);
     --button-background: rgba(var(--color-error-rgb), 20%);
     --button-background-hover: rgba(var(--color-error-rgb), 35%);
@@ -449,20 +458,20 @@ button.catalog-install-action.failed {
     box-shadow: var(--color-error) 0 0 0 2dp;
 }
 
-button.catalog-install-action.failed progress fill {
+.catalog-install-action.failed progress fill {
     background-color: rgba(var(--color-error-rgb), 70%);
 }
 
-button.catalog-install-action.installed {
+.catalog-install-action.installed {
     color: var(--color-success);
     box-shadow: rgba(var(--color-success-rgb), 50%) 0 0 0 2dp;
 }
 
-button.catalog-install-action.installed:disabled {
+.catalog-install-action.installed:disabled {
     opacity: 1;
 }
 
-button.catalog-install-action.installing progress fill {
+.catalog-install-action.installing progress fill {
     background-color: rgba(var(--color-info-rgb), 80%);
 }
 
@@ -497,7 +506,7 @@ catalog-detail-identity {
     gap: var(--space-lg);
 }
 
-catalog-detail-icon {
+catalog-detail-identity mod-icon {
     display: block;
     flex: 0 0 70dp;
     width: 70dp;
@@ -508,19 +517,13 @@ catalog-detail-icon {
     box-shadow: rgba(var(--color-black-rgb), 65%) 0 8dp 20dp;
 }
 
-catalog-detail-icon-image {
-    display: block;
-    width: 100%;
-    height: 100%;
-}
-
-catalog-detail-heading {
+catalog-detail-identity > header {
     display: block;
     flex: 1 1 auto;
     min-width: 0;
 }
 
-catalog-detail-category {
+catalog-detail-identity > header > b {
     display: block;
     font-family: var(--font-family-heading);
     font-size: var(--font-size-sm);
@@ -567,7 +570,7 @@ catalog-detail-stats {
     color: rgba(var(--color-text-rgb), 58%);
 }
 
-catalog-detail-stat {
+catalog-detail-stats > stat {
     display: flex;
     align-items: center;
     gap: 5dp;
@@ -579,7 +582,7 @@ catalog-detail-stats icon {
     line-height: 1;
 }
 
-catalog-stat-value {
+catalog-detail-stats > stat > b {
     color: var(--color-text);
     font-weight: bold;
 }
@@ -701,7 +704,7 @@ catalog-gallery {
     gap: var(--space-sm);
 }
 
-button.catalog-screenshot {
+.catalog-screenshot {
     flex: 1 1 0;
     height: 100%;
     min-width: 0;
@@ -711,7 +714,7 @@ button.catalog-screenshot {
     font-size: var(--font-size-5xl);
 }
 
-button.catalog-screenshot.primary {
+.catalog-screenshot.primary {
     flex: 2 1 0;
 }
 
@@ -825,7 +828,7 @@ catalog-screenshot-actions button {
         gap: 10dp;
     }
 
-    button.catalog-card {
+    .catalog-card {
         min-width: 220dp;
         height: 254dp;
     }
@@ -839,23 +842,23 @@ catalog-screenshot-actions button {
         padding: 18dp 10dp var(--space-sm) 10dp;
     }
 
-    catalog-card-icon {
+    .catalog-card mod-icon {
         left: 10dp;
         bottom: -14dp;
         width: 40dp;
         height: 40dp;
     }
 
-    catalog-card-kicker,
-    catalog-card-kicker > catalog-card-category {
+    catalog-card-body > section > b,
+    catalog-card-body > small {
         font-size: var(--font-size-3xs);
     }
 
-    catalog-card-title {
+    catalog-card-body > section h2 {
         font-size: var(--font-size-md);
     }
 
-    catalog-card-summary {
+    catalog-card-body > p {
         font-size: var(--font-size-3xs);
     }
 
@@ -865,7 +868,7 @@ catalog-screenshot-actions button {
         padding: var(--space-md) 18dp;
     }
 
-    catalog-detail-icon {
+    catalog-detail-identity mod-icon {
         flex-basis: 56dp;
         width: 56dp;
         height: 56dp;
@@ -875,11 +878,11 @@ catalog-screenshot-actions button {
         gap: var(--space-md);
     }
 
-    catalog-detail-category {
+    catalog-detail-identity > header > b {
         font-size: var(--font-size-2xs);
     }
 
-    button.catalog-install-action {
+    .catalog-install-action {
         gap: var(--space-sm);
         min-width: 112dp;
         padding: 7dp 18dp;
@@ -887,7 +890,7 @@ catalog-screenshot-actions button {
         font-size: var(--font-size-md);
     }
 
-    button.catalog-install-action icon {
+    .catalog-install-action icon {
         flex-basis: 18dp;
         font-size: var(--font-size-xl);
     }

@@ -67,23 +67,23 @@ std::string state_label(const mods::queue::Item& item) {
 }
 
 PackageRow::PackageRow(Rml::Element* parent) : Component{create_row(parent)} {
-    mIcon = append(mRoot, "package-row-icon");
-    auto* info = append(mRoot, "package-row-info");
-    auto* heading = append(info, "package-row-heading");
-    auto* identity = append(heading, "package-row-identity");
-    mName = append(identity, "package-row-name");
-    mVersion = append(identity, "package-row-version");
-    mState = append(heading, "package-row-state");
+    mIcon = append(mRoot, "mod-icon");
+    auto* info = append(mRoot, "section");
+    auto* heading = append(info, "header");
+    auto* identity = append(heading, "h3");
+    mName = append(identity, "span");
+    mVersion = append(identity, "small");
+    mState = append(heading, "small");
     mProgress = append(info, "progress");
-    mFooter = append(info, "package-row-footer");
-    mDetail = append(mFooter, "package-row-detail");
+    mFooter = append(info, "footer");
+    mDetail = append(mFooter, "small");
 }
 
 void PackageRow::set_package(std::string name, std::string version, std::string status,
     std::string detail, std::string stateClass, std::optional<float> progress) {
-    mRoot->SetClassNames(fmt::format("package-row {}", stateClass));
+    mRoot->SetClassNames(stateClass);
     set_text_content(mName, name);
-    set_text_content(mVersion, version);
+    set_text_content(mVersion, fmt::format("v{}", version));
     mVersion->SetProperty("display", version.empty() ? "none" : "block");
     set_text_content(mState, status);
     set_text_content(mDetail, detail);
@@ -113,7 +113,7 @@ void PackageRow::set_icon(std::string source) {
 
 Rml::Element* PackageRow::actions_root() {
     if (mActions == nullptr) {
-        mActions = append(mFooter, "package-row-actions");
+        mActions = append(mFooter, "nav");
     }
     return mActions;
 }

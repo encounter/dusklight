@@ -40,7 +40,7 @@ public:
         auto* actions = actions_root();
         auto pause = std::make_unique<Button>(actions, "");
         mPause = pause.get();
-        mPause->root()->SetClass("package-row-icon-action", true);
+        mPause->root()->SetClass("icon-action", true);
         mPause->on_pressed([this] {
             const auto item = mods::queue::find(mId);
             if (!item) {
@@ -63,7 +63,7 @@ public:
 
         auto cancel = std::make_unique<Button>(actions, "");
         mCancel = cancel.get();
-        mCancel->root()->SetClass("package-row-icon-action", true);
+        mCancel->root()->SetClass("icon-action", true);
         mCancel->on_pressed([this] {
             const auto item = mods::queue::find(mId);
             if (!item) {
@@ -196,6 +196,10 @@ QueueWindow::QueueWindow(std::string focusId)
 }
 
 void QueueWindow::update() {
+    if (!mItemIds.empty() && mods::queue::item_count() == 0) {
+        pop();
+        return;
+    }
     refresh_queue();
     Modal::update();
 }

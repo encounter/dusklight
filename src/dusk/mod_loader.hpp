@@ -354,7 +354,7 @@ private:
     // bundle from disk, then reactivates whatever the current cvar/provider state allows.
     void apply_lifecycle_change(LoadedMod& target, bool reload);
     // `target` plus transitive active/suspended dependents, in m_mods (init) order.
-    std::vector<LoadedMod*> collect_lifecycle_set(LoadedMod& target);
+    std::vector<LoadedMod*> collect_lifecycle_set(LoadedMod& target) const;
     void resume_lifecycle_set(const std::vector<LoadedMod*>& mods);
     bool reload_bundle(LoadedMod& mod);
     bool ensure_native_loaded(LoadedMod& mod);
