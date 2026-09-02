@@ -28,7 +28,7 @@ struct Query {
 struct Category {
     std::string slug;
     std::string name;
-    std::uint64_t modCount = 0;
+    uint64_t modCount = 0;
 };
 
 struct Tag {
@@ -43,13 +43,13 @@ struct Author {
 };
 
 struct ImageSource {
-    std::uint32_t width = 0;
+    uint32_t width = 0;
     std::string pngUrl;
 };
 
 struct Image {
-    std::uint32_t width = 0;
-    std::uint32_t height = 0;
+    uint32_t width = 0;
+    uint32_t height = 0;
     std::vector<ImageSource> sources;
 };
 
@@ -61,11 +61,11 @@ struct Mod {
     std::string summary;
     std::optional<Category> category;
     std::vector<Tag> tags;
-    std::uint64_t downloads = 0;
-    std::uint64_t endorsements = 0;
+    uint64_t downloads = 0;
+    uint64_t endorsements = 0;
     std::string publishedAt;
     std::string updatedAt;
-    std::uint64_t packageSize = 0;
+    uint64_t packageSize = 0;
     bool containsNativeCode = false;
     std::vector<std::string> supportedPlatforms;
     std::optional<Image> icon;
@@ -79,9 +79,15 @@ struct Screenshot {
 
 struct ServiceImport {
     std::string id;
-    std::uint16_t major = 0;
-    std::uint16_t minMinor = 0;
+    uint16_t major = 0;
+    uint16_t minMinor = 0;
     bool optional = false;
+};
+
+struct Download {
+    std::string url;
+    std::string sha256;
+    uint64_t size = 0;
 };
 
 struct Detail {
@@ -93,7 +99,8 @@ struct Detail {
     std::string descriptionHtml;
     std::string changelogHtml;
     std::string packageSha256;
-    std::optional<std::uint32_t> modAbi;
+    Download download;
+    std::optional<uint32_t> modAbi;
     std::optional<Image> banner;
     std::vector<Screenshot> screenshots;
     std::vector<ServiceImport> serviceImports;
@@ -103,7 +110,7 @@ struct Pagination {
     int page = 1;
     int pageSize = 0;
     int pageCount = 0;
-    std::uint64_t total = 0;
+    uint64_t total = 0;
 };
 
 struct Page {

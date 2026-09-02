@@ -183,7 +183,6 @@ HttpError map_error(borealis::http::Error error) {
     case borealis::http::Error::Io:
         return HTTP_ERROR_IO;
     case borealis::http::Error::NoBackend:
-    case borealis::http::Error::NotInitialized:
     case borealis::http::Error::Network:
         return HTTP_ERROR_NETWORK;
     default:
@@ -216,7 +215,7 @@ borealis::http::Result publish_download(borealis::http::Result result,
         }
 
         std::filesystem::path temporary = destination;
-        temporary += "." + borealis::io::fs_path_to_string(staging.filename()) + ".part";
+        temporary += fmt::format(".{}.part", borealis::io::fs_path_to_string(staging.filename()));
         std::error_code ec;
         std::filesystem::copy_file(
             staging, temporary, std::filesystem::copy_options::overwrite_existing, ec);
@@ -225,7 +224,7 @@ borealis::http::Result publish_download(borealis::http::Result result,
             std::error_code ignored;
             std::filesystem::remove(temporary, ignored);
             result.error = borealis::http::Error::Io;
-            result.message = "Failed to publish download: " + copyError;
+            result.message = fmt::format("Failed to publish download: {}", copyError);
             return result;
         }
 
@@ -233,14 +232,14 @@ borealis::http::Result publish_download(borealis::http::Result result,
         if (!borealis::io::atomic_replace(temporary, destination, replaceError)) {
             std::filesystem::remove(temporary, ec);
             result.error = borealis::http::Error::Io;
-            result.message = "Failed to publish download: " + replaceError;
+            result.message = fmt::format("Failed to publish download: {}", replaceError);
             return result;
         }
         std::filesystem::remove(staging, ec);
         return result;
     } catch (const std::exception& exception) {
         result.error = borealis::http::Error::Io;
-        result.message = std::string{"Failed to publish download: "} + exception.what();
+        result.message = fmt::format("Failed to publish download: {}", exception.what());
         return result;
     } catch (...) {
         result.error = borealis::http::Error::Io;
@@ -438,14 +437,12 @@ ModResult start_request(LoadedMod& mod, const HttpRequestDesc& desc, HttpComplet
         .connectTimeout = desc.connect_timeout_ms != 0 ?
                               std::chrono::milliseconds{desc.connect_timeout_ms} :
                               DefaultTimeout,
-        .idleTimeout = desc.idle_timeout_ms != 0 ?
-                           std::chrono::milliseconds{desc.idle_timeout_ms} :
-                           DefaultTimeout,
+        .idleTimeout = desc.idle_timeout_ms != 0 ? std::chrono::milliseconds{desc.idle_timeout_ms} :
+                                                   DefaultTimeout,
         .totalTimeout = desc.total_timeout_ms != 0 ?
                             std::optional{std::chrono::milliseconds{desc.total_timeout_ms}} :
                             std::nullopt,
-        .maxBodyBytes =
-            desc.max_body_bytes != 0 ? desc.max_body_bytes : DefaultResponseBodyBytes,
+        .maxBodyBytes = desc.max_body_bytes != 0 ? desc.max_body_bytes : DefaultResponseBodyBytes,
     };
     request.headers.reserve(desc.header_count + 1);
     for (uint32_t i = 0; i < desc.header_count; ++i) {
@@ -463,9 +460,7 @@ ModResult start_request(LoadedMod& mod, const HttpRequestDesc& desc, HttpComplet
         if (!immediate.has_value()) {
             return MOD_UNAVAILABLE;
         }
-        if (immediate->error == borealis::http::Error::NoBackend ||
-            immediate->error == borealis::http::Error::NotInitialized)
-        {
+        if (immediate->error == borealis::http::Error::NoBackend) {
             return MOD_UNAVAILABLE;
         }
         task = borealis::detail::make_ready_task(std::move(*immediate));
@@ -550,7 +545,7 @@ void http_shutdown() {
 }
 
 bool http_available() {
-    return borealis::http::available() && borealis::http::initialize();
+    return borealis::http::available();
 }
 
 constexpr HttpService s_httpService{

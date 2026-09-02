@@ -1,6 +1,7 @@
 #include "modal.hpp"
 
 #include <algorithm>
+#include <utility>
 
 namespace dusk::ui {
 
@@ -48,7 +49,7 @@ void Modal::update() {
         button->update();
     }
     if (mPendingAction) {
-        auto action = std::move(mPendingAction);
+        auto action = std::exchange(mPendingAction, {});
         action(*this);
     }
     WindowSmall::update();

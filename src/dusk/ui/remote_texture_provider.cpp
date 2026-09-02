@@ -31,11 +31,11 @@ using namespace std::chrono_literals;
 constexpr borealis::Log Log{"dusk::ui"};
 constexpr std::string_view kScheme = "https";
 constexpr std::string_view kAllowedPrefix = "https://staging.twilitrealm.workers.dev/images/v1/";
-constexpr std::size_t kMaxCachedImages = 64;
-constexpr std::size_t kMaxImageFileSize = 16 * 1024 * 1024;
+constexpr size_t kMaxCachedImages = 64;
+constexpr size_t kMaxImageFileSize = 16 * 1024 * 1024;
 // RmlUi caches the first texture dimensions in image decorators, so the async
 // placeholder must preserve the final image's aspect ratio.
-constexpr std::uint32_t kPlaceholderMaxDimension = 256;
+constexpr uint32_t kPlaceholderMaxDimension = 256;
 constexpr std::array<std::byte, kPlaceholderMaxDimension * kPlaceholderMaxDimension * 4>
     kTransparentPixels{};
 
@@ -50,9 +50,9 @@ struct Entry {
     borealis::Task<borealis::http::Result> request;
     DecodedImage image;
     State state = State::Unrequested;
-    std::uint64_t lastUsed = 0;
-    std::uint32_t placeholderWidth = 1;
-    std::uint32_t placeholderHeight = 1;
+    uint64_t lastUsed = 0;
+    uint32_t placeholderWidth = 1;
+    uint32_t placeholderHeight = 1;
 };
 
 std::unordered_map<std::string, Entry>& image_cache() {
@@ -60,8 +60,8 @@ std::unordered_map<std::string, Entry>& image_cache() {
     return *cache;
 }
 
-std::uint64_t& use_counter() {
-    static auto* counter = new std::uint64_t{};
+uint64_t& use_counter() {
+    static auto* counter = new uint64_t{};
     return *counter;
 }
 
@@ -71,7 +71,7 @@ bool make_cache_room() {
         return true;
     }
     const auto victim = std::ranges::min_element(cache, {}, [](const auto& pair) {
-        return pair.second.state == State::Pending ? std::numeric_limits<std::uint64_t>::max() :
+        return pair.second.state == State::Pending ? std::numeric_limits<uint64_t>::max() :
                                                      pair.second.lastUsed;
     });
     if (victim == cache.end() || victim->second.state == State::Pending) {
@@ -82,8 +82,8 @@ bool make_cache_room() {
 }
 
 aurora::rmlui::RuntimeTexture transparent_texture(const Entry& entry) {
-    const auto size = static_cast<std::size_t>(entry.placeholderWidth) *
-                      static_cast<std::size_t>(entry.placeholderHeight) * 4;
+    const auto size = static_cast<size_t>(entry.placeholderWidth) *
+                      static_cast<size_t>(entry.placeholderHeight) * 4;
     return {
         .width = entry.placeholderWidth,
         .height = entry.placeholderHeight,
@@ -152,7 +152,7 @@ void finish_request(const std::string& source, Entry& entry, borealis::http::Res
         Log.warn("Image '{}' returned HTTP {}", source, result.response.statusCode);
         return;
     }
-    const auto* data = reinterpret_cast<const std::uint8_t*>(result.response.body.data());
+    const auto* data = reinterpret_cast<const uint8_t*>(result.response.body.data());
     auto image = decode_png(std::span{data, result.response.body.size()}, source);
     if (!image) {
         entry.state = State::Failed;
@@ -198,7 +198,7 @@ void update_remote_texture_provider() noexcept {
 }
 
 void set_remote_texture_dimensions(
-    std::string_view source, std::uint32_t width, std::uint32_t height) noexcept {
+    std::string_view source, uint32_t width, uint32_t height) noexcept {
     if (!source.starts_with(kAllowedPrefix) || width == 0 || height == 0) {
         return;
     }
@@ -214,14 +214,14 @@ void set_remote_texture_dimensions(
 
     const auto maxDimension = std::max(width, height);
     if (maxDimension > kPlaceholderMaxDimension) {
-        width = std::max(1u,
-            static_cast<std::uint32_t>(
-                (static_cast<std::uint64_t>(width) * kPlaceholderMaxDimension + maxDimension / 2) /
-                maxDimension));
-        height = std::max(1u,
-            static_cast<std::uint32_t>(
-                (static_cast<std::uint64_t>(height) * kPlaceholderMaxDimension + maxDimension / 2) /
-                maxDimension));
+        width = std::max(
+            1u, static_cast<uint32_t>(
+                    (static_cast<uint64_t>(width) * kPlaceholderMaxDimension + maxDimension / 2) /
+                    maxDimension));
+        height = std::max(
+            1u, static_cast<uint32_t>(
+                    (static_cast<uint64_t>(height) * kPlaceholderMaxDimension + maxDimension / 2) /
+                    maxDimension));
     }
     iter->second.placeholderWidth = width;
     iter->second.placeholderHeight = height;
@@ -236,7 +236,7 @@ namespace dusk::ui {
 void register_remote_texture_provider() noexcept {}
 void unregister_remote_texture_provider() noexcept {}
 void update_remote_texture_provider() noexcept {}
-void set_remote_texture_dimensions(std::string_view, std::uint32_t, std::uint32_t) noexcept {}
+void set_remote_texture_dimensions(std::string_view, uint32_t, uint32_t) noexcept {}
 
 }  // namespace dusk::ui
 

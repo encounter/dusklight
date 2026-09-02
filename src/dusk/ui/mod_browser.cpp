@@ -3,9 +3,11 @@
 #include "bool_button.hpp"
 #include "button.hpp"
 #include "dusk/mod_loader.hpp"
+#include "dusk/mods/queue.hpp"
 #include "dusk/mods/svc/registry.hpp"
 #include "fmt/format.h"
 #include "nav_group.hpp"
+#include "queue_window.hpp"
 #include "remote_texture_provider.hpp"
 #include "string_button.hpp"
 
@@ -43,7 +45,7 @@ std::string_view sort_label(mods::catalog::Sort sort) noexcept {
     return iter != sortOptions.end() ? iter->label : sortOptions.front().label;
 }
 
-std::string format_count(std::uint64_t value) {
+std::string format_count(uint64_t value) {
     if (value >= 1'000'000) {
         return fmt::format("{:.1f}m", static_cast<double>(value) / 1'000'000.0);
     }
@@ -53,24 +55,24 @@ std::string format_count(std::uint64_t value) {
     return fmt::format("{}", value);
 }
 
-std::string format_bytes(std::uint64_t bytes) {
+std::string format_bytes(uint64_t bytes) {
     constexpr double kiB = 1024.0;
     constexpr double miB = kiB * 1024.0;
     constexpr double giB = miB * 1024.0;
-    if (bytes >= static_cast<std::uint64_t>(giB)) {
+    if (bytes >= static_cast<uint64_t>(giB)) {
         return fmt::format("{:.1f} GiB", static_cast<double>(bytes) / giB);
     }
-    if (bytes >= static_cast<std::uint64_t>(miB)) {
+    if (bytes >= static_cast<uint64_t>(miB)) {
         return fmt::format("{:.1f} MiB", static_cast<double>(bytes) / miB);
     }
-    if (bytes >= static_cast<std::uint64_t>(kiB)) {
+    if (bytes >= static_cast<uint64_t>(kiB)) {
         return fmt::format("{:.0f} KiB", static_cast<double>(bytes) / kiB);
     }
     return fmt::format("{} B", bytes);
 }
 
 std::string display_date(std::string_view timestamp) {
-    return std::string{timestamp.substr(0, std::min<std::size_t>(timestamp.size(), 10))};
+    return std::string{timestamp.substr(0, std::min<size_t>(timestamp.size(), 10))};
 }
 
 std::string relative_date(std::string_view timestamp) {
@@ -118,15 +120,15 @@ std::string relative_date(std::string_view timestamp) {
     return fmt::format("{} years ago", age / 365);
 }
 
-std::string snippet(std::string_view text, std::size_t maxBytes) {
+std::string snippet(std::string_view text, size_t maxBytes) {
     if (text.size() <= maxBytes) {
         return std::string{text};
     }
-    std::size_t end = maxBytes;
+    size_t end = maxBytes;
     while (end > 0 && (static_cast<unsigned char>(text[end]) & 0xc0) == 0x80) {
         --end;
     }
-    return std::string{text.substr(0, end)} + "...";
+    return fmt::format("{}...", text.substr(0, end));
 }
 
 void add_list_markers(Rml::Element* fragment) {
@@ -157,7 +159,7 @@ void add_list_markers(Rml::Element* fragment) {
     }
 }
 
-std::string image_source(const mods::catalog::Image& image, std::uint32_t preferredWidth) {
+std::string image_source(const mods::catalog::Image& image, uint32_t preferredWidth) {
     const auto wider = std::ranges::find_if(image.sources,
         [preferredWidth](const auto& source) { return source.width >= preferredWidth; });
     if (wider != image.sources.end()) {
@@ -167,7 +169,7 @@ std::string image_source(const mods::catalog::Image& image, std::uint32_t prefer
 }
 
 void set_image(Rml::Element* element, const mods::catalog::Image& image,
-    std::uint32_t preferredWidth, std::string_view fit = "cover") {
+    uint32_t preferredWidth, std::string_view fit = "cover") {
     if (element == nullptr) {
         return;
     }
@@ -183,6 +185,15 @@ void set_image(Rml::Element* element, const mods::catalog::Image& image,
 bool installed(std::string_view id) {
     return std::ranges::any_of(mods::ModLoader::instance().mods(),
         [id](const mods::LoadedMod& mod) { return mod.metadata.id == id; });
+}
+
+const mods::LoadedMod* installed_mod(std::string_view id) {
+    for (const auto& mod : mods::ModLoader::instance().mods()) {
+        if (mod.metadata.id == id) {
+            return &mod;
+        }
+    }
+    return nullptr;
 }
 
 bool safe_web_url(std::string_view url) {
@@ -244,7 +255,7 @@ public:
 
         auto* identity = append(body, "catalog-card-identity");
         append_text_element(identity, "catalog-card-title", mod.name);
-        append_text_element(identity, "catalog-card-author", "by " + mod.author.name);
+        append_text_element(identity, "catalog-card-author", fmt::format("by {}", mod.author.name));
 
         append_text_element(body, "catalog-card-summary", snippet(mod.summary, 126));
         auto* meta = append(body, "catalog-card-meta");
@@ -273,7 +284,7 @@ public:
 
 class ScreenshotViewer final : public Window {
 public:
-    ScreenshotViewer(std::vector<mods::catalog::Screenshot> screenshots, std::size_t index)
+    ScreenshotViewer(std::vector<mods::catalog::Screenshot> screenshots, size_t index)
         : Window{Props{
               .tabBar = false,
               .styleSheets = {"res/rml/mod_browser.rcss"},
@@ -348,7 +359,7 @@ private:
     }
 
     std::vector<mods::catalog::Screenshot> mScreenshots;
-    std::size_t mIndex = 0;
+    size_t mIndex = 0;
     bool mRebuildRequested = false;
     int mRestoreNav = 0;
 };
@@ -401,11 +412,13 @@ public:
         Window::update();
     }
 
-    void show_screenshot(std::size_t index) {
+    void show_screenshot(size_t index) {
         if (mDetail && index < mDetail->screenshots.size()) {
             push(std::make_unique<ScreenshotViewer>(mDetail->screenshots, index));
         }
     }
+
+    void show_downloads(const std::string& id) { push(std::make_unique<QueueWindow>(id)); }
 
 private:
     void begin_fetch() {
@@ -424,10 +437,11 @@ private:
 
         auto* status = append(content, "catalog-detail-status");
         if (mError.empty()) {
-            append_status(status, "Loading " + mSummary.name, "Fetching mod details and images...");
+            append_status(status, fmt::format("Loading {}", mSummary.name),
+                "Fetching mod details and images...");
             return;
         }
-        append_status(status, "Could not load " + mSummary.name, mError);
+        append_status(status, fmt::format("Could not load {}", mSummary.name), mError);
         auto* retryRoot = append(status, "catalog-retry-actions");
         auto& retry = add_child<NavGroup>(retryRoot, NavGroup::Props{});
         retry.add_item<Button>("Retry").on_pressed([this] { begin_fetch(); });
@@ -438,6 +452,250 @@ private:
     borealis::Task<mods::catalog::DetailFetchResult> mFetch;
     std::string mError;
     bool mRebuildRequested = false;
+};
+
+class CatalogInstallButton final : public Button {
+public:
+    CatalogInstallButton(
+        Rml::Element* parent, ModBrowserDetail& window, const mods::catalog::Detail& detail)
+        : Button{parent, Props{}}, mWindow{window}, mRequest{
+                                                        .id = detail.mod.id,
+                                                        .name = detail.mod.name,
+                                                        .version = detail.mod.version,
+                                                        .source =
+                                                            mods::queue::Url{
+                                                                .url = detail.download.url,
+                                                                .sha256 = detail.download.sha256,
+                                                                .size = detail.download.size,
+                                                            },
+                                                    } {
+        mRoot->SetClass("catalog-install-action", true);
+        mCaption = append(parent, "catalog-install-caption");
+        on_pressed([this] { press(); });
+        update();
+    }
+
+    void update() override {
+        auto queued = mods::queue::find_by_mod_id(mRequest.id);
+        const auto* local = installed_mod(mRequest.id);
+        if (queued && (queued->version != mRequest.version ||
+                          (queued->state == mods::queue::State::Installed &&
+                              (local == nullptr || local->metadata.version != mRequest.version))))
+        {
+            queued.reset();
+        }
+        std::string glyph = "\uE2C4";
+        std::string label;
+        std::string caption = format_bytes(package_size());
+        std::string state = "idle";
+        float progress = 0.0f;
+        bool disabled = false;
+
+        if (queued && queued->state != mods::queue::State::Canceled) {
+            using enum mods::queue::State;
+            state = state_class(queued->state);
+            progress = queued->total == 0 ? 0.0f :
+                                            std::clamp(static_cast<float>(queued->completed) /
+                                                           static_cast<float>(queued->total),
+                                                0.0f, 1.0f);
+            switch (queued->state) {
+            case Queued:
+                glyph = "\uE8B5";
+                label = "Queued";
+                if (const auto ahead = queue_items_ahead(mRequest.id); ahead != 0) {
+                    caption = fmt::format("{} ahead · opens the queue", ahead);
+                } else {
+                    caption = "Next · opens the queue";
+                }
+                break;
+            case Downloading:
+                label = fmt::format(
+                    "{} / {}", format_bytes(queued->completed), format_bytes(queued->total));
+                caption = "Tap to open the queue";
+                break;
+            case Paused:
+                glyph = "\uE037";
+                label = "Resume";
+                caption = fmt::format("{} kept on disk", format_bytes(queued->completed));
+                break;
+            case Retrying:
+                glyph = "\uE002";
+                label = fmt::format("Retrying in {}s", queued->retrySeconds);
+                caption = "Network error · keeps retrying itself";
+                break;
+            case Verifying:
+                glyph = "\uE8B5";
+                label = "Verifying…";
+                caption = "Checking package integrity";
+                break;
+            case Installing:
+                glyph = "\uE8B5";
+                label = "Installing…";
+                caption = "Installing and activating";
+                break;
+            case Activating:
+                glyph = "\uE8B5";
+                label = "Activating…";
+                caption = "Retrying mod activation";
+                break;
+            case Installed:
+                glyph = "\uE86C";
+                label = "Installed";
+                caption = fmt::format("Installed · {} · {}", format_bytes(queued->total),
+                    local != nullptr && local->active ? "enabled" : "disabled");
+                progress = 1.0f;
+                disabled = true;
+                break;
+            case Failed:
+                glyph = "\uE5D5";
+                label = "Retry download";
+                caption = queued->message.empty() ? "Download failed" : queued->message;
+                progress = 1.0f;
+                break;
+            case InstallFailed:
+                glyph = "\uE5D5";
+                label = "Retry install";
+                caption = queued->message.empty() ? "Install failed" : queued->message;
+                progress = 1.0f;
+                break;
+            case ActivationFailed:
+                glyph = "\uE5D5";
+                label = "Retry activation";
+                caption = queued->message.empty() ? "Activation failed" : queued->message;
+                progress = 1.0f;
+                break;
+            case Uninstalling:
+                glyph = "\uE8B5";
+                label = "Uninstalling…";
+                caption = "Removing the installed package";
+                progress = 1.0f;
+                break;
+            case Canceled:
+                break;
+            }
+        }
+
+        if (label.empty()) {
+            const bool current = local != nullptr && local->metadata.version == mRequest.version;
+            const bool updateable = local != nullptr && !current &&
+                                    local->origin == mods::ModOrigin::User && !local->inPlace;
+            if (current || (local != nullptr && !updateable)) {
+                glyph = "\uE86C";
+                label = "Installed";
+                caption = fmt::format("Installed · {} · {}", format_bytes(package_size()),
+                    local != nullptr && local->active ? "enabled" : "disabled");
+                state = "installed";
+                progress = 1.0f;
+                disabled = true;
+            } else {
+                label = updateable ? "Update" : "Install";
+            }
+        }
+
+        if (mLabel != label || mGlyph != glyph) {
+            ::dusk::ui::clear_children(mRoot);
+            append_text(append(mRoot, "icon"), glyph);
+            append_text_element(mRoot, "catalog-action-label", label);
+            mProgress = append(mRoot, "progress");
+            mLabel = std::move(label);
+            mGlyph = std::move(glyph);
+        }
+        set_text_content(mCaption, caption);
+        for (const auto* candidate : {"idle", "queued", "downloading", "paused", "retrying",
+                 "installing", "installed", "failed"})
+        {
+            mRoot->SetClass(candidate, state == candidate);
+            mCaption->SetClass(candidate, state == candidate);
+        }
+        if (mProgress != nullptr) {
+            mProgress->SetAttribute("value", progress);
+            mProgress->SetProperty(
+                "display", state == "idle" || state == "installed" ? "none" : "block");
+        }
+        set_disabled(disabled);
+        Button::update();
+    }
+
+private:
+    static size_t queue_items_ahead(std::string_view id) {
+        size_t result = 0;
+        for (const auto& item : mods::queue::items()) {
+            if (item.modId == id) {
+                break;
+            }
+            if (item.state != mods::queue::State::Installed &&
+                item.state != mods::queue::State::Failed &&
+                item.state != mods::queue::State::InstallFailed &&
+                item.state != mods::queue::State::ActivationFailed &&
+                item.state != mods::queue::State::Canceled)
+            {
+                ++result;
+            }
+        }
+        return result;
+    }
+
+    static std::string state_class(mods::queue::State state) {
+        using enum mods::queue::State;
+        switch (state) {
+        case Queued:
+            return "queued";
+        case Downloading:
+            return "downloading";
+        case Paused:
+            return "paused";
+        case Retrying:
+            return "retrying";
+        case Verifying:
+        case Installing:
+        case Activating:
+        case Uninstalling:
+            return "installing";
+        case Installed:
+            return "installed";
+        case Failed:
+        case InstallFailed:
+        case ActivationFailed:
+            return "failed";
+        case Canceled:
+            return "idle";
+        }
+        return "idle";
+    }
+
+    void press() {
+        auto queued = mods::queue::find_by_mod_id(mRequest.id);
+        const auto* local = installed_mod(mRequest.id);
+        if (queued && (queued->version != mRequest.version ||
+                          (queued->state == mods::queue::State::Installed &&
+                              (local == nullptr || local->metadata.version != mRequest.version))))
+        {
+            queued.reset();
+        }
+        if (queued && queued->state != mods::queue::State::Canceled &&
+            queued->state != mods::queue::State::Installed)
+        {
+            mWindow.show_downloads(queued->id);
+            return;
+        }
+        if (!mods::queue::enqueue(mRequest)) {
+            push_toast({
+                .type = "warning",
+                .title = "Could not start download",
+                .content = "The catalog download descriptor is invalid.",
+                .duration = std::chrono::seconds{5},
+            });
+        }
+    }
+
+    ModBrowserDetail& mWindow;
+    mods::queue::Request mRequest;
+    Rml::Element* mCaption = nullptr;
+    Rml::Element* mProgress = nullptr;
+    std::string mLabel;
+    std::string mGlyph;
+
+    uint64_t package_size() const { return std::get<mods::queue::Url>(mRequest.source).size; }
 };
 
 DetailContent::DetailContent(
@@ -479,15 +737,23 @@ DetailContent::DetailContent(
         detail.mod.category ? detail.mod.category->name : "Uncategorized");
     auto* title = append(detailHeading, "h1");
     append_text(title, detail.mod.name);
-    append_text_element(title, "small", "v" + detail.mod.version);
+    append_text_element(title, "small", fmt::format("v{}", detail.mod.version));
     auto* author = append(detailHeading, "p");
-    append_text(author, "by " + detail.mod.author.name + " ");
+    append_text(author, fmt::format("by {} ", detail.mod.author.name));
     if (detail.mod.author.official) {
         append_text_element(author, "catalog-official-badge", "Official");
     }
     if (detail.mod.icon) {
         set_image(detailIconImage, *detail.mod.icon, 256);
     }
+    auto* installRoot = append(identity, "catalog-install-control");
+    auto& installControl =
+        add_existing_item<NavGroup>(installRoot, Props{
+                                                     .layout = Layout::Vertical,
+                                                     .horizontalBoundary = Boundary::Bubble,
+                                                     .verticalBoundary = Boundary::Bubble,
+                                                 });
+    installControl.add_item<CatalogInstallButton>(window, detail);
 
     auto* stats = append(mRoot, "catalog-detail-stats");
     append_stat(stats, "\uF090", format_count(detail.mod.downloads), " downloads");
@@ -529,8 +795,8 @@ DetailContent::DetailContent(
                                                          .horizontalBoundary = Boundary::Bubble,
                                                          .verticalBoundary = Boundary::Bubble,
                                                      });
-        const std::size_t shown = std::min<std::size_t>(detail.screenshots.size(), 3);
-        for (std::size_t index = 0; index < shown; ++index) {
+        const size_t shown = std::min<size_t>(detail.screenshots.size(), 3);
+        for (size_t index = 0; index < shown; ++index) {
             auto& screenshot = gallery.add_item<Button>(Button::Props{});
             screenshot.root()->SetClass("catalog-screenshot", true);
             screenshot.root()->SetClass("primary", index == 0);
@@ -547,7 +813,7 @@ DetailContent::DetailContent(
     add_existing_item<ScrollAnchor>(dependencies);
     append_text(append(dependencies, "h2"), "Dependencies");
     auto* dependencyList = append(dependencies, "catalog-dependencies");
-    std::size_t requiredDusklight = 0;
+    size_t requiredDusklight = 0;
     bool dusklightSatisfied = true;
     for (const auto& import : detail.serviceImports) {
         if (import.optional) {
@@ -585,7 +851,7 @@ DetailContent::DetailContent(
     auto* changelogTitle = append(changelog, "h2");
     append_text(changelogTitle, "Changelog ");
     append_text_element(changelogTitle, "small",
-        "v" + detail.mod.version + " · " + display_date(detail.mod.updatedAt));
+        fmt::format("v{} · {}", detail.mod.version, display_date(detail.mod.updatedAt)));
     auto* changelogFragment = append(changelog, "catalog-fragment");
     if (detail.changelogHtml.empty()) {
         append_text_element(changelogFragment, "p", "No changelog was provided.");
@@ -624,6 +890,7 @@ ModBrowser::ModBrowser()
     : Window{Props{.tabBar = false, .styleSheets = {"res/rml/mod_browser.rcss"}}} {
     mRoot->SetClass("mod-browser", true);
     mQuery.sort = mods::catalog::Sort::Updated;
+    mLoaderGeneration = mods::ModLoader::instance().generation();
     mState = borealis::http::available() ? State::Loading : State::Unavailable;
     set_content([this](Rml::Element* content) { build_content(content); });
     if (mState == State::Loading) {
@@ -706,7 +973,7 @@ void ModBrowser::build_content(Rml::Element* content) {
             std::ranges::find(mPage->categories, mQuery.category, &mods::catalog::Category::slug);
         return iter == mPage->categories.end() ? std::string{"All mods"} : iter->name;
     }();
-    const std::uint64_t total = mPage ? mPage->pagination.total : 0;
+    const uint64_t total = mPage ? mPage->pagination.total : 0;
     append_text_element(heading, "h1", categoryName);
     append_text_element(heading, "catalog-results-summary",
         fmt::format("{} mods · sorted by {}", total, sort_label(mQuery.sort)));
@@ -883,6 +1150,11 @@ void ModBrowser::cycle_sort() {
 }
 
 void ModBrowser::update() {
+    const auto loaderGeneration = mods::ModLoader::instance().generation();
+    if (loaderGeneration != mLoaderGeneration) {
+        mLoaderGeneration = loaderGeneration;
+        mRebuildRequested = true;
+    }
     if (mFetch && mFetch.ready()) {
         try {
             if (auto result = mFetch.try_take()) {

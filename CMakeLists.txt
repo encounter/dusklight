@@ -243,8 +243,15 @@ FetchContent_Declare(miniz
     DOWNLOAD_EXTRACT_TIMESTAMP TRUE
     EXCLUDE_FROM_ALL
 )
+message(STATUS "dusklight: Fetching PicoSHA2")
+FetchContent_Declare(picosha2
+    URL https://github.com/okdshin/PicoSHA2/archive/refs/tags/v1.0.1.tar.gz
+    URL_HASH SHA256=9983136544234e573fe07cc1a22fdf978ad7979043e7be2e9082f6d4991ff8a8
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    EXCLUDE_FROM_ALL
+)
 
-set(_fetch_content_deps miniz)
+set(_fetch_content_deps miniz picosha2)
 if (DUSK_HAS_FUNCHOOK)
     message(STATUS "dusklight: Fetching funchook")
     # cmake/PatchFunchook.cmake patches funchook's cmake/capstone.cmake.in to inject a
@@ -305,7 +312,7 @@ find_package(Threads REQUIRED)
 set(GAME_COMPILE_DEFS DUSK_BUILDING_GAME=1)
 set(GAME_LIBS aurora::core aurora::gx aurora::gd aurora::si aurora::vi aurora::pad aurora::mtx aurora::os aurora::dvd
     aurora::card borealis::cli borealis::crash borealis::data borealis::disc borealis::discord borealis::file_select borealis::http borealis::io borealis::log borealis::presentation borealis::sentry borealis::update freeverb cxxopts::cxxopts absl::flat_hash_map nlohmann_json::nlohmann_json TracyClient fmt::fmt
-    Threads::Threads zstd::libzstd dusklight_game_headers)
+    Threads::Threads zstd::libzstd dusklight_game_headers picosha2)
 if (DUSK_HAS_FUNCHOOK)
     list(APPEND GAME_LIBS funchook-static)
 endif ()

@@ -253,7 +253,7 @@ void CommandConsole::append_message(std::string text) {
 }
 
 void CommandConsole::limit_visible_messages() {
-    std::size_t visibleCount = 0;
+    size_t visibleCount = 0;
     for (auto it = mMessages.rbegin(); it != mMessages.rend(); ++it) {
         if (it->expired) {
             continue;

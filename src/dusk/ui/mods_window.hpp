@@ -2,6 +2,8 @@
 
 #include "window.hpp"
 
+#include <cstddef>
+#include <string>
 #include <vector>
 
 #include "dusk/mod_loader.hpp"
@@ -28,6 +30,8 @@ private:
     void build_content(Rml::Element* content);
     void build_browser_detail(Pane& pane);
     void build_detail(Pane& pane, mods::LoadedMod& mod);
+    void confirm_uninstall(const mods::LoadedMod& mod);
+    void refresh_snapshot();
     void mark_current_entry();
 
     std::vector<ModSnapshot> mSnapshot;
@@ -35,6 +39,9 @@ private:
     std::vector<mods::LoadedMod*> mEntryMods;
     Component* mBrowserEntry = nullptr;
     mods::LoadedMod* mSelectedMod = nullptr;
+    std::string mSelectedModId;
+    uint64_t mLoaderGeneration = 0;
+    size_t mQueueItemCount = 0;
     bool mBrowserSelected = false;
 };
 

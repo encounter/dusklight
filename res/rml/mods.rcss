@@ -15,11 +15,42 @@ window.mods content pane.mod-detail {
     gap: var(--space-md);
 }
 
-window.mods content pane.mod-list button.mod-browser-entry {
-    margin-bottom: var(--space-sm);
-    text-align: left;
-    font-family: var(--font-family-heading);
-    font-weight: bold;
+mod-entry.mod-browser-entry,
+mod-entry.mod-installs-entry {
+    min-height: 76dp;
+}
+
+mod-entry icon.mod-icon.mod-browser-icon {
+    color: var(--color-accent);
+    decorator: text("&#xe2c0;" center center);
+}
+
+mod-entry icon.mod-icon.mod-installs-icon {
+    color: var(--color-accent);
+    decorator: text("&#xe2c4;" center center);
+}
+
+mod-entry.mod-installs-entry {
+    background-color: rgba(var(--color-control-rgb), 20%);
+    box-shadow: rgba(var(--color-border-rgb), 25%) 0 0 0 1dp;
+}
+
+mod-entry.mod-installs-entry:hover,
+mod-entry.mod-installs-entry:focus-visible {
+    background-color: rgba(var(--color-interactive-rgb), 12%);
+    box-shadow: var(--color-accent) 0 0 0 2dp;
+}
+
+mod-entry.mod-installs-entry progress {
+    height: 6dp;
+    margin: var(--space-xs) 0 0 0;
+}
+
+mod-list-separator {
+    display: block;
+    height: 1dp;
+    margin: var(--space-sm) 10dp;
+    background-color: rgba(var(--color-border-rgb), 30%);
 }
 
 mod-info-row {

@@ -2,6 +2,7 @@
 
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <ranges>
 #include <string>
 #include <string_view>
@@ -35,6 +36,7 @@ struct ModManifestInfo {
     struct Import {
         std::string id;
         uint16_t major = 0;
+        uint16_t minMinor = 0;
         bool required = false;
         bool operator==(const Import&) const = default;
     };
@@ -66,6 +68,25 @@ struct ModSearchDir {
     // Native library location for platforms that restrict placement (e.g. iOS/tvOS Frameworks/)
     std::filesystem::path nativeLibDir;
 };
+
+enum class ModOrigin : u8 {
+    User,
+    Bundled,
+    BundledInPlace,
+};
+
+struct ModOperation {
+    enum class State : u8 {
+        Pending,
+        Succeeded,
+        Failed,
+    };
+
+    State state = State::Pending;
+    std::string message;
+};
+
+using ModOperationHandle = std::shared_ptr<const ModOperation>;
 
 struct ModMetaParsed {
     uint32_t abiVersion = 0;
@@ -161,6 +182,14 @@ enum class NativeModStatus : u8 {
 };
 
 struct LoadedMod {
+    struct FileIdentity {
+        std::uintmax_t size = 0;
+        std::filesystem::file_time_type modified{};
+        bool valid = false;
+
+        bool operator==(const FileIdentity&) const = default;
+    };
+
     ModMetadata metadata;
     std::filesystem::path modPath;
     std::filesystem::path dir;
@@ -170,8 +199,10 @@ struct LoadedMod {
     std::string dataDirUtf8;
 
     uint32_t searchDirIndex = 0;
+    ModOrigin origin = ModOrigin::User;
     // Native lib is dlopen'd in place and stays resident for the session. Reload is unsupported.
     bool inPlace = false;
+    FileIdentity fileIdentity;
 
     std::unique_ptr<ConfigVar<bool>> cvarIsEnabled;
     config::Subscription enabledSubscription = 0;
@@ -226,8 +257,15 @@ public:
 
     void request_enable(std::string_view id);
     void request_disable(std::string_view id);
-    void request_reload(std::string_view id);
+    ModOperationHandle request_reload(std::string_view id);
+    ModOperationHandle request_install(std::filesystem::path path);
+    ModOperationHandle request_uninstall(std::string_view id);
+    ModOperationHandle request_reactivate(std::string_view id);
     void notify_mod_failure(LoadedMod& mod, bool firstFailure);
+
+    [[nodiscard]] std::filesystem::path user_mods_dir() const;
+    [[nodiscard]] bool can_uninstall(const LoadedMod& mod) const;
+    [[nodiscard]] uint64_t generation() const noexcept { return m_generation; }
 
     [[nodiscard]] auto mods() const {
         return m_mods | std::views::transform([](const auto& m) -> LoadedMod& { return *m; });
@@ -238,10 +276,19 @@ public:
     }
 
 private:
-    enum class RequestKind : u8 { Enable, Disable, Reload };
+    enum class RequestKind : u8 { Enable, Disable, Sync, Install, Reactivate };
     struct Request {
         std::string modId;
         RequestKind kind;
+        std::filesystem::path path;
+        std::shared_ptr<ModOperation> operation;
+        bool force = false;
+        bool remove = false;
+    };
+    struct SyncResult {
+        bool success = true;
+        std::string message;
+        LoadedMod* mod = nullptr;
     };
     // ModLoader::tick runs inside fapGm_Execute, so code from an unloading mod can still be
     // live on the stack (its frame unwinds after the tick). dlclose is therefore deferred to
@@ -257,10 +304,13 @@ private:
     std::vector<Request> m_pendingRequests;
     std::vector<std::string> m_pendingFailures;
     std::vector<RetiredNative> m_retiredNatives;
+    uint64_t m_generation = 0;
     bool m_initialized = false;
     bool m_startupComplete = false;
 
-    void try_load_mod(const std::filesystem::path& modPath, bool fromDir, uint32_t searchDirIndex);
+    LoadedMod* try_load_mod(const std::filesystem::path& modPath, bool fromDir,
+        uint32_t searchDirIndex, std::unique_ptr<ModBundle> bundle = {},
+        std::optional<ModMetadata> metadata = {});
     void load_native(LoadedMod& mod, const std::string& dllEntry,
         const std::vector<std::string>& runtimeEntries);
     bool load_native_if_present(LoadedMod& mod);
@@ -282,6 +332,10 @@ private:
     LoadedMod* find_mod(std::string_view id) const;
     void drain_retired_natives();
     void apply_pending_requests();
+    [[nodiscard]] SyncResult install_staged(const std::filesystem::path& path);
+    [[nodiscard]] SyncResult sync_path(
+        const std::filesystem::path& path, bool force, uint32_t searchDirIndex = 0);
+    void forget_mod(LoadedMod& mod);
     void flush_toasts();
     void on_enabled_changed(LoadedMod& mod);
     // Deactivates `target` (if needed) and its transitive dependents, optionally re-reads the
@@ -289,9 +343,14 @@ private:
     void apply_lifecycle_change(LoadedMod& target, bool reload);
     // `target` plus transitive active/suspended dependents, in m_mods (init) order.
     std::vector<LoadedMod*> collect_lifecycle_set(LoadedMod& target);
+    void resume_lifecycle_set(const std::vector<LoadedMod*>& mods);
     bool reload_bundle(LoadedMod& mod);
     bool ensure_native_loaded(LoadedMod& mod);
 };
+
+// Reads and validates mod.json without loading native code or changing loader state.
+bool inspect_mod_bundle(const std::filesystem::path& path, ModMetadata& metadata,
+    std::string& error, bool* hasNative = nullptr) noexcept;
 
 using ModIndex = std::ranges::range_difference_t<decltype(std::declval<ModLoader>().mods())>;
 

@@ -1422,6 +1422,8 @@ set(DUSK_FILES
         src/dusk/achievements.cpp
         src/dusk/action_bindings.cpp
         src/dusk/action_bindings.h
+        src/dusk/archive.cpp
+        src/dusk/archive.hpp
         src/dusk/asserts.cpp
         src/dusk/autosave.cpp
         src/dusk/config.cpp
@@ -1436,6 +1438,7 @@ set(DUSK_FILES
         src/dusk/commands.cpp
         src/dusk/commands.hpp
         src/dusk/game_clock.cpp
+        src/dusk/hash.hpp
         src/dusk/game_mode.cpp
         src/dusk/gamepad_color.cpp
         src/dusk/globals.cpp
@@ -1484,6 +1487,8 @@ set(DUSK_FILES
         src/dusk/mods/loader/prepatch.hpp
         src/dusk/mods/catalog.cpp
         src/dusk/mods/catalog.hpp
+        src/dusk/mods/queue.cpp
+        src/dusk/mods/queue.hpp
         src/dusk/mods/item.hpp
         src/dusk/mods/item_checks.cpp
         src/dusk/mods/item_gives.cpp
@@ -1545,6 +1550,8 @@ set(DUSK_FILES
         src/dusk/ui/controls.hpp
         src/dusk/ui/document.cpp
         src/dusk/ui/document.hpp
+        src/dusk/ui/drop_install_modal.cpp
+        src/dusk/ui/drop_install_modal.hpp
         src/dusk/ui/editor.cpp
         src/dusk/ui/editor.hpp
         src/dusk/ui/event.cpp
@@ -1567,6 +1574,10 @@ set(DUSK_FILES
         src/dusk/ui/menu_bar.hpp
         src/dusk/ui/mod_browser.cpp
         src/dusk/ui/mod_browser.hpp
+        src/dusk/ui/queue_window.cpp
+        src/dusk/ui/queue_window.hpp
+        src/dusk/ui/package_row.cpp
+        src/dusk/ui/package_row.hpp
         src/dusk/ui/mod_texture_provider.cpp
         src/dusk/ui/mod_texture_provider.hpp
         src/dusk/ui/remote_texture_provider.cpp

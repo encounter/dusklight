@@ -630,6 +630,109 @@ modal-content pane > * {
     flex: 0 0 auto;
 }
 
+window.modal.install-queue {
+    max-height: 720dp;
+}
+
+window.modal.drop-install {
+    max-height: 720dp;
+}
+
+window.modal.drop-install package-row {
+    padding-right: 0;
+}
+
+window.modal.install-queue modal-body {
+    font-size: var(--font-size-sm);
+    color: rgba(var(--color-text-rgb), 60%);
+}
+
+package-row {
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    width: 100%;
+    gap: var(--space-2xs);
+    padding: var(--space-sm) 78dp var(--space-sm) 0;
+    border-bottom-width: 1dp;
+    border-bottom-color: rgba(var(--color-border-rgb), 25%);
+}
+
+package-row-heading {
+    display: flex;
+    width: 100%;
+    gap: var(--space-sm);
+    align-items: center;
+}
+
+package-row-name {
+    display: block;
+    flex: 1 1 auto;
+    min-width: 0;
+    font-weight: bold;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+package-row-state {
+    display: block;
+    flex: 0 0 auto;
+    font-size: var(--font-size-xs);
+    color: rgba(var(--color-text-rgb), 60%);
+}
+
+package-row.retrying package-row-state {
+    color: var(--color-warning);
+}
+
+package-row.failed package-row-state,
+package-row.failed package-row-detail {
+    color: var(--color-error);
+}
+
+package-row.installed package-row-state,
+package-row.installed package-row-detail {
+    color: var(--color-success);
+}
+
+package-row progress {
+    height: 4dp;
+    margin: var(--space-2xs) 0;
+}
+
+package-row.failed progress fill {
+    background-color: var(--color-error);
+}
+
+package-row.installed progress fill {
+    background-color: var(--color-success);
+}
+
+package-row-detail {
+    display: block;
+    min-width: 0;
+    font-size: var(--font-size-2xs);
+    color: rgba(var(--color-text-rgb), 48%);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+package-row-actions {
+    display: flex;
+    position: absolute;
+    right: 0;
+    top: 22dp;
+    gap: var(--space-2xs);
+}
+
+package-row-actions button {
+    min-width: 34dp;
+    padding: 4dp 7dp;
+    font-size: var(--font-size-3xs);
+}
+
 verification-progress {
     display: flex;
     flex-direction: column;

@@ -3,6 +3,9 @@
 #include "dusk/app_info.hpp"
 #include "dusk/logging.h"
 #include "dusk/mods/loader/loader.hpp"
+#include "dusk/mods/log_buffer.hpp"
+
+#include <fmt/format.h>
 
 #include <ranges>
 #include <string_view>
@@ -16,10 +19,7 @@ std::unordered_map<std::string, ServiceRecord> s_services;
 std::vector<const ServiceModule*> s_modules;
 
 std::string service_key(std::string_view id, const uint16_t majorVersion) {
-    std::string key{id};
-    key.push_back('\x1f');
-    key += std::to_string(majorVersion);
-    return key;
+    return fmt::format("{}\x1f{}", id, majorVersion);
 }
 
 const char* mod_id(const LoadedMod* mod) {
@@ -318,7 +318,9 @@ bool ModLoader::resolve_service_imports(LoadedMod& mod) {
                 continue;
             }
 
-            fail_mod(mod, MOD_UNAVAILABLE,
+            mod.active = false;
+            mod.suspendedByProvider = true;
+            log::write(mod.metadata.id, LOG_LEVEL_INFO, "suspended: {}",
                 describe_missing_import(serviceImport->service_id.chars,
                     serviceImport->major_version, serviceImport->min_minor_version));
             return false;

@@ -163,17 +163,17 @@ DiscVerificationState verification_to_config(iso::ValidationError validation) {
     }
 }
 
-std::string format_bytes(std::size_t bytes) {
+std::string format_bytes(size_t bytes) {
     constexpr double KiB = 1024.0;
     constexpr double MiB = KiB * 1024.0;
     constexpr double GiB = MiB * 1024.0;
-    if (bytes >= static_cast<std::size_t>(GiB)) {
+    if (bytes >= static_cast<size_t>(GiB)) {
         return fmt::format("{:.2f} GiB", static_cast<double>(bytes) / GiB);
     }
-    if (bytes >= static_cast<std::size_t>(MiB)) {
+    if (bytes >= static_cast<size_t>(MiB)) {
         return fmt::format("{:.0f} MiB", static_cast<double>(bytes) / MiB);
     }
-    if (bytes >= static_cast<std::size_t>(KiB)) {
+    if (bytes >= static_cast<size_t>(KiB)) {
         return fmt::format("{:.0f} KiB", static_cast<double>(bytes) / KiB);
     }
     return fmt::format("{} B", bytes);
@@ -445,9 +445,9 @@ private:
             set_text_content(mFileName, fileName);
         }
 
-        const std::size_t bytesRead =
+        const size_t bytesRead =
             sDiscVerificationTask->status.bytesRead.load(std::memory_order_relaxed);
-        const std::size_t bytesTotal =
+        const size_t bytesTotal =
             sDiscVerificationTask->status.bytesTotal.load(std::memory_order_relaxed);
 
         if (bytesTotal == 0) {
@@ -626,7 +626,7 @@ private:
     std::array<Rml::Element*, 2> mLabels{};
     Rml::Element* mNext = nullptr;
     Rml::String mText;
-    std::size_t mActiveLabel = 0;
+    size_t mActiveLabel = 0;
 };
 
 }  // namespace

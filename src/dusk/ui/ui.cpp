@@ -13,12 +13,15 @@
 #include <algorithm>
 #include <filesystem>
 #include <ranges>
+#include <utility>
 
 #include <borealis/io.hpp>
 #include "aurora/lib/window.hpp"
+#include "command_console.hpp"
+#include "drop_install_modal.hpp"
 #include "dusk/config.hpp"
 #include "dusk/io.hpp"
-#include "command_console.hpp"
+#include "dusk/mods/queue.hpp"
 #include "icon_provider.hpp"
 #include "input.hpp"
 #include "mod_texture_provider.hpp"
@@ -71,6 +74,12 @@ void restyle_scope(DocumentScope scope) {
 std::deque<Toast> sToasts;
 bool sMenuNotificationRequested = false;
 bool sConsoleShortcutHeld = false;
+std::vector<std::filesystem::path> sDroppedPackages;
+
+struct PendingDrop {
+    borealis::Task<std::vector<DropPackage>> inspection;
+};
+std::vector<PendingDrop> sPendingDrops;
 
 // Sometimes gamepads can connect and disconnect quickly, especially during
 // connection negotiation. In this case, we'll receive an _ADDED event for a
@@ -105,6 +114,12 @@ bool initialize() noexcept {
 }
 
 void shutdown() noexcept {
+    mods::queue::shutdown();
+    for (auto& drop : sPendingDrops) {
+        drop.inspection.cancel();
+    }
+    sPendingDrops.clear();
+    sDroppedPackages.clear();
     unregister_remote_texture_provider();
     unregister_mod_texture_provider();
     unregister_icon_texture_provider();
@@ -173,7 +188,27 @@ void handle_event(const SDL_Event& event) noexcept {
         return;
     }
 
-    if (event.type == SDL_EVENT_GAMEPAD_ADDED) {
+    if (event.type == SDL_EVENT_DROP_BEGIN) {
+        sDroppedPackages.clear();
+    } else if (event.type == SDL_EVENT_DROP_FILE && event.drop.data != nullptr) {
+        sDroppedPackages.push_back(borealis::io::fs_path_from_utf8(event.drop.data));
+    } else if (event.type == SDL_EVENT_DROP_COMPLETE) {
+        if (sDroppedPackages.empty()) {
+            push_toast({
+                .type = "warning",
+                .title = "No packages found",
+                .content = "Drop a Dusklight package to import it.",
+                .duration = std::chrono::seconds{4},
+            });
+        } else {
+            auto paths = std::exchange(sDroppedPackages, {});
+            sPendingDrops.push_back({
+                borealis::spawn([paths = std::move(paths)](borealis::TaskContext& context) {
+                    return inspect_drop_packages(paths, context);
+                }),
+            });
+        }
+    } else if (event.type == SDL_EVENT_GAMEPAD_ADDED) {
         auto* gamepad = SDL_GetGamepadFromID(event.gdevice.which);
         if (SDL_GamepadConnected(gamepad)) {
             if (getSettings().game.enableControllerToasts) {
@@ -360,15 +395,39 @@ Document* top_document() noexcept {
 }
 
 void update() noexcept {
+    mods::queue::update();
     if (!aurora::rmlui::is_initialized()) {
         return;
     }
 
     update_remote_texture_provider();
+    for (size_t index = 0; index < sPendingDrops.size();) {
+        auto& pending = sPendingDrops[index];
+        if (!pending.inspection.ready()) {
+            ++index;
+            continue;
+        }
+        try {
+            if (auto packages = pending.inspection.try_take(); packages && !packages->empty()) {
+                if (auto* current = top_document()) {
+                    current->cover();
+                }
+                push_document(std::make_unique<DropInstallModal>(std::move(*packages)));
+            }
+        } catch (const std::exception& exception) {
+            push_toast({
+                .type = "warning",
+                .title = "Could not inspect packages",
+                .content = exception.what(),
+                .duration = std::chrono::seconds{5},
+            });
+        }
+        sPendingDrops.erase(sPendingDrops.begin() + static_cast<std::ptrdiff_t>(index));
+    }
     input::update_input();
     const auto update_documents = [](auto& documents) {
-        const std::size_t count = documents.size();
-        for (std::size_t i = 0; i < count && i < documents.size(); ++i) {
+        const size_t count = documents.size();
+        for (size_t i = 0; i < count && i < documents.size(); ++i) {
             Document* doc = documents[i].get();
             if (doc != nullptr && !doc->closed()) {
                 doc->update();
@@ -561,7 +620,8 @@ void apply_scale() noexcept {
     auto scale = 0.0f;
     if (userScale != 0) {
         const auto displayScale = aurora::window::get_window_size().scale;
-        scale = static_cast<float>(userScale) / 100.0f * (displayScale > 0.0f ? displayScale : 1.0f);
+        scale =
+            static_cast<float>(userScale) / 100.0f * (displayScale > 0.0f ? displayScale : 1.0f);
     }
     aurora::rmlui::set_ui_scale(scale);
 }

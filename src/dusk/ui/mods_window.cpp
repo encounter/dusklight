@@ -1,23 +1,29 @@
 #include "mods_window.hpp"
 
 #include "dusk/mod_loader.hpp"
+#include "dusk/mods/queue.hpp"
 #include "dusk/mods/svc/ui.hpp"
 #include "fmt/format.h"
+#include "fmt/ranges.h"
 #include "logs_window.hpp"
 #include "mod_browser.hpp"
 #include "mod_texture_provider.hpp"
+#include "modal.hpp"
 #include "mods/svc/http.h"
 #include "pane.hpp"
+#include "queue_window.hpp"
 
 #include <borealis/http.hpp>
 
 #include "Z2AudioLib/Z2SeMgr.h"
 #include "m_Do/m_Do_audio.h"
 
+#include <algorithm>
 #include <memory>
 #include <ranges>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace dusk::ui {
 namespace {
@@ -60,7 +66,7 @@ std::string snippet(std::string_view text, size_t maxBytes) {
     while (end > 0 && (static_cast<unsigned char>(text[end]) & 0xC0) == 0x80) {
         --end;
     }
-    return std::string{text.substr(0, end)} + "...";
+    return fmt::format("{}...", text.substr(0, end));
 }
 
 class ModListEntry : public FluentComponent<ModListEntry> {
@@ -81,9 +87,9 @@ public:
         auto* info = append(mRoot, "mod-entry-info");
         auto* name = append(info, "mod-entry-name");
         append_text(append(name, "mod-entry-name-text"), mod.metadata.name);
-        append_text(append(name, "mod-entry-version"), "v" + mod.metadata.version);
+        append_text(append(name, "mod-entry-version"), fmt::format("v{}", mod.metadata.version));
         auto* sub = append(info, "mod-entry-sub");
-        append_text(sub, mod.metadata.author + " - ");
+        append_text(sub, fmt::format("{} - ", mod.metadata.author));
         auto* statusElement = append(sub, "mod-entry-status");
         if (status.badgeClass[0] != '\0') {
             statusElement->SetClass(status.badgeClass, true);
@@ -106,10 +112,101 @@ public:
     }
 };
 
+class BrowseModsEntry final : public FluentComponent<BrowseModsEntry> {
+public:
+    BrowseModsEntry(Rml::Element* parent, std::function<void()> onOpen)
+        : FluentComponent{append(parent, "mod-entry")} {
+        mRoot->SetClass("mod-browser-entry", true);
+        auto* icon = append(mRoot, "icon");
+        icon->SetClass("mod-icon", true);
+        icon->SetClass("mod-browser-icon", true);
+
+        auto* info = append(mRoot, "mod-entry-info");
+        auto* name = append(info, "mod-entry-name");
+        append_text(append(name, "mod-entry-name-text"), "Browse online mods");
+        append_text(append(info, "mod-entry-sub"), "Dusklight catalog");
+        append_text(append(info, "mod-entry-desc"), "Discover and install published mods.");
+
+        on_nav_command([callback = std::move(onOpen)](Rml::Event&, NavCommand cmd) {
+            if (cmd != NavCommand::Confirm) {
+                return false;
+            }
+            callback();
+            return true;
+        });
+    }
+};
+
+class InstallQueueEntry final : public FluentComponent<InstallQueueEntry> {
+public:
+    InstallQueueEntry(Rml::Element* parent, std::function<void()> onOpen)
+        : FluentComponent{append(parent, "mod-entry")} {
+        mRoot->SetClass("mod-installs-entry", true);
+        auto* icon = append(mRoot, "icon");
+        icon->SetClass("mod-icon", true);
+        icon->SetClass("mod-installs-icon", true);
+
+        auto* info = append(mRoot, "mod-entry-info");
+        auto* name = append(info, "mod-entry-name");
+        append_text(append(name, "mod-entry-name-text"), "Installs");
+        mSummary = append(info, "mod-entry-sub");
+        mProgress = append(info, "progress");
+
+        on_nav_command([callback = std::move(onOpen)](Rml::Event&, NavCommand cmd) {
+            if (cmd != NavCommand::Confirm) {
+                return false;
+            }
+            callback();
+            return true;
+        });
+        update();
+    }
+
+    void update() override {
+        const auto queueItems = mods::queue::items();
+        const mods::queue::Item* current = nullptr;
+        size_t active = 0;
+        for (const auto& item : queueItems) {
+            if (item.state == mods::queue::State::Installed ||
+                item.state == mods::queue::State::Failed ||
+                item.state == mods::queue::State::InstallFailed ||
+                item.state == mods::queue::State::ActivationFailed ||
+                item.state == mods::queue::State::Canceled)
+            {
+                continue;
+            }
+            ++active;
+            if (current == nullptr) {
+                current = &item;
+            }
+        }
+
+        if (current == nullptr) {
+            set_text_content(mSummary, fmt::format("{} finished", queueItems.size()));
+            mProgress->SetProperty("display", "none");
+        } else {
+            const float progress = current->total == 0 ?
+                                       0.0f :
+                                       std::clamp(static_cast<float>(current->completed) /
+                                                      static_cast<float>(current->total),
+                                           0.0f, 1.0f);
+            set_text_content(
+                mSummary, fmt::format("{} in queue · {:.0f}%", active, progress * 100.0f));
+            mProgress->SetAttribute("value", progress);
+            mProgress->SetProperty("display", "block");
+        }
+        Component::update();
+    }
+
+private:
+    Rml::Element* mSummary = nullptr;
+    Rml::Element* mProgress = nullptr;
+};
+
 class ModDetailHeader : public FluentComponent<ModDetailHeader> {
 public:
-    ModDetailHeader(
-        Rml::Element* parent, const mods::LoadedMod& mod, std::function<void()> onShowLogs)
+    ModDetailHeader(Rml::Element* parent, const mods::LoadedMod& mod,
+        std::function<void()> onShowLogs, std::function<void()> onUninstall)
         : FluentComponent{append(parent, "mod-header")} {
         const bool hasBanner = !mod.metadata.bannerPath.empty();
         mRoot->SetClass(hasBanner ? "has-banner" : "no-banner", true);
@@ -135,6 +232,9 @@ public:
             });
         }
         make_button(actions, "Logs").on_pressed(std::move(onShowLogs));
+        if (mods::ModLoader::instance().can_uninstall(mod)) {
+            make_button(actions, "Uninstall").on_pressed(std::move(onUninstall));
+        }
 
         listen(Rml::EventId::Keydown, [this](Rml::Event& event) {
             const auto cmd = map_nav_event(event);
@@ -185,16 +285,8 @@ private:
 ModsWindow::ModsWindow() : Window{Props{.tabBar = false, .styleSheets = {"res/rml/mods.rcss"}}} {
     mRoot->SetClass("mods", true);
 
-    for (auto& trackedMod : mods::ModLoader::instance().mods()) {
-        mSnapshot.push_back({
-            .mod = &trackedMod,
-            .active = trackedMod.active,
-            .loadFailed = trackedMod.loadFailed,
-            .enabled = mod_enabled(trackedMod),
-            .suspended = trackedMod.suspendedByProvider,
-            .cacheGeneration = trackedMod.cacheGeneration,
-        });
-    }
+    refresh_snapshot();
+    mQueueItemCount = mods::queue::items().size();
 
     set_content([this](Rml::Element* content) { build_content(content); });
 }
@@ -209,21 +301,35 @@ void ModsWindow::build_content(Rml::Element* content) {
     auto& detailPane = add_child<Pane>(content, Pane::Type::Uncontrolled);
     detailPane.root()->SetClass("mod-detail", true);
 
+    bool hasUtilityEntries = false;
     if (borealis::http::available()) {
-        auto& browse = listPane.add_button("Browse online mods");
+        auto& browse =
+            listPane.add_child<BrowseModsEntry>([this] { push(std::make_unique<ModBrowser>()); });
         mBrowserEntry = &browse;
-        browse.root()->SetClass("mod-browser-entry", true);
-        browse.on_pressed([this] { push(std::make_unique<ModBrowser>()); });
+        hasUtilityEntries = true;
         listPane.register_control(browse, detailPane, [this](Pane& pane) {
             mBrowserSelected = true;
             mSelectedMod = nullptr;
+            mSelectedModId.clear();
             build_browser_detail(pane);
             mark_current_entry();
         });
     }
 
-    if (mods::ModLoader::instance().mods().empty()) {
+    if (mQueueItemCount != 0) {
+        listPane.add_child<InstallQueueEntry>([this] { push(std::make_unique<QueueWindow>()); });
+        hasUtilityEntries = true;
+    }
+
+    const bool hasInstalledMods = !mods::ModLoader::instance().mods().empty();
+    if (hasUtilityEntries && hasInstalledMods) {
+        append(listPane.root(), "mod-list-separator");
+    }
+
+    if (!hasInstalledMods) {
         listPane.add_text("No mods installed.");
+        mSelectedMod = nullptr;
+        mSelectedModId.clear();
         if (borealis::http::available()) {
             mBrowserSelected = true;
             build_browser_detail(detailPane);
@@ -239,6 +345,7 @@ void ModsWindow::build_content(Rml::Element* content) {
         listPane.register_control(entry, detailPane, [this, tracked = &trackedMod](Pane& pane) {
             mBrowserSelected = false;
             mSelectedMod = tracked;
+            mSelectedModId = tracked->metadata.id;
             pane.clear();
             build_detail(pane, *tracked);
             mark_current_entry();
@@ -247,11 +354,21 @@ void ModsWindow::build_content(Rml::Element* content) {
 
     if (mBrowserSelected && mBrowserEntry != nullptr) {
         mSelectedMod = nullptr;
+        mSelectedModId.clear();
         build_browser_detail(detailPane);
-    } else if (mSelectedMod == nullptr) {
-        mSelectedMod = mEntryMods.front();
-        build_detail(detailPane, *mSelectedMod);
     } else {
+        mSelectedMod = nullptr;
+        if (!mSelectedModId.empty()) {
+            const auto selected = std::ranges::find_if(
+                mEntryMods, [this](const auto* mod) { return mod->metadata.id == mSelectedModId; });
+            if (selected != mEntryMods.end()) {
+                mSelectedMod = *selected;
+            }
+        }
+        if (mSelectedMod == nullptr) {
+            mSelectedMod = mEntryMods.front();
+            mSelectedModId = mSelectedMod->metadata.id;
+        }
         build_detail(detailPane, *mSelectedMod);
     }
     mark_current_entry();
@@ -266,11 +383,12 @@ void ModsWindow::build_browser_detail(Pane& pane) {
 void ModsWindow::build_detail(Pane& pane, mods::LoadedMod& mod) {
     pane.root()->SetAttribute("mod-id", mod.metadata.id);
     pane.add_child<ModDetailHeader>(
-        mod, [this, id = mod.metadata.id] { push(std::make_unique<LogsWindow>(id)); });
+        mod, [this, id = mod.metadata.id] { push(std::make_unique<LogsWindow>(id)); },
+        [this, tracked = &mod] { confirm_uninstall(*tracked); });
 
     auto* title = append(pane.root(), "mod-title");
-    append_text(title, mod.metadata.name + " ");
-    append_text(append(title, "mod-title-version"), "v" + mod.metadata.version);
+    append_text(title, fmt::format("{} ", mod.metadata.name));
+    append_text(append(title, "mod-title-version"), fmt::format("v{}", mod.metadata.version));
     if (mod.loadFailed || mod.suspendedByProvider) {
         const auto status = mod_status(mod);
         append_text(title, "\u00a0");
@@ -284,7 +402,7 @@ void ModsWindow::build_detail(Pane& pane, mods::LoadedMod& mod) {
         badge->SetClass("network", true);
         append_text(badge, "Network");
     }
-    append_text(append(pane.root(), "mod-author"), "by " + mod.metadata.author);
+    append_text(append(pane.root(), "mod-author"), fmt::format("by {}", mod.metadata.author));
 
     if (mod.loadFailed && !mod.failureReason.empty()) {
         auto* row = append(pane.root(), "mod-info-row");
@@ -293,32 +411,27 @@ void ModsWindow::build_detail(Pane& pane, mods::LoadedMod& mod) {
         append_text(label, "Reason");
         append_text(append(row, "mod-info-value"), mod.failureReason);
     } else if (mod.suspendedByProvider) {
-        std::string providers;
+        std::vector<std::string_view> providers;
         for (const auto& edge : mod.dependencies) {
             if (edge.required && edge.mod != nullptr && !edge.mod->active) {
-                if (!providers.empty()) {
-                    providers += ", ";
-                }
-                providers += edge.mod->metadata.name;
+                providers.push_back(edge.mod->metadata.name);
             }
         }
         auto* row = append(pane.root(), "mod-info-row");
         append_text(append(row, "mod-info-label"), "Waiting on");
-        append_text(append(row, "mod-info-value"), providers);
+        append_text(append(row, "mod-info-value"), fmt::format("{}", fmt::join(providers, ", ")));
     }
 
-    std::string activeDependents;
+    std::vector<std::string_view> activeDependents;
     for (const auto& edge : mod.dependents) {
         if (edge.mod != nullptr && edge.mod->active) {
-            if (!activeDependents.empty()) {
-                activeDependents += ", ";
-            }
-            activeDependents += edge.mod->metadata.name;
+            activeDependents.push_back(edge.mod->metadata.name);
         }
     }
     if (mod.active && !activeDependents.empty()) {
         append_text(append(pane.root(), "mod-restart-note"),
-            fmt::format("Disabling or reloading also restarts: {}", activeDependents));
+            fmt::format(
+                "Disabling or reloading also restarts: {}", fmt::join(activeDependents, ", ")));
     }
 
     if (!mod.metadata.description.empty()) {
@@ -328,6 +441,54 @@ void ModsWindow::build_detail(Pane& pane, mods::LoadedMod& mod) {
 
     if (mod.active) {
         mods::svc::ui_build_mods_panels(mod, pane);
+    }
+}
+
+void ModsWindow::confirm_uninstall(const mods::LoadedMod& mod) {
+    std::string body = "The mod package will be removed. Settings and saved data are kept.";
+    std::vector<std::string_view> dependents;
+    for (const auto& edge : mod.dependents) {
+        if (!edge.required || edge.mod == nullptr) {
+            continue;
+        }
+        dependents.push_back(edge.mod->metadata.name);
+    }
+    if (!dependents.empty()) {
+        body = fmt::format(
+            "{} Required dependents will be suspended: {}.", body, fmt::join(dependents, ", "));
+    }
+
+    push(std::make_unique<Modal>(Modal::Props{
+        .title = fmt::format("Uninstall {}?", mod.metadata.name),
+        .bodyText = std::move(body),
+        .actions =
+            {
+                ModalAction{"Cancel", [](Modal& modal) { modal.pop(); }, {}},
+                ModalAction{"Uninstall",
+                    [id = mod.metadata.id](Modal& modal) {
+                        mods::ModLoader::instance().request_uninstall(id);
+                        modal.pop();
+                    },
+                    {}},
+            },
+        .variant = "danger",
+        .icon = "warning",
+    }));
+}
+
+void ModsWindow::refresh_snapshot() {
+    mSnapshot.clear();
+    auto& loader = mods::ModLoader::instance();
+    mLoaderGeneration = loader.generation();
+    for (auto& trackedMod : loader.mods()) {
+        mSnapshot.push_back({
+            .mod = &trackedMod,
+            .active = trackedMod.active,
+            .loadFailed = trackedMod.loadFailed,
+            .enabled = mod_enabled(trackedMod),
+            .suspended = trackedMod.suspendedByProvider,
+            .cacheGeneration = trackedMod.cacheGeneration,
+        });
     }
 }
 
@@ -341,20 +502,32 @@ void ModsWindow::mark_current_entry() {
 }
 
 void ModsWindow::update() {
-    bool dirty = false;
-    for (auto& snapshot : mSnapshot) {
-        const auto& mod = *snapshot.mod;
-        if (mod.active != snapshot.active || mod.loadFailed != snapshot.loadFailed ||
-            mod_enabled(mod) != snapshot.enabled || mod.suspendedByProvider != snapshot.suspended ||
-            mod.cacheGeneration != snapshot.cacheGeneration)
-        {
-            snapshot.active = mod.active;
-            snapshot.loadFailed = mod.loadFailed;
-            snapshot.enabled = mod_enabled(mod);
-            snapshot.suspended = mod.suspendedByProvider;
-            snapshot.cacheGeneration = mod.cacheGeneration;
-            dirty = true;
+    auto& loader = mods::ModLoader::instance();
+    bool dirty = loader.generation() != mLoaderGeneration;
+    if (dirty) {
+        mSelectedMod = nullptr;
+        refresh_snapshot();
+    } else {
+        for (auto& snapshot : mSnapshot) {
+            const auto& mod = *snapshot.mod;
+            if (mod.active != snapshot.active || mod.loadFailed != snapshot.loadFailed ||
+                mod_enabled(mod) != snapshot.enabled ||
+                mod.suspendedByProvider != snapshot.suspended ||
+                mod.cacheGeneration != snapshot.cacheGeneration)
+            {
+                snapshot.active = mod.active;
+                snapshot.loadFailed = mod.loadFailed;
+                snapshot.enabled = mod_enabled(mod);
+                snapshot.suspended = mod.suspendedByProvider;
+                snapshot.cacheGeneration = mod.cacheGeneration;
+                dirty = true;
+            }
         }
+    }
+    const auto queueItemCount = mods::queue::items().size();
+    if (queueItemCount != mQueueItemCount) {
+        mQueueItemCount = queueItemCount;
+        dirty = true;
     }
     if (dirty) {
         auto* focused = mDocument != nullptr ? mDocument->GetFocusLeafNode() : nullptr;

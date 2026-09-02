@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <iterator>
 #include <limits>
 #include <stdexcept>
 #include <string_view>
@@ -82,10 +83,8 @@ std::string url_encode(std::string_view value) {
 }
 
 void append_query(std::string& url, std::string_view name, std::string_view value) {
-    url.push_back(url.find('?') == std::string::npos ? '?' : '&');
-    url.append(name);
-    url.push_back('=');
-    url.append(url_encode(value));
+    fmt::format_to(std::back_inserter(url), "{}{}={}",
+        url.find('?') == std::string::npos ? '?' : '&', name, url_encode(value));
 }
 
 std::string make_url(const Query& query) {
@@ -138,23 +137,23 @@ bool required_bool(const json& object, const char* name) {
     return value.get<bool>();
 }
 
-std::uint64_t required_count(const json& object, const char* name) {
+uint64_t required_count(const json& object, const char* name) {
     const auto& value = required_field(object, name);
     if (value.is_number_unsigned()) {
-        return value.get<std::uint64_t>();
+        return value.get<uint64_t>();
     }
     if (value.is_number_integer()) {
-        const auto count = value.get<std::int64_t>();
+        const auto count = value.get<int64_t>();
         if (count >= 0) {
-            return static_cast<std::uint64_t>(count);
+            return static_cast<uint64_t>(count);
         }
     }
     throw std::runtime_error{fmt::format("field '{}' is not a non-negative integer", name)};
 }
 
 int required_int(const json& object, const char* name) {
-    const std::uint64_t value = required_count(object, name);
-    if (value > static_cast<std::uint64_t>(std::numeric_limits<int>::max())) {
+    const uint64_t value = required_count(object, name);
+    if (value > static_cast<uint64_t>(std::numeric_limits<int>::max())) {
         throw std::runtime_error{fmt::format("field '{}' is too large", name)};
     }
     return static_cast<int>(value);
@@ -171,25 +170,25 @@ std::optional<std::string> optional_string(const json& object, const char* name)
     return value.get<std::string>();
 }
 
-std::uint16_t required_u16(const json& object, const char* name) {
+uint16_t required_u16(const json& object, const char* name) {
     const auto value = required_count(object, name);
-    if (value > std::numeric_limits<std::uint16_t>::max()) {
+    if (value > std::numeric_limits<uint16_t>::max()) {
         throw std::runtime_error{fmt::format("field '{}' is too large", name)};
     }
-    return static_cast<std::uint16_t>(value);
+    return static_cast<uint16_t>(value);
 }
 
 Image parse_image(const json& value) {
     const auto width = required_count(value, "width");
     const auto height = required_count(value, "height");
-    if (width > std::numeric_limits<std::uint32_t>::max() ||
-        height > std::numeric_limits<std::uint32_t>::max())
+    if (width > std::numeric_limits<uint32_t>::max() ||
+        height > std::numeric_limits<uint32_t>::max())
     {
         throw std::runtime_error{"image dimensions are too large"};
     }
     Image image{
-        .width = static_cast<std::uint32_t>(width),
-        .height = static_cast<std::uint32_t>(height),
+        .width = static_cast<uint32_t>(width),
+        .height = static_cast<uint32_t>(height),
     };
     const auto& sources = required_field(value, "sources");
     if (!sources.is_array()) {
@@ -198,11 +197,11 @@ Image parse_image(const json& value) {
     image.sources.reserve(sources.size());
     for (const auto& source : sources) {
         const auto sourceWidth = required_count(source, "width");
-        if (sourceWidth > std::numeric_limits<std::uint32_t>::max()) {
+        if (sourceWidth > std::numeric_limits<uint32_t>::max()) {
             throw std::runtime_error{"image source width is too large"};
         }
         image.sources.push_back({
-            .width = static_cast<std::uint32_t>(sourceWidth),
+            .width = static_cast<uint32_t>(sourceWidth),
             .pngUrl = required_string(source, "png_url"),
         });
     }
@@ -307,13 +306,23 @@ Detail parse_detail(std::string_view body) {
         .packageSha256 = required_string(root, "package_sha256"),
     };
 
+    const auto& download = required_field(root, "download");
+    if (!download.is_object()) {
+        throw std::runtime_error{"field 'download' is not an object"};
+    }
+    detail.download = {
+        .url = required_string(download, "url"),
+        .sha256 = required_string(download, "sha256"),
+        .size = required_count(download, "size"),
+    };
+
     const auto& modAbi = required_field(root, "mod_abi");
     if (!modAbi.is_null()) {
         const auto value = required_count(root, "mod_abi");
-        if (value > std::numeric_limits<std::uint32_t>::max()) {
+        if (value > std::numeric_limits<uint32_t>::max()) {
             throw std::runtime_error{"field 'mod_abi' is too large"};
         }
-        detail.modAbi = static_cast<std::uint32_t>(value);
+        detail.modAbi = static_cast<uint32_t>(value);
     }
 
     const auto& banner = required_field(root, "banner");

@@ -3,6 +3,7 @@
 #include "dusk/mods/catalog.hpp"
 #include "window.hpp"
 
+#include <cstdint>
 #include <optional>
 #include <string>
 
@@ -43,6 +44,7 @@ private:
     std::string mError;
     State mState = State::Loading;
     FocusTarget mFocusTarget = FocusTarget::Default;
+    uint64_t mLoaderGeneration = 0;
     bool mRebuildRequested = false;
 };
 
