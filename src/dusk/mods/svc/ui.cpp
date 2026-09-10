@@ -9,6 +9,8 @@
 #include "dusk/mods/loader/loader.hpp"
 #include "dusk/mods/log_buffer.hpp"
 #include "dusk/ui/list.hpp"
+#include "dusk/ui/row.hpp"
+#include "dusk/ui/icon_button.hpp"
 #include "dusk/ui/menu_bar.hpp"
 #include "dusk/ui/mod_window.hpp"
 #include "dusk/ui/modal.hpp"
@@ -44,6 +46,7 @@ constexpr size_t kUiControlSelectedSize =
 constexpr size_t kUiControlStringSetModeSize =
     offsetof(UiControlDesc, string_set_mode) + sizeof(UiStringSetMode);
 constexpr size_t kUiControlFilePickerSize = offsetof(UiControlDesc, directory_mode) + sizeof(bool);
+constexpr size_t kUiControlIconSize = offsetof(UiControlDesc, icon) + sizeof(const char*);
 constexpr size_t kUiListItemV21Size = offsetof(UiListItem, label) + sizeof(const char*);
 constexpr size_t kUiListDescV21Size = offsetof(UiListDesc, user_data) + sizeof(void*);
 
@@ -58,6 +61,7 @@ enum class UiSlotKind : u8 {
     Window,
     Dialog,
     Pane,
+    Row,
     Text,
     Progress,
     Control,
@@ -72,6 +76,8 @@ const char* slot_kind_name(UiSlotKind kind) {
         return "window";
     case UiSlotKind::Dialog:
         return "dialog";
+    case UiSlotKind::Row:
+        return "row";
     case UiSlotKind::Pane:
         return "pane";
     case UiSlotKind::Text:
@@ -95,9 +101,10 @@ const char* slot_kind_name(UiSlotKind kind) {
 // (ui::update), or in the loader's deactivate paths.
 struct UiSlot {
     UiSlotKind kind = UiSlotKind::Window;
-    // Pane/Text/Progress/Control: freed automatically when the element is destroyed
+    // Pane/Row/Text/Progress/Control: freed automatically when the element is destroyed
     Rml::Element* element = nullptr;
-    // Pane payload
+    // Container payload: insertion parent and owning pane for contextual help
+    ui::Component* container = nullptr;
     ui::Pane* pane = nullptr;
     ui::Pane* helpPane = nullptr;
     // List payload
@@ -152,6 +159,15 @@ UiSlot* resolve(LoadedMod& mod, uint64_t handle, UiSlotKind kind, const char* wh
     if (entry == nullptr || entry->value.kind != kind) {
         Log.error("[{}] {}: stale or invalid {} handle {:#x}", mod.metadata.id, what,
             slot_kind_name(kind), handle);
+        return nullptr;
+    }
+    return &entry->value;
+}
+
+UiSlot* resolve_container(LoadedMod& mod, uint64_t handle, const char* what) {
+    auto* entry = s_slots.find_owned(handle, mod);
+    if (entry == nullptr || (entry->value.kind != UiSlotKind::Pane && entry->value.kind != UiSlotKind::Row)) {
+        Log.error("[{}] {}: stale or invalid container handle {:#x}", mod.metadata.id, what, handle);
         return nullptr;
     }
     return &entry->value;
@@ -237,6 +253,7 @@ void invoke_mod_ui_callback(LoadedMod& mod, const char* what, Fn&& fn) {
 uint64_t wrap_pane(LoadedMod& mod, ui::Pane& pane, ui::Pane* helpPane) {
     uint64_t handle = 0;
     auto& slot = alloc_slot(mod, UiSlotKind::Pane, handle);
+    slot.container = &pane;
     slot.pane = &pane;
     slot.helpPane = helpPane;
     track_element(handle, slot, *pane.root());
@@ -531,21 +548,39 @@ void ui_update_mods_panels(LoadedMod& mod) {
         [&](ModError* error) { return panel.update(mod.context.get(), panel.userData, error); });
 }
 
-ModResult ui_pane_add_section(LoadedMod& mod, uint64_t pane, const char* title) {
-    auto* slot = resolve(mod, pane, UiSlotKind::Pane, "pane_add_section");
+ModResult ui_pane_add_row(LoadedMod& mod, uint64_t parent, const UiRowDesc& desc, uint64_t* outRow) {
+    auto* slot = resolve_container(mod, parent, "pane_add_row");
     if (slot == nullptr) {
         return MOD_INVALID_ARGUMENT;
     }
-    slot->pane->add_section(title);
+    auto* pane = slot->pane;
+    auto* helpPane = slot->helpPane;
+    auto& row = slot->container->add_child<ui::Row>(ui::Row::Props{
+        .align = static_cast<ui::Row::Align>(desc.align), .wrap = desc.wrap,
+    });
+    auto& rowSlot = alloc_slot(mod, UiSlotKind::Row, *outRow);
+    rowSlot.container = &row;
+    rowSlot.pane = pane;
+    rowSlot.helpPane = helpPane;
+    track_element(*outRow, rowSlot, *row.root());
+    return MOD_OK;
+}
+
+ModResult ui_pane_add_section(LoadedMod& mod, uint64_t pane, const char* title) {
+    auto* slot = resolve_container(mod, pane, "pane_add_section");
+    if (slot == nullptr) {
+        return MOD_INVALID_ARGUMENT;
+    }
+    slot->container->add_section(title);
     return MOD_OK;
 }
 
 ModResult ui_pane_add_text(LoadedMod& mod, uint64_t pane, const char* text, uint64_t* outElem) {
-    auto* slot = resolve(mod, pane, UiSlotKind::Pane, "pane_add_text");
+    auto* slot = resolve_container(mod, pane, "pane_add_text");
     if (slot == nullptr) {
         return MOD_INVALID_ARGUMENT;
     }
-    auto* elem = slot->pane->add_text(text);
+    auto* elem = slot->container->add_text(text);
     if (outElem != nullptr) {
         auto& elemSlot = alloc_slot(mod, UiSlotKind::Text, *outElem);
         elemSlot.elementValue = text;
@@ -556,11 +591,11 @@ ModResult ui_pane_add_text(LoadedMod& mod, uint64_t pane, const char* text, uint
 }
 
 ModResult ui_pane_add_rml(LoadedMod& mod, uint64_t pane, const char* rml, uint64_t* outElem) {
-    auto* slot = resolve(mod, pane, UiSlotKind::Pane, "pane_add_rml");
+    auto* slot = resolve_container(mod, pane, "pane_add_rml");
     if (slot == nullptr) {
         return MOD_INVALID_ARGUMENT;
     }
-    auto* elem = slot->pane->add_rml(rml);
+    auto* elem = slot->container->add_rml(rml);
     if (outElem != nullptr) {
         auto& elemSlot = alloc_slot(mod, UiSlotKind::Text, *outElem);
         elemSlot.elementValue = rml;
@@ -572,7 +607,7 @@ ModResult ui_pane_add_rml(LoadedMod& mod, uint64_t pane, const char* rml, uint64
 }
 
 ModResult ui_pane_add_progress(LoadedMod& mod, uint64_t pane, float value, uint64_t* outElem) {
-    auto* slot = resolve(mod, pane, UiSlotKind::Pane, "pane_add_progress");
+    auto* slot = resolve_container(mod, pane, "pane_add_progress");
     if (slot == nullptr) {
         return MOD_INVALID_ARGUMENT;
     }
@@ -589,7 +624,7 @@ ModResult ui_pane_add_progress(LoadedMod& mod, uint64_t pane, float value, uint6
 
 ModResult ui_pane_add_control(
     LoadedMod& mod, uint64_t pane, const UiControlDesc& desc, uint64_t* outElem) {
-    auto* slot = resolve(mod, pane, UiSlotKind::Pane, "pane_add_control");
+    auto* slot = resolve_container(mod, pane, "pane_add_control");
     if (slot == nullptr) {
         return MOD_INVALID_ARGUMENT;
     }
@@ -600,10 +635,15 @@ ModResult ui_pane_add_control(
     spec.isDisabled = wrap_predicate(mod, desc.is_disabled, desc.user_data, pane);
     spec.isModified = wrap_predicate(mod, desc.is_modified, desc.user_data, pane);
     switch (desc.kind) {
+    case UI_CONTROL_ICON_BUTTON:
     case UI_CONTROL_BUTTON:
     case UI_CONTROL_GROUP:
         spec.kind = desc.kind == UI_CONTROL_BUTTON ? ui::ModControlSpec::Kind::Button :
                                                      ui::ModControlSpec::Kind::Group;
+        if (desc.kind == UI_CONTROL_ICON_BUTTON) {
+            spec.kind = ui::ModControlSpec::Kind::IconButton;
+            spec.icon = desc.icon;
+        }
         if (desc.struct_size >= kUiControlSelectedSize) {
             spec.isSelected = wrap_predicate(mod, desc.is_selected, desc.user_data, pane);
         }
@@ -667,7 +707,7 @@ ModResult ui_pane_add_control(
         return MOD_INVALID_ARGUMENT;
     }
 
-    if (desc.kind != UI_CONTROL_BUTTON && desc.kind != UI_CONTROL_GROUP) {
+    if (desc.kind != UI_CONTROL_BUTTON && desc.kind != UI_CONTROL_GROUP && desc.kind != UI_CONTROL_ICON_BUTTON) {
         if (desc.binding == UI_BINDING_CONFIG_VAR) {
             if (!wire_config_var_binding(mod, desc, spec)) {
                 Log.error("[{}] pane_add_control: config var handle {:#x} is unknown or its type "
@@ -683,7 +723,7 @@ ModResult ui_pane_add_control(
     // Copy the pane pointers out: allocating the control's slot below may reallocate s_slots
     auto* paneComponent = slot->pane;
     auto* helpPane = slot->helpPane;
-    auto* control = ui::build_mod_control(*paneComponent, helpPane, std::move(spec));
+    auto* control = ui::build_mod_control(*slot->container, *paneComponent, helpPane, std::move(spec));
     if (control == nullptr) {
         return MOD_UNSUPPORTED;
     }
@@ -697,11 +737,11 @@ ModResult ui_pane_add_control(
 ModResult ui_pane_add_list(LoadedMod& mod, uint64_t pane, const UiListDesc& desc,
     std::vector<ui::List::Item> items, uint64_t& outHandle) {
     outHandle = 0;
-    auto* paneSlot = resolve(mod, pane, UiSlotKind::Pane, "pane_add_list");
+    auto* paneSlot = resolve_container(mod, pane, "pane_add_list");
     if (paneSlot == nullptr) {
         return MOD_INVALID_ARGUMENT;
     }
-    auto* paneComponent = paneSlot->pane;
+    auto* paneComponent = paneSlot->container;
 
     uint64_t handle = 0;
     alloc_slot(mod, UiSlotKind::List, handle);
@@ -1261,6 +1301,9 @@ bool valid_control_desc(const UiControlDesc& desc) {
         return false;
     }
     switch (desc.kind) {
+    case UI_CONTROL_ICON_BUTTON:
+        return desc.struct_size >= kUiControlIconSize && desc.icon != nullptr &&
+            desc.label[0] != '\0' && ui::material_icon(desc.icon)[0] != '\0' && desc.on_pressed != nullptr;
     case UI_CONTROL_BUTTON:
     case UI_CONTROL_GROUP:
         return desc.on_pressed != nullptr;
@@ -1365,6 +1408,20 @@ ModResult ui_register_mods_panel(ModContext* context, const UiModsPanelDesc* des
         return MOD_INVALID_ARGUMENT;
     }
     return ui_impl::ui_register_mods_panel(*mod, *desc);
+}
+
+ModResult ui_pane_add_row(ModContext* context, UiElementHandle parent, const UiRowDesc* desc,
+    UiElementHandle* outRow) {
+    if (outRow != nullptr) {
+        *outRow = 0;
+    }
+    auto* mod = mod_from_context(context);
+    if (mod == nullptr || parent == 0 || outRow == nullptr || desc == nullptr ||
+        desc->struct_size < offsetof(UiRowDesc, wrap) + sizeof(bool) ||
+        desc->align < UI_ROW_ALIGN_START || desc->align > UI_ROW_ALIGN_SPACE_BETWEEN) {
+        return MOD_INVALID_ARGUMENT;
+    }
+    return ui_impl::ui_pane_add_row(*mod, parent, *desc, outRow);
 }
 
 ModResult ui_pane_add_section(ModContext* context, UiElementHandle pane, const char* title) {
@@ -1821,6 +1878,7 @@ constexpr UiService s_uiService{
     .set_clipboard_text = ui_set_clipboard_text,
     .pane_add_list = ui_pane_add_list,
     .list_set_items = ui_list_set_items,
+    .pane_add_row = ui_pane_add_row,
 };
 
 }  // namespace

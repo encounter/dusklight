@@ -10,7 +10,7 @@
 
 #define UI_SERVICE_ID DUSKLIGHT_SERVICE_ID_PREFIX "ui"
 #define UI_SERVICE_MAJOR 2u
-#define UI_SERVICE_MINOR 2u
+#define UI_SERVICE_MINOR 3u
 
 /*
  * UI primitives: a panel inside the host Mods window, mod-owned windows, dialogs, toasts,
@@ -55,6 +55,7 @@ typedef enum UiControlKind {
     UI_CONTROL_COLOR = 5,  /* RGB/RGBA color string with a picker */
     UI_CONTROL_GROUP = 6,  /* navigation row (on_pressed) */
     UI_CONTROL_FILE_PICKER = 7, /* file/folder picker with an opaque string location */
+    UI_CONTROL_ICON_BUTTON = 8, /* icon action with a local label tooltip */
 } UiControlKind;
 
 typedef enum UiControlBinding {
@@ -101,11 +102,11 @@ typedef struct UiControlDesc {
     /* Optional RML shown as contextual help when the control is focused or hovered. Only rendered
      * where a help pane exists (mod window tabs). */
     const char* help_rml;
-    UiControlBinding binding;   /* ignored for BUTTON and GROUP */
+    UiControlBinding binding;   /* ignored for BUTTON, GROUP, and ICON_BUTTON */
     ConfigVarHandle config_var; /* UI_BINDING_CONFIG_VAR */
-    UiControlGetFn get;         /* UI_BINDING_CALLBACKS (all kinds but BUTTON/GROUP) */
-    UiControlSetFn set;         /* UI_BINDING_CALLBACKS (all kinds but BUTTON/GROUP) */
-    UiPressedFn on_pressed;     /* BUTTON/GROUP only. Required for both. */
+    UiControlGetFn get;         /* UI_BINDING_CALLBACKS (all kinds but BUTTON/GROUP/ICON_BUTTON) */
+    UiControlSetFn set;         /* UI_BINDING_CALLBACKS (all kinds but BUTTON/GROUP/ICON_BUTTON) */
+    UiPressedFn on_pressed;     /* BUTTON/GROUP/ICON_BUTTON: required. */
     UiPredicateFn is_disabled;  /* optional */
     /* Optional override for the modified indicator. CONFIG_VAR controls derive it from value !=
      * default when this is NULL. */
@@ -129,18 +130,36 @@ typedef struct UiControlDesc {
     const char* const* color_presets;
     size_t color_preset_count;
     bool color_alpha;                /* COLOR: use RRGGBBAA values instead of RRGGBB */
-    UiPredicateFn is_selected;       /* BUTTON/GROUP: optional selected state */
+    UiPredicateFn is_selected;       /* BUTTON/GROUP/ICON_BUTTON: optional selected state */
     UiStringSetMode string_set_mode; /* STRING: when to invoke the setter */
     /* FILE_PICKER: optional file filters and folder selection mode. */
     const FileFilter* file_filters;
     size_t file_filter_count;
     bool directory_mode;
+    /* ICON_BUTTON: supported Material Symbols name; see docs/modding.md.
+     * label is required, nonempty plain text used for the local hover/focus tooltip. */
+    const char* icon;
 } UiControlDesc;
 
 #define UI_CONTROL_DESC_INIT                                                                       \
     {sizeof(UiControlDesc), UI_CONTROL_BUTTON, NULL, NULL, UI_BINDING_CALLBACKS, 0u, NULL, NULL,   \
         NULL, NULL, NULL, NULL, 0, 0, 1, NULL, NULL, NULL, 0u, 0, NULL, 0u, false, NULL,           \
-        UI_STRING_SET_ON_COMMIT, NULL, 0u, false}
+        UI_STRING_SET_ON_COMMIT, NULL, 0u, false, NULL}
+
+typedef enum UiRowAlign {
+    UI_ROW_ALIGN_START = 0,
+    UI_ROW_ALIGN_CENTER = 1,
+    UI_ROW_ALIGN_END = 2,
+    UI_ROW_ALIGN_SPACE_BETWEEN = 3,
+} UiRowAlign;
+
+typedef struct UiRowDesc {
+    uint32_t struct_size;
+    UiRowAlign align;
+    bool wrap;
+} UiRowDesc;
+
+#define UI_ROW_DESC_INIT {sizeof(UiRowDesc), UI_ROW_ALIGN_START, false}
 
 typedef uint64_t UiListHandle;
 
@@ -374,6 +393,11 @@ typedef struct UiService {
     /* Replace all items in a list with a new set. */
     ModResult (*list_set_items)(
         ModContext* ctx, UiListHandle list, const UiListItem* items, size_t item_count);
+    /* Horizontal container with the host control gap. parent accepts a pane or row.
+     * pane_add_section/text/rml/progress/control/list also accept rows. Rows may nest.
+     * Handles expire when the parent is rebuilt or destroyed. pane_add_group still needs panes. */
+    ModResult (*pane_add_row)(
+        ModContext* ctx, UiElementHandle parent, const UiRowDesc* desc, UiElementHandle* out_row);
 } UiService;
 
 MOD_DECLARE_SERVICE(UiService, svc_ui, UI_SERVICE_ID, UI_SERVICE_MAJOR, UI_SERVICE_MINOR);

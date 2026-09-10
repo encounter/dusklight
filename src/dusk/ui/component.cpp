@@ -6,6 +6,24 @@ Component::Component(Rml::Element* root) : mRoot(root) {}
 
 Component::~Component() = default;
 
+Rml::Element* Component::add_section(const Rml::String& text) {
+    auto* elem = append(mRoot, "section-heading");
+    append_text(elem, text);
+    return elem;
+}
+
+Rml::Element* Component::add_text(const Rml::String& text) {
+    auto* elem = append(mRoot, "div");
+    append_text(elem, text);
+    return elem;
+}
+
+Rml::Element* Component::add_rml(const Rml::String& rml) {
+    auto* elem = append(mRoot, "div");
+    elem->SetInnerRML(rml);
+    return elem;
+}
+
 void Component::update() {
     for (const auto& child : mChildren) {
         child->update();

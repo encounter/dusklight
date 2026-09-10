@@ -1511,6 +1511,8 @@ set(DUSK_FILES
         src/dusk/mods/manifest.hpp
         src/dusk/mods/svc/actor.cpp
         src/dusk/mods/svc/audio_res/audio_res.hpp
+        src/dusk/mods/svc/audio/audio.cpp
+        src/dusk/mods/svc/audio/source.cpp
         src/dusk/mods/svc/audio_res/audio_res.cpp
         src/dusk/mods/svc/audio_res/bst.cpp
         src/dusk/mods/svc/audio_res/bst.hpp
@@ -1630,6 +1632,8 @@ set(DUSK_FILES
         src/dusk/ui/number_button.hpp
         src/dusk/ui/overlay.cpp
         src/dusk/ui/overlay.hpp
+        src/dusk/ui/row.cpp
+        src/dusk/ui/row.hpp
         src/dusk/ui/pane.cpp
         src/dusk/ui/pane.hpp
         src/dusk/ui/popover.cpp

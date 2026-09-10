@@ -6,6 +6,9 @@
 #include "JSystem/JAudio2/JAIStreamDataMgr.h"
 #include "JSystem/JAudio2/JAIAudience.h"
 #include "dusk/mods/svc/audio_res/bst.hpp"
+#if TARGET_PC
+#include "dusk/mods/svc/audio/source.hpp"
+#endif
 
 static void JAIStream_JASAramStreamCallback_(u32 type, JASAramStream* aramStream, void* userData) {
     JAIStream* stream = (JAIStream*)userData;
@@ -57,6 +60,13 @@ bool JAIStream::prepare_prepareStream_() {
         streamAramMgr = streamMgr_->getStreamAramMgr();
         JUT_ASSERT(100, streamAramMgr);
 
+#if TARGET_PC
+        inner_.aramStream_.mPcmSource = dusk::mods::svc::audio::find_source(field_0x294);
+        if (auto& source = inner_.aramStream_.mPcmSource) {
+            streamAramAddr_ = source->heap.getBase();
+            size = source->heap.getSize();
+        } else
+#endif
         streamAramAddr_ = streamAramMgr->newStreamAram(&size);
         if (streamAramAddr_ != NULL) {
             inner_.aramStream_.init((uintptr_t)streamAramAddr_, size, &JAIStream_JASAramStreamCallback_, this);

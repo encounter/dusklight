@@ -1,3 +1,7 @@
+#if TARGET_PC
+#include "JSystem/JAudio2/JAIStream.h"
+#include "JSystem/JAudio2/JAISoundChild.h"
+#endif
 #include "d/dolzel.h" // IWYU pragma: keep
 
 #include "JSystem/JAudio2/JASAiCtrl.h"
@@ -90,6 +94,11 @@ void Z2AudioMgr::init(JKRSolidHeap* heap, u32 memSize, void* baaData, JKRArchive
     JAISeqMgr* seqMgr = mSoundMgr.getSeqMgr();
     seqMgr->getParams()->moveVolume(Z2Param::VOL_BGM_DEFAULT, 0);
 
+#if TARGET_PC
+    // Keep the vanilla stream pool available while four mod streams are prepared or playing.
+    JAIStream::newMemPool(4);
+    JAISoundChild::newMemPool(4 * JAIStream::NUM_CHILDREN);
+#endif
     JAIStreamMgr* streamMgr = mSoundMgr.getStreamMgr();
     JAUStreamStaticAramMgr_<1>* streamStaticAramMgr = JKR_NEW_ARGS(heap, 0) JAUStreamStaticAramMgr_<1>();
     streamStaticAramMgr->reserveAram(NULL, 0, 0x14);

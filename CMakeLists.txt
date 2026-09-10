@@ -195,12 +195,29 @@ set(_fetch_content_deps miniz picosha2)
 if (DUSK_ENABLE_OPUS)
     message(STATUS "dusklight: Fetching opusfile")
 
-    # Opusfile options
-    SET(OP_DISABLE_HTTP ON CACHE BOOL "" FORCE)
-    SET(OP_DISABLE_DOCS ON CACHE BOOL "" FORCE)
-    SET(OP_DISABLE_EXAMPLES ON CACHE BOOL "" FORCE)
+    set(OP_DISABLE_HTTP ON CACHE BOOL "" FORCE)
+    set(OP_DISABLE_DOCS ON CACHE BOOL "" FORCE)
+    set(OP_DISABLE_EXAMPLES ON CACHE BOOL "" FORCE)
 
-    message(STATUS "dusklight: Fetching opusfile")
+    set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
+    find_package(Ogg CONFIG QUIET)
+    if (NOT TARGET Ogg::ogg)
+        FetchContent_Declare(ogg
+            GIT_REPOSITORY https://github.com/xiph/ogg.git
+            GIT_TAG e1774cd77f471443541596e09078e78fdc342e4f
+            EXCLUDE_FROM_ALL)
+        list(APPEND _fetch_content_deps ogg)
+    endif ()
+    find_package(Opus CONFIG QUIET)
+    if (NOT TARGET Opus::opus)
+        set(OPUS_BUILD_TESTING OFF CACHE BOOL "" FORCE)
+        set(OPUS_BUILD_PROGRAMS OFF CACHE BOOL "" FORCE)
+        FetchContent_Declare(opus
+            GIT_REPOSITORY https://github.com/xiph/opus.git
+            GIT_TAG ddbe48383984d56acd9e1ab6a090c54ca6b735a6
+            EXCLUDE_FROM_ALL)
+        list(APPEND _fetch_content_deps opus)
+    endif ()
     FetchContent_Declare(
         opusfile
         GIT_REPOSITORY https://github.com/xiph/opusfile.git
@@ -543,6 +560,8 @@ if (DUSK_ENABLE_CODE_MODS AND CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR
     add_subdirectory(mods/cosmetics)
     add_subdirectory(mods/randomizer)
     add_subdirectory(mods/audio_mod)
+    add_subdirectory(mods/audio_demo)
+    add_subdirectory(mods/audio_test)
 endif ()
 
 if (APPLE)

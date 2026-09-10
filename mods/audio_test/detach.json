@@ -1,0 +1,7 @@
+{
+  "id": "dev.twilitrealm.audio_detach_test",
+  "name": "AudioService Detach Tests",
+  "version": "1.0.0",
+  "author": "Dusklight",
+  "description": "Companion lifecycle observer for AudioService runtime tests"
+}

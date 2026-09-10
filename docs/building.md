@@ -182,6 +182,12 @@ Alternate presets available:
 * `macos-default-debug`: Clang, Debug
 * `macos-default-debug-asan`: Clang, Debug, AddressSanitizer
 
+With AddressSanitizer enabled on Apple platforms, native mod images remain mapped until
+process exit. Mod shutdown and service cleanup still run when a mod is disabled or reloaded,
+but C++ static destructors are deferred until exit. This avoids stale ASan global redzones
+being reused by Metal or other VM allocations after `dlclose`. Repeated reloads retain memory;
+restart the process to release retired images.
+
 **ninja (Linux)**
 
 ```sh

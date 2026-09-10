@@ -19,10 +19,12 @@ struct ModControlSpec {
         Select,
         Color,
         FilePicker,
+        IconButton,
     };
 
     Kind kind = Kind::Button;
     Rml::String label;
+    Rml::String icon;
     Rml::String helpRml;
     std::function<void()> onPressed;
     std::function<bool()> getBool;
@@ -49,7 +51,10 @@ struct ModControlSpec {
     bool directoryMode = false;
 };
 
-Component* build_mod_control(Pane& pane, Pane* helpPane, ModControlSpec spec);
+Component* build_mod_control(Component& container, Pane& pane, Pane* helpPane, ModControlSpec spec);
+inline Component* build_mod_control(Pane& pane, Pane* helpPane, ModControlSpec spec) {
+    return build_mod_control(pane, pane, helpPane, std::move(spec));
+}
 
 // A mod-owned tabbed two-pane window.
 class ModWindow : public Window {

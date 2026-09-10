@@ -7,6 +7,7 @@
 
 namespace dusk::ui {
 
+// Returns an empty string for unsupported symbolic names.
 const char* material_icon(std::string_view name);
 
 class IconButton : public ControlledButton {

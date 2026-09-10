@@ -48,6 +48,10 @@ public:
         return ref;
     }
 
+    Rml::Element* add_section(const Rml::String& text);
+    Rml::Element* add_text(const Rml::String& text);
+    Rml::Element* add_rml(const Rml::String& rml);
+
     Rml::Element* root() const { return mRoot; }
 
 protected:

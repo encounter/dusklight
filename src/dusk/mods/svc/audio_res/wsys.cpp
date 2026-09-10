@@ -2,7 +2,7 @@
 #include "../id_allocator.hpp"
 #include "../internal.hpp"
 #include "audio_res.hpp"
-#include "aurora/lib/logging.hpp"
+#include "borealis/log.hpp"
 #include "dusk/audio/DuskAudioSystem.h"
 #include "dusk/mods/loader/loader.hpp"
 #include "helpers/cast.hpp"
@@ -15,7 +15,7 @@ using namespace dusk::helpers::cast;
 
 bool wave_replacements_dirty = false;
 
-aurora::Module Log("dusk::mods::svc::audio_res");
+borealis::Log Log{"dusk::mods::svc::audio_res"};
 
 SlotMap<RuntimeWaveReplacementSlot> s_waveReplacements;
 

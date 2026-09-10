@@ -1,6 +1,6 @@
 #if DUSK_OPUS
 
-#include "aurora/lib/logging.hpp"
+#include "borealis/log.hpp"
 #include "dusk/mod_loader.hpp"
 #include "helpers/cast.hpp"
 #include "opusfile.h"
@@ -8,7 +8,7 @@
 
 namespace {
 
-aurora::Module Log("dusk::mods::svc::audio_res::wsys::opus");
+borealis::Log Log{"dusk::mods::svc::audio_res::wsys::opus"};
 
 struct OpusHandle {
     OggOpusFile* file;

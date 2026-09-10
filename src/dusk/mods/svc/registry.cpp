@@ -263,6 +263,7 @@ void ModLoader::init_services() {
             &svc::g_windowModule,
             &svc::g_gfxModule,
             &svc::g_audioResModule,
+            &svc::g_audioModule,
             &svc::g_saveModule,
             &svc::g_stageModule,
             &svc::g_itemModule,

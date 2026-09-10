@@ -6,6 +6,11 @@
 #include <dvd.h>
 #include "helpers/endian.h"
 
+#if TARGET_PC
+#include <memory>
+namespace dusk::mods::svc::audio { struct Source; }
+#endif
+
 class JASChannel;
 
 namespace JASDsp {
@@ -257,6 +262,9 @@ public:
      * This is the JASDvd thread in practice.
      */
     static DUSK_GAME_DATA JASTaskThread* sLoadThread;
+#if TARGET_PC
+    std::shared_ptr<dusk::mods::svc::audio::Source> mPcmSource{};
+#endif
 
     /**
      * Buffer used to read DVD data. Can store the size of an entire streamed audio block.

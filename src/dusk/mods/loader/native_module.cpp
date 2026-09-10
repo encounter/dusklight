@@ -31,7 +31,16 @@ std::string pl_dlerror() {
 #else
 #include <dlfcn.h>
 void* pl_dlopen(const std::filesystem::path& p) {
-    return dlopen(p.c_str(), RTLD_LAZY | RTLD_LOCAL);
+    int flags = RTLD_LAZY | RTLD_LOCAL;
+#if defined(__APPLE__) && defined(__has_feature)
+#if __has_feature(address_sanitizer)
+    // Apple ASan can leave global redzones poisoned after dlclose. Keep the image
+    // mapped so unrelated VM allocations cannot reuse that poisoned address space.
+    // Mod shutdown and service cleanup still run; static destruction waits for exit.
+    flags |= RTLD_NODELETE;
+#endif
+#endif
+    return dlopen(p.c_str(), flags);
 }
 void* pl_dlsym(void* h, const char* name) {
     return dlsym(h, name);

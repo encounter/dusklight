@@ -1,11 +1,11 @@
-#include "aurora/lib/logging.hpp"
+#include "borealis/log.hpp"
 #include "dusk/mod_loader.hpp"
 #include "helpers/alignment.hpp"
 #include "wsys.hpp"
 
 namespace {
 
-aurora::Module Log("dusk::mods::svc::audio_res::wsys::wav");
+borealis::Log Log{"dusk::mods::svc::audio_res::wsys::wav"};
 
 struct ChunkHeader {
     char magic[4];

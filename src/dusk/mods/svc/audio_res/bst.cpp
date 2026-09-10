@@ -1,7 +1,7 @@
 #include "bst.hpp"
 
 #include "audio_res.hpp"
-#include "aurora/lib/logging.hpp"
+#include "borealis/log.hpp"
 #include "dusk/mods/loader/loader.hpp"
 #include "dusk/mods/svc/id_allocator.hpp"
 #include "dusk/mods/svc/internal.hpp"
@@ -12,7 +12,7 @@ namespace {
 
 bool sound_replacements_dirty = false;
 
-aurora::Module Log("dusk::mods::svc::audio_res");
+borealis::Log Log{"dusk::mods::svc::audio_res"};
 
 SlotMap<std::shared_ptr<SoundTableReplacementSlot>> sound_replacements;
 
@@ -168,15 +168,19 @@ std::shared_ptr<StreamReplacementSlot> get_override_for_stream(JAISoundID id) {
     return entry->second;
 }
 
+static PlainIdAllocator<u16>& id_allocator_for(SoundTableReplacementSlot const* slot);
+
 void remove_mod(LoadedMod const& mod) {
-    sound_replacements.erase_all(mod);
+    for (auto& entry : sound_replacements.take_all(mod)) {
+        if (entry.value->mod_defined) id_allocator_for(entry.value.get()).free(entry.value->id);
+    }
 
     sound_replacements_dirty = true;
 }
 
 void frame_end() {
     if (sound_replacements_dirty) {
-        wsys::sync_audio_replacements();
+        sync_audio_replacements();
     }
 }
 
@@ -331,7 +335,7 @@ static PlainIdAllocator<u16>& id_allocator_for(SoundTableReplacementSlot const* 
         return stream_id_allocator;
 
     if (auto const se = dynamic_cast<SoundEffectReplacementSlot const*>(slot))
-        return sound_effect_id_allocator[se->id];
+        return sound_effect_id_allocator[se->category];
 
     CRASH("Unknown type???");
 }
@@ -347,6 +351,7 @@ static bool sound_table_remove(LoadedMod const& mod, AudioSoundTableHandle const
         allocator.free(found->value->id);
     }
 
+    sound_replacements_dirty = true;
     sound_replacements.erase_owned(handle, mod);
     return true;
 }

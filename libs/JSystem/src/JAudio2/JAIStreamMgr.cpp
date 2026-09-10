@@ -58,7 +58,11 @@ void JAIStreamMgr::freeDeadStream_() {
         if (stream->status_.isDead()) {
             mStreamList.remove(i);
             void* aramAddr = stream->JAIStreamMgr_getAramAddr_();
+#if TARGET_PC
+            if (aramAddr != NULL && !stream->inner_.aramStream_.mPcmSource) {
+#else
             if (aramAddr != NULL) {
+#endif
                 bool result = mStreamAramMgr->deleteStreamAram((uintptr_t)aramAddr);
                 JUT_ASSERT(105, result);
             }

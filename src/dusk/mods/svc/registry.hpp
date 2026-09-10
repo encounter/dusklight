@@ -87,6 +87,7 @@ extern const ServiceModule g_cameraModule;
 extern const ServiceModule g_windowModule;
 extern const ServiceModule g_gfxModule;
 extern const ServiceModule g_audioResModule;
+extern const ServiceModule g_audioModule;
 extern const ServiceModule g_saveModule;
 extern const ServiceModule g_stageModule;
 extern const ServiceModule g_itemModule;

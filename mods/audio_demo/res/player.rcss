@@ -1,0 +1,83 @@
+/* Keep the host's palette, focus states, and control shapes. */
+.music-player .music-title {
+    font-size: 26dp;
+    font-weight: bold;
+    word-break: break-word;
+    margin-top: 8dp;
+}
+
+.music-detail {
+    font-size: 15dp;
+    opacity: 0.6;
+}
+
+.music-player .music-error {
+    font-size: 17dp;
+    margin-top: 16dp;
+}
+
+.music-player .music-time {
+    font-size: 16dp;
+    text-align: right;
+}
+
+.music-player progress {
+    height: 6dp;
+    margin-bottom: 12dp;
+}
+
+.music-player .music-seek {
+    font-size: 17dp;
+}
+
+.music-player .music-choose {
+    margin-top: 12dp;
+    font-size: 17dp;
+}
+
+.music-settings .music-setting {
+    font-size: 17dp;
+}
+
+.music-transport-row > button {
+    flex: 1 1 0;
+}
+
+.music-seek-row > * {
+    flex: 1 1 0;
+}
+
+.music-next {
+    font-size: 15dp;
+    word-break: break-word;
+    opacity: 0.7;
+}
+
+.music-player .music-library-action {
+    font-size: 16dp;
+}
+
+.music-library > div:not(.section-heading) {
+    font-size: 15dp;
+    opacity: 0.65;
+    word-break: break-word;
+}
+
+.music-library .music-library-action {
+    font-size: 16dp;
+}
+
+.music-library ui-list {
+    min-height: 120dp;
+}
+
+.music-library .ui-list-row {
+    font-size: 17dp;
+    text-align: left;
+    word-break: break-word;
+}
+
+.music-hidden {
+    display: none;
+}
+

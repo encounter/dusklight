@@ -874,6 +874,43 @@ controls are only available inside window tabs.
 and calls the group's build callback with that pane, which is useful for organizing related controls without adding
 more tabs.
 
+**Rows (UiService 2.3):** `pane_add_row` adds a horizontal container. Initialize `UiRowDesc` with
+`UI_ROW_DESC_INIT`; set `align` to `UI_ROW_ALIGN_START`, `CENTER`, `END`, or `SPACE_BETWEEN`
+(with the same `UI_ROW_ALIGN_` prefix), and `wrap` to allow wrapping. Rows use the host's control gap.
+The section, text, RML, progress, control, and list builders accept either a pane or a row handle.
+Rows can nest; `pane_add_group` still requires two pane handles. Row and descendant handles expire
+when their parent is rebuilt or destroyed.
+
+Left/right moves between controls in a row, skipping disabled controls. Up/down moves between
+pane children, entering rows near the previous horizontal position. Controls that consume arrows,
+such as number inputs, retain their own navigation. At row boundaries, navigation continues to the
+containing row or pane. Wrapped rows retain the same left/right sequence.
+
+**Icon buttons (UiService 2.3):** Set `UiControlDesc.kind` to `UI_CONTROL_ICON_BUTTON`, `icon` to a
+supported Material Symbols name, and `label` to a nonempty plain-text action name. The host renders
+an icon with normal button focus, disabled, and selected states. The label appears in a local
+tooltip on mouse hover or keyboard/controller focus and is stored as the button's semantic label. `help_rml` remains separate,
+optional contextual help. `on_pressed`, `is_disabled`, `is_selected`, and `user_data` work as on
+ordinary action buttons. Unknown icon names return `MOD_INVALID_ARGUMENT`.
+
+Supported names: `play_arrow`, `pause`, `stop`, `replay`, `skip_next`, `skip_previous`, `note_add`,
+`create_new_folder`, `delete`, `add`, `remove`, `close`, `check`, `refresh`, `settings`, `folder_open`,
+`history`, `queue_music`, `volume_up`, `volume_off`, `shuffle`, `repeat`, `search`, `info`.
+
+```cpp
+UiRowDesc rowDesc = UI_ROW_DESC_INIT;
+rowDesc.align = UI_ROW_ALIGN_CENTER;
+UiElementHandle transport = 0;
+svc_ui->pane_add_row(mod_ctx, pane, &rowDesc, &transport);
+
+UiControlDesc play = UI_CONTROL_DESC_INIT;
+play.kind = UI_CONTROL_ICON_BUTTON;
+play.icon = "play_arrow";
+play.label = "Play";
+play.on_pressed = play_track;
+svc_ui->pane_add_control(mod_ctx, transport, &play, nullptr);
+```
+
 **Lists:** `pane_add_list` adds a scrollable virtualized list of items that can be efficiently updated and filtered.
 Keys must be unique and remain stable across replacements.
 
@@ -1211,6 +1248,12 @@ const GameModeDesc gameModeDesc = {
 svc_game_mode->register_game_mode(mod_ctx, &gameModeDesc);
 
 ```
+
+### AudioService (`mods/svc/audio.h`)
+
+Push decoded music through JAudio with preparation locks, buffering, fades and scene-change
+cleanup. See [AudioService](audio-service.md) for playback and decoder integration, and
+[the audio demo](../mods/audio_demo/README.md) for a FileService music player with bundled decoders.
 
 ### ActorService (`mods/svc/actor.h`)
 

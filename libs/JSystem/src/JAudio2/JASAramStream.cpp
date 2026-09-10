@@ -12,6 +12,12 @@
 #include "JSystem/JKernel/JKRSolidHeap.h"
 #include "JSystem/JSupport/JSupport.h"
 
+#if TARGET_PC
+#include "dusk/mods/svc/audio/source.hpp"
+#include <cstring>
+#include <optional>
+#endif
+
 DUSK_GAME_DATA JASTaskThread* JASAramStream::sLoadThread;
 
 DUSK_GAME_DATA u8* JASAramStream::sReadBuffer;
@@ -134,7 +140,12 @@ void JASAramStream::init(u32 aramAddress, u32 aramSize, StreamCallback i_callbac
 }
 
 bool JASAramStream::prepare(s32 param_0, int param_1) {
+#if TARGET_PC
+    mPcmSource = dusk::mods::svc::audio::find_source(param_0);
+    if (!mPcmSource && !DVDFastOpen(param_0, &mDvdFileInfo)) {
+#else
     if (!DVDFastOpen(param_0, &mDvdFileInfo)) {
+#endif
         JUT_WARN(240, "%s", "DVDFastOpen Failed");
         return false;
     }
@@ -163,6 +174,9 @@ bool JASAramStream::start() {
 }
 
 bool JASAramStream::stop(u16 directRelease) {
+#if TARGET_PC
+    if (mPcmSource) mPcmSource->stopped = true;
+#endif
     if (!OSSendMessage(&mMainCommandQueue, (OSMessage)(uintptr_t)(directRelease << 0x10 | CMD_STOP), OS_MESSAGE_NOBLOCK)) {
         JUT_WARN(290, "%s", "OSSendMessage Failed");
         return false;
@@ -180,6 +194,13 @@ bool JASAramStream::pause(bool newPauseFlag) {
 }
 
 bool JASAramStream::cancel() {
+#if TARGET_PC
+    std::optional<JASCriticalSection> sourceLock;
+    if (mPcmSource) sourceLock.emplace();
+#endif
+#if TARGET_PC
+    if (mPcmSource) mPcmSource->stopped = true;
+#endif
     mIsCancelled = 1;
     if (!sLoadThread->sendCmdMsg(finishTask, this)) {
         JUT_WARN(326, "%s", "sendCmdMsg finishTask Failed");
@@ -200,7 +221,24 @@ void JASAramStream::headerLoadTask(void* i_data) {
 void JASAramStream::firstLoadTask(void* i_data) {
     TaskData* data = (TaskData*)i_data;
     JASAramStream* _this = data->stream;
+#if TARGET_PC
+    std::optional<JASCriticalSection> sourceLock;
+    if (_this->mPcmSource) sourceLock.emplace();
+#endif
     if (!_this->load()) {
+#if TARGET_PC
+        if (_this->mPcmSource && !_this->mIsCancelled) {
+            JASCriticalSection cs;
+            auto& source = *_this->mPcmSource;
+            if (source.finished && source.produced == source.consumed) {
+                if (_this->mBlock != 0 && data->param1 > 0) prepareFinishTask(_this);
+            } else {
+                source.retry = *data;
+                source.firstRetry = true;
+                source.waiting = true;
+            }
+        }
+#endif
         return;
     }
     if (data->param1 > 0) {
@@ -225,6 +263,16 @@ void JASAramStream::firstLoadTask(void* i_data) {
 
 void JASAramStream::loadToAramTask(void* i_this) {
     JASAramStream* stream = (JASAramStream*)i_this;
+#if TARGET_PC
+    if (stream->mPcmSource) {
+        if (!stream->load() && !stream->mIsCancelled && !stream->mPcmSource->finished) {
+            JASCriticalSection cs;
+            ++stream->mPcmSource->refillRetries;
+            stream->mPcmSource->waiting = true;
+        }
+        return;
+    }
+#endif
     stream->load();
 }
 
@@ -233,6 +281,9 @@ void JASAramStream::finishTask(void* i_this) {
     if (!JASDriver::rejectCallback(channelProcCallback, _this)) {
         JUT_WARN(392, "%s", "rejectSubFrameCallback Failed");
     }
+#if TARGET_PC
+    if (_this->mPcmSource) _this->mPcmSource->retired = true;
+#endif
     if (_this->mCallback != NULL) {
         _this->mCallback(CB_START, _this, _this->mCallbackData);
         _this->mCallback = NULL;
@@ -248,18 +299,41 @@ void JASAramStream::prepareFinishTask(void* i_this) {
 }
 
 bool JASAramStream::headerLoad(u32 aramSize, int param_1) {
+#if TARGET_PC
+    std::optional<JASCriticalSection> sourceLock;
+    if (mPcmSource) sourceLock.emplace();
+#endif
     if (hasErrored) {
         return false;
     }
     if (mIsCancelled != 0) {
         return false;
     }
+#if TARGET_PC
+    if (mPcmSource) {
+        Header header{};
+        header.tag = 'STRM';
+        header.format = STREAM_FORMAT_PCM16;
+        header.bits = 16;
+        header.channels = mPcmSource->channels;
+        header.mSampleRate = dusk::mods::svc::audio::outputRate;
+        header.loop_end = 0x7fffffff;
+        header.block_size = sBlockSize;
+        header.mVolume = 127;
+        std::memcpy(mPcmSource->readBuffer.data(), &header, sizeof(header));
+        param_1 = mPcmSource->prepareBlocks;
+    } else
+#endif
     if (DVDReadPrio(&mDvdFileInfo, sReadBuffer, sizeof(Header), 0, 1) < 0) {
         JUT_WARN(420, "%s", "DVDReadPrio Failed");
         hasErrored = true;
         return false;
     }
+#if TARGET_PC
+    Header* header = reinterpret_cast<Header*>(mPcmSource ? mPcmSource->readBuffer.data() : sReadBuffer);
+#else
     Header* header = (Header*)sReadBuffer;
+#endif
     JUT_ASSERT(426, header->tag == 'STRM');
     JUT_ASSERT(427, header->format <= 1);
     JUT_ASSERT(428, header->bits == 16);
@@ -309,6 +383,10 @@ bool JASAramStream::headerLoad(u32 aramSize, int param_1) {
 
 
 bool JASAramStream::load() {
+#if TARGET_PC
+    std::optional<JASCriticalSection> sourceLock;
+    if (mPcmSource) sourceLock.emplace();
+#endif
     {
         JASCriticalSection cs;
         mPendingLoadTasks--;
@@ -319,6 +397,12 @@ bool JASAramStream::load() {
     if (mIsCancelled != 0) {
         return false;
     }
+#if TARGET_PC
+    if (mPcmSource) {
+        if (mPcmSource->finished) mLoopEnd = mPcmSource->endFrame;
+        if (!mPcmSource->read_block(mPcmSource->readBuffer.data())) return false;
+    }
+#endif
     u32 loop_end_block = (mLoopEnd - 1) / getBlockSamples();
     u32 loop_start_block = mLoopStart / getBlockSamples();
     if (mBlock > loop_end_block) {
@@ -329,22 +413,37 @@ bool JASAramStream::load() {
     if (mBlock == loop_end_block) {
         size = mDvdFileInfo.length - offset;
     }
+#if TARGET_PC
+    if (!mPcmSource)
+#endif
     if (DVDReadPrio(&mDvdFileInfo, sReadBuffer, size, offset, 1) < 0) {
         JUT_WARN(507, "%s", "DVDReadPrio Failed");
         hasErrored = true;
         return false;
     }
+#if TARGET_PC
+    BlockHeader* bhead = reinterpret_cast<BlockHeader*>(mPcmSource ? mPcmSource->readBuffer.data() : sReadBuffer);
+#else
     BlockHeader* bhead = (BlockHeader*)sReadBuffer;
+#endif
     JUT_ASSERT(512, bhead->tag == 'BLCK');
     if (mIsCancelled != 0) {
         return false;
     }
+#if TARGET_PC
+    const bool guardEnd = mPcmSource && mPcmSource->finished && mBlock == loop_end_block &&
+        mBlock >= mBufCount && mBlockRingIndex == 0 && (mLoopEnd - 1) % getBlockSamples() + 1 <= 800;
+#endif
     u32 blockBaseOffset = mAramAddress + mBlockRingIndex * sBlockSize;
     for (int i = 0; i < mChannelNum; i++) {
         (void)i;
         // Fakematch? It seems the only way to get the bhead->field_0x4 load in the right order is
         // with a pointer cast on its address in one of the two places it is read, but not both.
+#if TARGET_PC
+        if (!JKRMainRamToAram(reinterpret_cast<u8*>(bhead) + bhead->mSize * i + sizeof(BlockHeader),
+#else
         if (!JKRMainRamToAram(sReadBuffer + bhead->mSize * i + sizeof(BlockHeader),
+#endif
                               blockBaseOffset + sBlockSize * mAramBlocksPerChannel * i,
                               bhead->mSize, EXPAND_SWITCH_UNKNOWN0, 0, NULL, -1, NULL)) {
             JUT_WARN(522, "%s", "JKRMainRamToAram Failed");
@@ -352,6 +451,21 @@ bool JASAramStream::load() {
             return false;
         }
     }
+#if TARGET_PC
+    if (mPcmSource) {
+        // A late endpoint just after a ring wrap must be contiguous with the preceding block.
+        // Vanilla chooses this geometry several blocks ahead, before a push source knows its end.
+        if (guardEnd) {
+            for (int i = 0; i < mChannelNum; ++i) {
+                if (!JKRMainRamToAram(reinterpret_cast<u8*>(bhead) + sizeof(BlockHeader) + sBlockSize * i,
+                        mAramAddress + sBlockSize * (mBufCount + mAramBlocksPerChannel * i),
+                        sBlockSize, EXPAND_SWITCH_UNKNOWN0, 0, NULL, -1, NULL)) return false;
+            }
+            mPcmSource->guardEnd = true;
+        }
+        mPcmSource->loadedFrames.fetch_add(getBlockSamples());
+    }
+#endif
     mBlockRingIndex++;
     if (mBlockRingIndex >= mRingEndIndex) {
         u32 r28 = mBlock;
@@ -363,7 +477,11 @@ bool JASAramStream::load() {
                 r28 += loop_start_block;
             }
         }
+#if TARGET_PC
+        if (!mPcmSource && (r28 == loop_end_block || r28 + 2 == loop_end_block)) {
+#else
         if (r28 == loop_end_block || r28 + 2 == loop_end_block) {
+#endif
             mRingEndIndex = mAramBlocksPerChannel;
             OSSendMessage(&mLoadCommandQueue, (OSMessage)CMD_LOOP_END_LOADED, OS_MESSAGE_BLOCK);
         } else {
@@ -435,6 +553,12 @@ void JASAramStream::updateChannel(u32 i_callbackType, JASChannel* i_channel,
             field_0x0b0 = 0;
             field_0x0bc = (mLoopEnd - 1) / block_samples;
             mEndSetup = 0;
+#if TARGET_PC
+            if (mPcmSource && mPcmSource->finished && mPcmSource->endFrame <= block_samples * mBufCount) {
+                mLastSamplesLeft = mPcmSource->endFrame;
+                mEndSetup = true;
+            }
+#endif
             field_0x0c4 = 0;
             mChannelUpdateFlags = 0;
         }
@@ -478,6 +602,15 @@ void JASAramStream::updateChannel(u32 i_callbackType, JASChannel* i_channel,
                         mEndSetup = false;
                     }
                 }
+#if TARGET_PC
+                if (mPcmSource) {
+                    mPcmSource->position = mReadSample;
+                    if (mPcmSource->finished) {
+                        mLoopEnd = mPcmSource->endFrame;
+                        field_0x0bc = mPcmSource->guardEnd ? mBufCount : ((mLoopEnd - 1) / block_samples) % mBufCount;
+                    }
+                }
+#endif
                 if (mReadSample > mLoopEnd) {
                     JUT_WARN(686, "%s", "mReadSample > mLoopEnd");
                     hasErrored = true;
@@ -493,7 +626,12 @@ void JASAramStream::updateChannel(u32 i_callbackType, JASChannel* i_channel,
                 field_0x0c8 = fvar1;
 #endif
 
+#if TARGET_PC
+                if (mReadSample + (mPcmSource ? 800 : 400) >= mLoopEnd && !mEndSetup &&
+                    (!mPcmSource || mPcmSource->loadedFrames.load() >= mLoopEnd)) {
+#else
                 if (mReadSample + 400 >= mLoopEnd && !mEndSetup) {
+#endif
                     if (mLoop) {
                         // File needs to loop. Adjust loop start position
                         // (out of the normal ring buffer behavior).
@@ -512,7 +650,12 @@ void JASAramStream::updateChannel(u32 i_callbackType, JASChannel* i_channel,
                         mUpdateLoopFlag = 0;
                         mChannelUpdateFlags |= CHANNEL_UPDATE_LOOP_FLAG;
                     }
+#if TARGET_PC
+                    int sp20 = field_0x0bc * block_samples + (mPcmSource ?
+                        (mLoopEnd - 1) % block_samples + 1 : mLoopEnd % block_samples);
+#else
                     int sp20 = field_0x0bc * block_samples + mLoopEnd % block_samples;
+#endif
                     i_dspChannel->mSamplesLeft -= block_samples * mBufCount - sp20;
                     mUpdateSamplesLeft = i_dspChannel->mSamplesLeft;
                     mChannelUpdateFlags |= CHANNEL_UPDATE_SAMPLES_LEFT;
@@ -524,6 +667,9 @@ void JASAramStream::updateChannel(u32 i_callbackType, JASChannel* i_channel,
                     uvar4--;
                 }
                 u32 blockCount = uvar4 / sBlockSize;
+#if TARGET_PC
+                if (mPcmSource && mEndSetup && blockCount >= mBufCount) blockCount = mBufCount - 1;
+#endif
                 u32 sp14 = (mLoopEnd - 1) / getBlockSamples();
                 if (blockCount != field_0x0b0) {
                     bool cmp = blockCount < field_0x0b0;
@@ -570,13 +716,22 @@ void JASAramStream::updateChannel(u32 i_callbackType, JASChannel* i_channel,
                         }
                     }
                 } else {
+#if TARGET_PC
+                    if (mPendingLoadTasks == 0 && (mPcmSource ? !mPcmSource->starved : !dvdHasErrored)) {
+#else
                     if (mPendingLoadTasks == 0 && !dvdHasErrored) {
+#endif
                         mPauseFlags &= ~PAUSE_DVD_ERROR;
                         mPauseFlags &= ~PAUSE_UNDERFLOW;
                     }
                 }
                 mLastSamplesLeft = i_dspChannel->mSamplesLeft + i_dspChannel->mSamplesPerBlock;
+#if TARGET_PC
+                // PCM availability is measured in frames; retries are not outstanding DVD reads.
+                if (!mPcmSource && mPendingLoadTasks >= mAramBlocksPerChannel - 2) {
+#else
                 if (mPendingLoadTasks >= mAramBlocksPerChannel - 2) {
+#endif
                     JUT_WARN_DEVICE(810, 1, "%s", "buffer under error");
                     mPauseFlags |= (u8)PAUSE_UNDERFLOW;
                 }
@@ -628,6 +783,34 @@ void JASAramStream::updateChannel(u32 i_callbackType, JASChannel* i_channel,
 }
 
 s32 JASAramStream::channelProc() {
+#if TARGET_PC
+    if (mPcmSource && !mIsCancelled) {
+        JASCriticalSection cs;
+        auto& source = *mPcmSource;
+        if (source.waiting && source.ready()) {
+            bool queued;
+            if (source.firstRetry) {
+                queued = sLoadThread->sendCmdMsg(firstLoadTask, &source.retry, sizeof(source.retry));
+                if (queued) source.firstRetry = false;
+            } else {
+                queued = sLoadThread->sendCmdMsg(loadToAramTask, this);
+                if (queued) --source.refillRetries;
+            }
+            if (queued) {
+                ++mPendingLoadTasks;
+                source.waiting = source.refillRetries != 0;
+            }
+        }
+        // Stop before the DSP reaches unwritten data, including when preparation is partial.
+        const bool starved = mPrimaryChannel &&
+            (!source.finished || source.loadedFrames.load() < source.endFrame.load()) &&
+            source.loadedFrames.load() <= source.position.load() + 800;
+        if (starved && !source.starved) ++source.underruns;
+        source.starved = starved;
+        if (starved) mPauseFlags |= PAUSE_DVD_ERROR;
+        else mPauseFlags &= ~PAUSE_DVD_ERROR;
+    }
+#endif
     OSMessage msg;
     while (OSReceiveMessage(&mLoadCommandQueue, &msg, OS_MESSAGE_NOBLOCK)) {
         switch ((uintptr_t)msg) {
@@ -664,7 +847,11 @@ s32 JASAramStream::channelProc() {
     if (hasErrored) {
         mPauseFlags |= PAUSE_OTHER_ERROR;
     }
+#if TARGET_PC
+    if (!mPcmSource && dvdHasErrored) {
+#else
     if (dvdHasErrored) {
+#endif
         mPauseFlags |= PAUSE_DVD_ERROR;
     }
 
@@ -708,6 +895,13 @@ void JASAramStream::channelStart() {
         wave_info.mLoopFlag = 0xff;
         wave_info.mLoopStartSample = 0;
         wave_info.mLoopEndSample = mBufCount * getBlockSamples();
+#if TARGET_PC
+        if (mPcmSource && mPcmSource->finished && mPcmSource->endFrame <= wave_info.mLoopEndSample) {
+            // A short stream can end before the first CB_PLAY callback can arm the normal end path.
+            wave_info.mLoopFlag = 0;
+            wave_info.mLoopEndSample = mPcmSource->endFrame;
+        }
+#endif
         wave_info.mSampleCount = wave_info.mLoopEndSample;
         wave_info.mpLast = 0;
         wave_info.mpPenult = 0;
@@ -720,7 +914,12 @@ void JASAramStream::channelStart() {
         for (u32 j = 0; j < DSP_OUTPUT_CHANNELS; j++) {
             jc->setMixConfig(j, mMixConfig[j]);
         }
+#if TARGET_PC
+        // The PC DSP runs at exactly 32 kHz, unlike the console DAC's nominal 32028.5 Hz.
+        jc->setInitPitch(mPcmSource ? 1.0f : mSampleRate / JASDriver::getDacRate());
+#else
         jc->setInitPitch(mSampleRate / JASDriver::getDacRate());
+#endif
         jc->setOscInit(0, &OSC_ENV);
         jc->mAnon.mWaveInfo = wave_info;
         jc->mWaveAramAddress = mAramAddress + sBlockSize * mAramBlocksPerChannel * i;

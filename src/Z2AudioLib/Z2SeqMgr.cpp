@@ -1,3 +1,6 @@
+#if TARGET_PC
+#include "dusk/mods/svc/audio/source.hpp"
+#endif
 #include "Z2AudioLib/Z2SeqMgr.h"
 #include "Z2AudioLib/Z2LinkMgr.h"
 #include "Z2AudioLib/Z2Param.h"
@@ -1449,7 +1452,11 @@ void Z2SeqMgr::processBgmFramework() {
     mbossBgmMuteProcess();
     fieldBgmFramework();
 
+#if TARGET_PC
+    if (!mStreamBgmHandle && !dusk::mods::svc::audio::is_ducking() && mStreamBgmMaster.getDest() != 1.0f) {
+#else
     if (!mStreamBgmHandle && mStreamBgmMaster.getDest() != 1.0f) {
+#endif
         mStreamBgmMaster.fadeIn(Z2Param::BGM_CROSS_FADEIN_TIME);
     }
 

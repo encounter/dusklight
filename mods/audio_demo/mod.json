@@ -1,0 +1,7 @@
+{
+  "id": "dev.twilitrealm.audio_demo",
+  "name": "[Demo] Music Player",
+  "version": "1.0.0",
+  "author": "Twilit Realm",
+  "description": "Pick MP3, Ogg Vorbis, FLAC, or WAV files and play them through AudioService."
+}
