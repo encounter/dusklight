@@ -1,15 +1,19 @@
 #include "saves_window.hpp"
 
 #include "aurora/lib/window.hpp"
+#include "bool_button.hpp"
 #include "borealis/file_select.hpp"
 #include "borealis/io.hpp"
 #include "button.hpp"
+#include "context_menu.hpp"
 #include "dusk/data.hpp"
 #include "dusk/game_mode.hpp"
 #include "dusk/main.h"
 #include "dusk/mod_loader.hpp"
 #include "dusk/save_manager.hpp"
 #include "dusk/settings.h"
+#include "format.hpp"
+#include "icon_button.hpp"
 #include "modal.hpp"
 #include "pane.hpp"
 #include "prelaunch.hpp"
@@ -161,8 +165,8 @@ void show_message(
         }
     };
     host->push(std::make_unique<Modal>(Modal::Props{
-        .title = escape(title),
-        .bodyRml = escape(body),
+        .title = std::move(title),
+        .bodyText = std::move(body),
         .actions = {{.label = "OK", .onPressed = close}},
         .onDismiss = close,
         .icon = error ? "warning" : "",
@@ -176,16 +180,6 @@ void show_result(std::string successMessage, const Result& result) {
     } else {
         show_message("Save Files", result.message, true);
     }
-}
-
-std::string format_bytes(uintmax_t bytes) {
-    if (bytes >= 1024 * 1024) {
-        return fmt::format("{:.1f} MiB", static_cast<double>(bytes) / (1024.0 * 1024.0));
-    }
-    if (bytes >= 1024) {
-        return fmt::format("{:.1f} KiB", static_cast<double>(bytes) / 1024.0);
-    }
-    return fmt::format("{} B", bytes);
 }
 
 bool installed_mod(std::string_view id) {
@@ -391,42 +385,48 @@ void confirm_import(Artifact artifact) {
         dismiss_modal(modal);
         finish_import_flow();
     };
-    std::vector<ModalAction> actions{{.label = "Cancel", .onPressed = cancel}};
-    if (hasBundledModData) {
-        actions.push_back({.label = "Import", .onPressed = [items, selectedIndex](Modal& modal) {
-                               perform_import(
-                                   items, selectedIndex, false, ModDataAction::Replace, modal);
-                           }});
-    } else {
-        actions.push_back({.label = "Clear mod data and import (Recommended)",
-            .onPressed = [items, selectedIndex](Modal& modal) {
-                perform_import(items, selectedIndex, false, ModDataAction::Clear, modal);
-            }});
-        actions.push_back({.label = "Keep mod data and import",
-            .onPressed = [items, selectedIndex](Modal& modal) {
-                perform_import(items, selectedIndex, false, ModDataAction::Keep, modal);
-            }});
-        if (canImportAll) {
-            actions.push_back({.label = "Clear mod data and import all (Recommended)",
-                .onPressed = [items, selectedIndex](Modal& modal) {
-                    perform_import(items, selectedIndex, true, ModDataAction::Clear, modal);
-                }});
-            actions.push_back({.label = "Keep mod data and import all",
-                .onPressed = [items, selectedIndex](Modal& modal) {
-                    perform_import(items, selectedIndex, true, ModDataAction::Keep, modal);
-                }});
-        }
+    struct ImportOptions {
+        bool all = false;
+        bool keepModData = false;
+    };
+    auto options = std::make_shared<ImportOptions>();
+    auto modal = std::make_unique<Modal>(Modal::Props{
+        .title = "Import Save",
+        .bodyRml = std::move(body),
+        .actions =
+            {
+                {.label = "Cancel", .onPressed = cancel},
+                {.label = "Import",
+                    .onPressed =
+                        [items, selectedIndex, options, hasBundledModData](Modal& modal) {
+                            const auto modDataAction = hasBundledModData ? ModDataAction::Replace :
+                                                       options->keepModData ? ModDataAction::Keep :
+                                                                              ModDataAction::Clear;
+                            perform_import(
+                                items, selectedIndex, options->all, modDataAction, modal);
+                        }},
+            },
+        .onDismiss = cancel,
+        .icon = "warning",
+    });
+    if (canImportAll) {
+        modal->content_pane().add_child<BoolButton>(BoolButton::Props{
+            .key = "Import all modes",
+            .getValue = [options] { return options->all; },
+            .setValue = [options](bool value) { options->all = value; },
+        });
     }
-
+    if (!hasBundledModData) {
+        auto& pane = modal->content_pane();
+        pane.add_child<BoolButton>(BoolButton::Props{
+            .key = "Keep existing mod data",
+            .getValue = [options] { return options->keepModData; },
+            .setValue = [options](bool value) { options->keepModData = value; },
+        });
+        pane.add_text("Leave this off unless the mod data belongs to the imported save.");
+    }
     if (auto* host = top_document()) {
-        host->push(std::make_unique<Modal>(Modal::Props{
-            .title = "Import Save",
-            .bodyRml = std::move(body),
-            .actions = std::move(actions),
-            .onDismiss = cancel,
-            .icon = "warning",
-            .isVertical = true,
-        }));
+        host->push(std::move(modal));
     } else {
         finish_import_flow();
     }
@@ -500,7 +500,7 @@ void begin_delete() {
 
 class BackupsWindow final : public Window {
 public:
-    BackupsWindow() : Window(Props{.tabBar = false, .styleSheets = {"res/rml/saves.rcss"}}) {
+    BackupsWindow() : Window{Props{.tabBar = false, .styleSheets = {"res/rml/saves.rcss"}}} {
         mRoot->SetClass("saves", true);
         mRoot->SetClass("backups", true);
         set_content([this](Rml::Element* content) { build(content); });
@@ -676,7 +676,9 @@ void confirm_delete_mod_data(Context context, std::string id) {
     if (auto* host = top_document()) {
         host->push(std::make_unique<Modal>(Modal::Props{
             .title = "Delete Mod Data",
-            .bodyRml = fmt::format("Delete saved data for <b>{}</b>?", escape(id)),
+            .bodyRml = fmt::format("Delete saved data for <b>{}</b>? If a game save exists, a "
+                                   "backup will be made first.",
+                escape(id)),
             .actions =
                 {
                     {.label = "Cancel", .onPressed = &dismiss_modal},
@@ -694,6 +696,30 @@ void confirm_delete_mod_data(Context context, std::string id) {
         }));
     }
 }
+
+class ModDataRow final : public Component {
+public:
+    ModDataRow(Rml::Element* parent, const Context& context, const save_manager::ModFileInfo& mod)
+        : Component{append(parent, "save-mod")} {
+        auto* info = append(mRoot, "save-mod-info");
+        append_text(append(info, "b"), mod.id);
+        append_text(
+            append(info, "small"), fmt::format("{} · {}", format_bytes(mod.size),
+                                       installed_mod(mod.id) ? "Installed" : "Not installed"));
+        mDelete = &add_child<IconButton>(IconButton::Props{
+            .icon = "delete",
+            .label = fmt::format("Delete {} data", mod.id),
+            .isDisabled = [] { return borealis::file_select::busy(); },
+        });
+        mDelete->root()->SetClass("danger", true);
+        mDelete->on_pressed([context, id = mod.id] { confirm_delete_mod_data(context, id); });
+    }
+
+    bool focus() override { return mDelete->focus(); }
+
+private:
+    IconButton* mDelete = nullptr;
+};
 
 void build_save_detail(Pane& pane) {
     const std::string modeLabel = selected_mode_label();
@@ -735,18 +761,21 @@ void build_save_detail(Pane& pane) {
     pane.add_text(
             "Export a portable Dusklight archive with mod data, or a standard GCI for other tools.")
         ->SetClass("save-help", true);
-    pane
-        .add_button(ControlledButton::Props{
-            .text = "Export Save + Mod Data (.dusksave)",
-            .isDisabled = [savePresent] { return !savePresent || borealis::file_select::busy(); },
-        })
-        .on_pressed([] { begin_export(true); });
-    pane
-        .add_button(ControlledButton::Props{
-            .text = "Export Save Only (.gci)",
-            .isDisabled = [savePresent] { return !savePresent || borealis::file_select::busy(); },
-        })
-        .on_pressed([] { begin_export(false); });
+    auto& exportButton = pane.add_button(ControlledButton::Props{
+        .text = "Export Save...",
+        .isDisabled = [savePresent] { return !savePresent || borealis::file_select::busy(); },
+    });
+    exportButton.on_pressed([anchor = exportButton.root()] {
+        push_document(
+            std::make_unique<ContextMenu>(anchor, std::vector<ContextMenu::Item>{
+                                                      {.text = "Save + mod data (.dusksave)",
+                                                          .icon = "folder_open",
+                                                          .onPressed = [] { begin_export(true); }},
+                                                      {.text = "Save only (.gci)",
+                                                          .icon = "description",
+                                                          .onPressed = [] { begin_export(false); }},
+                                                  }));
+    });
     pane.add_button(ControlledButton::Props{
                         .text = "Import Save",
                         .isDisabled = [] { return borealis::file_select::busy(); },
@@ -758,12 +787,7 @@ void build_save_detail(Pane& pane) {
         pane.add_text("Mod data is stored beside the game save and included in Dusklight archives.")
             ->SetClass("save-help", true);
         for (const auto& mod : info.value.mods) {
-            const std::string status = installed_mod(mod.id) ? "installed" : "not installed";
-            pane.add_button(
-                    fmt::format("Delete {} data · {} · {}", mod.id, format_bytes(mod.size), status))
-                .on_pressed([context = context.value, id = mod.id] {
-                    confirm_delete_mod_data(context, id);
-                });
+            pane.add_child<ModDataRow>(context.value, mod);
         }
     }
 
@@ -774,8 +798,9 @@ void build_save_detail(Pane& pane) {
                             .text = "Export Full Card Image (.raw)",
                             .isDisabled =
                                 [path = storage.path] {
+                                    std::error_code ec;
                                     return borealis::file_select::busy() ||
-                                           !std::filesystem::is_regular_file(path);
+                                           !std::filesystem::is_regular_file(path, ec);
                                 },
                         })
             .on_pressed(&begin_raw_export);
@@ -875,6 +900,15 @@ void add_save_files_control(Pane& leftPane, Pane& rightPane) {
 }
 
 void import_save_location(std::string location) {
+    if (!is_prelaunch_open()) {
+        push_toast({
+            .type = "warning",
+            .title = "Save Import",
+            .content = "Return to the main menu before importing save files.",
+            .duration = std::chrono::seconds{4},
+        });
+        return;
+    }
     s_pendingImports.push_back(std::move(location));
     process_next_import();
 }

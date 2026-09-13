@@ -3,33 +3,34 @@ window.saves content pane.save-list {
 }
 
 window.saves content pane.save-detail {
-    gap: 10dp;
+    gap: var(--space-md);
 }
 
 window.saves .save-title {
     display: block;
-    font-size: 30dp;
+    font-family: var(--font-family-heading);
+    font-size: var(--font-size-6xl);
     font-weight: bold;
     line-height: 1.2;
 }
 
 window.saves .save-subtitle {
     display: block;
-    margin-top: -8dp;
-    color: rgba(224, 219, 200, 55%);
-    font-size: 15dp;
+    margin-top: calc(-1 * var(--space-sm));
+    color: rgba(var(--color-text-rgb), 55%);
+    font-size: var(--font-size-base);
 }
 
 window.saves .save-overview {
     display: block;
     padding: 14dp 16dp;
-    border-radius: 12dp;
-    background-color: rgba(17, 16, 10, 30%);
-    box-shadow: rgba(146, 135, 91, 30%) 0 0 0 1dp;
+    border-radius: var(--radius-panel);
+    background-color: rgba(var(--color-control-rgb), 30%);
+    box-shadow: rgba(var(--color-border-rgb), 30%) 0 0 0 1dp;
 }
 
 window.saves .save-overview.present {
-    box-shadow: rgba(68, 204, 85, 40%) 0 0 0 1dp;
+    box-shadow: rgba(var(--color-success-rgb), 40%) 0 0 0 1dp;
 }
 
 window.saves .save-overview-title {
@@ -39,15 +40,15 @@ window.saves .save-overview-title {
 }
 
 window.saves .save-overview.present .save-overview-title {
-    color: #66cc77;
+    color: var(--color-success);
 }
 
 window.saves .save-overview-meta,
 window.saves .save-help,
 window.saves .save-path {
     display: block;
-    color: rgba(224, 219, 200, 62%);
-    font-size: 15dp;
+    color: rgba(var(--color-text-rgb), 62%);
+    font-size: var(--font-size-base);
     line-height: 1.4;
 }
 
@@ -59,13 +60,13 @@ window.saves .save-path {
     word-break: break-all;
 }
 
-window.saves button {
+window.saves button:not(.icon-button) {
     text-align: left;
 }
 
 window.saves button.danger {
-    color: #ee7777;
-    box-shadow: rgba(179, 38, 30, 55%) 0 0 0 1dp;
+    color: var(--color-error);
+    box-shadow: rgba(var(--color-error-rgb), 55%) 0 0 0 1dp;
 }
 
 @media (max-width: 720dp) {
@@ -78,4 +79,25 @@ window.saves button.danger {
     window.saves content pane.save-list {
         flex: 1 1 0;
     }
+}
+
+save-mod {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    padding: var(--space-sm) 0;
+}
+
+save-mod-info {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 0;
+    min-width: 0;
+    gap: var(--space-xs);
+    word-break: break-all;
+}
+
+save-mod-info small {
+    color: rgba(var(--color-text-rgb), 62%);
+    font-size: var(--font-size-sm);
 }

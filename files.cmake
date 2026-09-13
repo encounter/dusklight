@@ -1581,8 +1581,6 @@ set(DUSK_FILES
         src/dusk/ui/document.hpp
         src/dusk/ui/drop_install_modal.cpp
         src/dusk/ui/drop_install_modal.hpp
-        src/dusk/ui/drop.cpp
-        src/dusk/ui/drop.hpp
         src/dusk/ui/editor.cpp
         src/dusk/ui/editor.hpp
         src/dusk/ui/event.cpp

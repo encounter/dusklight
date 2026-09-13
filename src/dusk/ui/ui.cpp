@@ -7,22 +7,23 @@
 #include "mod_texture_provider.hpp"
 #include "prelaunch.hpp"
 #include "remote_texture_provider.hpp"
+#include "saves_window.hpp"
 #include "window.hpp"
 
 #include "dusk/config.hpp"
 #include "dusk/mods/queue.hpp"
 
-#include <absl/container/flat_hash_set.h>
-#include <aurora/lib/window.hpp>
-#include <aurora/rmlui.hpp>
-#include <borealis/io.hpp>
-#include <fmt/format.h>
 #include <RmlUi/Core.h>
 #include <SDL3/SDL_events.h>
 #include <SDL3/SDL_gamepad.h>
 #include <SDL3/SDL_joystick.h>
 #include <SDL3/SDL_power.h>
 #include <SDL3/SDL_video.h>
+#include <absl/container/flat_hash_set.h>
+#include <aurora/lib/window.hpp>
+#include <aurora/rmlui.hpp>
+#include <borealis/io.hpp>
+#include <fmt/format.h>
 
 #include <algorithm>
 #include <filesystem>
@@ -197,16 +198,27 @@ void handle_event(const SDL_Event& event) noexcept {
             push_toast({
                 .type = "warning",
                 .title = "No packages found",
-                .content = "Drop a Dusklight package to import it.",
+                .content = "Drop a save file or Dusklight package to import it.",
                 .duration = std::chrono::seconds{4},
             });
         } else {
             auto paths = std::exchange(sDroppedPackages, {});
-            sPendingDrops.push_back({
-                borealis::spawn([paths = std::move(paths)](borealis::TaskContext& context) {
-                    return inspect_drop_packages(paths, context);
-                }),
+            std::erase_if(paths, [](const std::filesystem::path& path) {
+                const auto extension = Rml::StringUtilities::ToLower(
+                    borealis::io::fs_path_to_string(path.extension()));
+                if (extension != ".gci" && extension != ".raw" && extension != ".dusksave") {
+                    return false;
+                }
+                import_save_location(borealis::io::fs_path_to_string(path));
+                return true;
             });
+            if (!paths.empty()) {
+                sPendingDrops.push_back({
+                    borealis::spawn([paths = std::move(paths)](borealis::TaskContext& context) {
+                        return inspect_drop_packages(paths, context);
+                    }),
+                });
+            }
         }
     } else if (event.type == SDL_EVENT_GAMEPAD_ADDED) {
         auto* gamepad = SDL_GetGamepadFromID(event.gdevice.which);
