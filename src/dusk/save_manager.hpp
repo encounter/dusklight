@@ -124,8 +124,9 @@ ValueResult<ExportArtifact> build_export(
     const Storage& storage, const SaveIdentity& identity, bool includeModData);
 ValueResult<ExportArtifact> raw_card_export(const Storage& storage);
 
+// Imports one save; use import_raw_image to replace an entire card.
 Result import_artifact(const Storage& storage, const SaveIdentity& identity,
-    const Artifact& artifact, ModDataAction modDataAction, bool createBackup = true);
+    const Artifact& artifact, ModDataAction modDataAction);
 Result import_raw_image(const Storage& storage, const std::vector<SaveIdentity>& identities,
     const Artifact& artifact, ModDataAction modDataAction);
 Result delete_save(const Storage& storage, const SaveIdentity& identity);

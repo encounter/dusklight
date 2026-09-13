@@ -18,6 +18,7 @@
 #include <cstring>
 #include <fstream>
 #include <limits>
+#include <memory>
 #include <ranges>
 #include <set>
 #include <span>
@@ -127,6 +128,7 @@ bool write_bytes(
         }
         out.write(reinterpret_cast<const char*>(bytes.data()),
             static_cast<std::streamsize>(bytes.size()));
+        out.close();
         if (!out.good()) {
             error = "Unable to write the destination file.";
             return false;
@@ -257,12 +259,12 @@ Result pack_dusksave(const std::filesystem::path& destination, const std::vector
     if (!mz_zip_writer_init_heap(&zip, 0, 0)) {
         return failure("Unable to initialize the save archive.");
     }
-    const auto end_zip = [&zip] { mz_zip_writer_end(&zip); };
+    const std::unique_ptr<mz_zip_archive, decltype(&mz_zip_writer_end)> zipGuard{
+        &zip, &mz_zip_writer_end};
     if (!mz_zip_writer_add_mem(
             &zip, "save.json", metadataText.data(), metadataText.size(), MZ_BEST_COMPRESSION) ||
         !mz_zip_writer_add_mem(&zip, "save.gci", gci.data(), gci.size(), MZ_BEST_COMPRESSION))
     {
-        end_zip();
         return failure("Unable to add the save to the archive.");
     }
     for (const auto& [id, data] : modFiles) {
@@ -270,7 +272,6 @@ Result pack_dusksave(const std::filesystem::path& destination, const std::vector
         if (!mz_zip_writer_add_mem(
                 &zip, name.c_str(), data.data(), data.size(), MZ_BEST_COMPRESSION))
         {
-            end_zip();
             return failure("Unable to add mod data to the save archive.");
         }
     }
@@ -278,14 +279,12 @@ Result pack_dusksave(const std::filesystem::path& destination, const std::vector
     void* archiveData = nullptr;
     size_t archiveSize = 0;
     if (!mz_zip_writer_finalize_heap_archive(&zip, &archiveData, &archiveSize)) {
-        end_zip();
         return failure("Unable to finish the save archive.");
     }
     std::string error;
     const bool written = write_bytes(
         destination, std::span{static_cast<const uint8_t*>(archiveData), archiveSize}, error);
     mz_free(archiveData);
-    end_zip();
     return written ? success() : failure(std::move(error));
 }
 
@@ -307,10 +306,10 @@ ValueResult<Artifact> read_dusksave(std::vector<uint8_t> bytes, std::string sour
     if (!mz_zip_reader_init_mem(&zip, bytes.data(), bytes.size(), 0)) {
         return {failure("The selected ZIP is not a Dusklight save."), {}};
     }
-    const auto end_zip = [&zip] { mz_zip_reader_end(&zip); };
+    const std::unique_ptr<mz_zip_archive, decltype(&mz_zip_reader_end)> zipGuard{
+        &zip, &mz_zip_reader_end};
     const mz_uint entryCount = mz_zip_reader_get_num_files(&zip);
     if (entryCount > kMaxArchiveEntryCount) {
-        end_zip();
         return {failure("The save archive contains too many entries."), {}};
     }
 
@@ -334,7 +333,6 @@ ValueResult<Artifact> read_dusksave(std::vector<uint8_t> bytes, std::string sour
         }
     }
     if (metadataCount != 1 || gciCount != 1) {
-        end_zip();
         return {failure("The selected ZIP is not a Dusklight save."), {}};
     }
 
@@ -344,7 +342,6 @@ ValueResult<Artifact> read_dusksave(std::vector<uint8_t> bytes, std::string sour
         extract_zip_entry(zip, static_cast<mz_uint>(gciIndex), kMaxRawSize + kGciHeaderSize);
     if (!metadataBytes || !gciBytes) {
         const Result result = !metadataBytes ? metadataBytes.result : gciBytes.result;
-        end_zip();
         return {result, {}};
     }
 
@@ -355,7 +352,6 @@ ValueResult<Artifact> read_dusksave(std::vector<uint8_t> bytes, std::string sour
     };
     auto parsedGci = parse_gci(artifact.gci);
     if (!parsedGci) {
-        end_zip();
         return {parsedGci.result, {}};
     }
     artifact.header = std::move(parsedGci.value);
@@ -368,27 +364,23 @@ ValueResult<Artifact> read_dusksave(std::vector<uint8_t> bytes, std::string sour
             !metadata.contains("created") || !metadata["created"].is_string() ||
             !metadata.contains("mods") || !metadata["mods"].is_array())
         {
-            end_zip();
             return {failure("The Dusklight save uses an unsupported format version."), {}};
         }
         std::set<std::string> declaredIds;
         for (const auto& mod : metadata["mods"]) {
             if (!mod.is_object()) {
-                end_zip();
                 return {failure("The Dusklight save metadata is invalid."), {}};
             }
             const std::string id = mod.value("id", "");
             if (!is_valid_mod_id(id) || !declaredIds.insert(id).second ||
                 !mod.contains("version") || !mod["version"].is_string())
             {
-                end_zip();
                 return {failure("The Dusklight save metadata is invalid."), {}};
             }
             artifact.declaredMods.push_back(
                 {.id = id, .version = mod["version"].get<std::string>()});
         }
     } catch (const std::exception&) {
-        end_zip();
         return {failure("The Dusklight save metadata is invalid."), {}};
     }
 
@@ -406,18 +398,15 @@ ValueResult<Artifact> read_dusksave(std::vector<uint8_t> bytes, std::string sour
         if (child.empty() || child.find('/') != std::string_view::npos ||
             child.find('\\') != std::string_view::npos || !child.ends_with(".json"))
         {
-            end_zip();
             return {failure("The save archive contains an unsafe mod data path."), {}};
         }
         const std::string id{child.substr(0, child.size() - 5)};
         if (!is_valid_mod_id(id) || artifact.modFiles.contains(id)) {
-            end_zip();
             return {failure("The save archive contains an invalid mod data entry."), {}};
         }
         auto data = extract_zip_entry(zip, i, kMaxModFileSize);
         if (!data) {
             const Result result = data.result;
-            end_zip();
             return {result, {}};
         }
         artifact.modFiles.emplace(id, std::move(data.value));
@@ -426,10 +415,8 @@ ValueResult<Artifact> read_dusksave(std::vector<uint8_t> bytes, std::string sour
         std::ranges::any_of(artifact.declaredMods,
             [&artifact](const ModFileInfo& mod) { return !artifact.modFiles.contains(mod.id); }))
     {
-        end_zip();
         return {failure("The save archive metadata does not match its mod data."), {}};
     }
-    end_zip();
     return {success(), std::move(artifact)};
 }
 
@@ -561,6 +548,20 @@ Result finish_write(const Storage& storage, const SaveIdentity& identity) {
     return finish_write(storage, std::span{&identity, size_t{1}});
 }
 
+Result write_file_atomic(const std::filesystem::path& destination, std::span<const uint8_t> bytes) {
+    auto temporary = destination;
+    temporary += ".tmp";
+    std::string error;
+    if (!write_bytes(temporary, bytes, error) ||
+        !borealis::io::atomic_replace(temporary, destination, error))
+    {
+        std::error_code ec;
+        std::filesystem::remove(temporary, ec);
+        return failure(fmt::format("The save could not be replaced: {}", error));
+    }
+    return success();
+}
+
 Result write_gci(
     const Storage& storage, const SaveIdentity& identity, const std::vector<uint8_t>& gci) {
     if (storage.kind == StorageKind::RawImage) {
@@ -572,10 +573,11 @@ Result write_gci(
     }
 
     const auto destination = gci_path(storage, identity);
-    const auto temporary =
-        std::filesystem::path{destination.native() + std::filesystem::path{".tmp"}.native()};
+    if (const auto written = write_file_atomic(destination, gci); !written) {
+        return written;
+    }
+    // Keep alternate filenames until the replacement is safely on disk.
     try {
-        std::filesystem::create_directories(storage.path);
         for (const auto& entry : std::filesystem::directory_iterator{storage.path}) {
             if (!entry.is_regular_file() || entry.path().extension() != ".gci" ||
                 entry.path() == destination)
@@ -591,21 +593,13 @@ Result write_gci(
                 std::filesystem::remove(entry.path());
             }
         }
-        std::string error;
-        if (!write_bytes(temporary, gci, error)) {
-            return failure(std::move(error));
-        }
-        if (!borealis::io::atomic_replace(temporary, destination, error)) {
-            std::error_code ignored;
-            std::filesystem::remove(temporary, ignored);
-            return failure(fmt::format("The save could not be replaced: {}", error));
-        }
-        return success();
     } catch (const std::exception& exception) {
-        std::error_code ignored;
-        std::filesystem::remove(temporary, ignored);
-        return failure(fmt::format("The save could not be written: {}", exception.what()));
+        finish_write(storage, identity);
+        return failure(
+            fmt::format("The save was replaced, but duplicate files could not be removed: {}",
+                exception.what()));
     }
+    return success();
 }
 
 ValueResult<std::filesystem::path> create_backup(
@@ -653,9 +647,13 @@ ValueResult<std::filesystem::path> create_backup(
 
     auto backups = list_backups(storage, identity);
     if (backups) {
-        for (size_t i = kDefaultBackupRetention; i < backups.value.size(); ++i) {
-            std::error_code ec;
-            std::filesystem::remove(backups.value[i].path, ec);
+        // Always keep this recovery copy, even if older backups have future timestamps.
+        size_t retained = 1;
+        for (const auto& backup : backups.value) {
+            if (backup.path != destination && retained++ >= kDefaultBackupRetention) {
+                std::error_code ec;
+                std::filesystem::remove(backup.path, ec);
+            }
         }
     }
     return {success(), std::move(destination)};
@@ -942,72 +940,41 @@ ValueResult<ExportArtifact> raw_card_export(const Storage& storage) {
 }
 
 Result import_artifact(const Storage& storage, const SaveIdentity& identity,
-    const Artifact& artifact, ModDataAction modDataAction, bool createBackup) {
+    const Artifact& artifact, ModDataAction modDataAction) {
     if (const Result allowed = ensure_write_allowed(storage); !allowed) {
         return allowed;
     }
 
-    const bool replacingRawImage =
-        artifact.kind == ArtifactKind::Raw && storage.kind == StorageKind::RawImage;
-    ValueResult<std::vector<uint8_t>> importedGci{success(), {}};
-    if (!replacingRawImage) {
-        importedGci = gci_from_artifact(artifact, identity);
-        if (!importedGci) {
-            return importedGci.result;
-        }
-        auto parsed = parse_gci(importedGci.value);
-        if (!parsed) {
-            return parsed.result;
-        }
-        if (parsed.value.game != identity.game || parsed.value.maker != identity.maker) {
-            return failure(
-                fmt::format("This save is for {}-{}, but the configured disc uses {}-{}.",
-                    parsed.value.maker, parsed.value.game, identity.maker, identity.game));
-        }
-        if (const Result renamed = rename_gci(importedGci.value, identity.saveName); !renamed) {
-            return renamed;
-        }
+    auto importedGci = gci_from_artifact(artifact, identity);
+    if (!importedGci) {
+        return importedGci.result;
     }
-
-    if (createBackup) {
-        auto backup = create_backup(storage, identity);
-        if (!backup) {
-            return backup.result;
-        }
+    auto parsed = parse_gci(importedGci.value);
+    if (!parsed) {
+        return parsed.result;
     }
-
-    Result writeResult;
-    if (replacingRawImage) {
-        const auto temporary =
-            std::filesystem::path{storage.path.native() + std::filesystem::path{".tmp"}.native()};
-        std::string error;
-        if (!write_bytes(temporary, artifact.raw, error) ||
-            !borealis::io::atomic_replace(temporary, storage.path, error))
-        {
-            std::error_code ec;
-            std::filesystem::remove(temporary, ec);
-            return failure(fmt::format("The card image could not be replaced: {}", error));
-        }
-        writeResult = success();
-    } else {
-        writeResult = write_gci(storage, identity, importedGci.value);
+    if (parsed.value.game != identity.game || parsed.value.maker != identity.maker) {
+        return failure(fmt::format("This save is for {}-{}, but the configured disc uses {}-{}.",
+            parsed.value.maker, parsed.value.game, identity.maker, identity.game));
     }
-    if (!writeResult) {
-        return writeResult;
+    if (const Result renamed = rename_gci(importedGci.value, identity.saveName); !renamed) {
+        return renamed;
+    }
+    if (auto backup = create_backup(storage, identity); !backup) {
+        return backup.result;
+    }
+    if (const Result written = write_gci(storage, identity, importedGci.value); !written) {
+        return written;
     }
 
     if (artifact.kind == ArtifactKind::DuskSave) {
         modDataAction = ModDataAction::Replace;
     }
-    if (modDataAction == ModDataAction::Replace) {
-        if (const Result sidecars = replace_sidecars(storage, identity, artifact.modFiles);
-            !sidecars)
-        {
-            finish_write(storage, identity);
-            return sidecars;
-        }
-    } else if (modDataAction == ModDataAction::Clear) {
-        if (const Result sidecars = replace_sidecars(storage, identity, {}); !sidecars) {
+    if (modDataAction != ModDataAction::Keep) {
+        const std::map<std::string, std::vector<uint8_t>> noModFiles;
+        const auto& files =
+            modDataAction == ModDataAction::Replace ? artifact.modFiles : noModFiles;
+        if (const Result sidecars = replace_sidecars(storage, identity, files); !sidecars) {
             finish_write(storage, identity);
             return sidecars;
         }
@@ -1025,6 +992,9 @@ Result import_raw_image(const Storage& storage, const std::vector<SaveIdentity>&
     if (const Result allowed = ensure_write_allowed(storage); !allowed) {
         return allowed;
     }
+    if (!valid_raw(artifact.raw)) {
+        return failure("The selected artifact is not a valid raw card image.");
+    }
     for (const auto& identity : identities) {
         auto backup = create_backup(storage, identity);
         if (!backup) {
@@ -1032,15 +1002,8 @@ Result import_raw_image(const Storage& storage, const std::vector<SaveIdentity>&
         }
     }
 
-    const auto temporary =
-        std::filesystem::path{storage.path.native() + std::filesystem::path{".tmp"}.native()};
-    std::string error;
-    if (!write_bytes(temporary, artifact.raw, error) ||
-        !borealis::io::atomic_replace(temporary, storage.path, error))
-    {
-        std::error_code ec;
-        std::filesystem::remove(temporary, ec);
-        return failure(fmt::format("The card image could not be replaced: {}", error));
+    if (const Result written = write_file_atomic(storage.path, artifact.raw); !written) {
+        return written;
     }
 
     Result sidecarResult = success();
@@ -1114,6 +1077,12 @@ Result delete_mod_data(
     if (!is_valid_mod_id(modId)) {
         return failure("The mod ID is invalid.");
     }
+    if (const Result allowed = ensure_write_allowed(storage); !allowed) {
+        return allowed;
+    }
+    if (auto backup = create_backup(storage, identity); !backup) {
+        return backup.result;
+    }
     const auto directory = save_sidecar_directory(
         storage.path, storage.kind, identity.maker, identity.game, identity.saveName);
     std::error_code ec;
@@ -1144,9 +1113,25 @@ ValueResult<std::vector<BackupInfo>> list_backups(
     try {
         for (const auto& entry : std::filesystem::directory_iterator{directory}) {
             const std::string name = borealis::io::fs_path_to_string(entry.path().filename());
-            if (entry.is_regular_file() && name.starts_with(prefix) &&
-                entry.path().extension() == ".dusksave")
+            const std::string_view suffix = name.starts_with(prefix) ?
+                                                std::string_view{name}.substr(prefix.size()) :
+                                                std::string_view{};
+            if (suffix.size() < 25 || suffix[8] != 'T' || suffix[15] != 'Z' ||
+                !suffix.ends_with(".dusksave"))
             {
+                continue;
+            }
+            const auto digits = [](std::string_view value) {
+                return std::ranges::all_of(value, [](char ch) { return ch >= '0' && ch <= '9'; });
+            };
+            const auto sequence = suffix.substr(16, suffix.size() - 25);
+            if (!digits(suffix.substr(0, 8)) || !digits(suffix.substr(9, 6)) ||
+                (!sequence.empty() && (sequence.size() < 2 || sequence.front() != '-' ||
+                                          !digits(sequence.substr(1)))))
+            {
+                continue;
+            }
+            if (entry.is_regular_file()) {
                 backups.push_back(
                     {.path = entry.path(), .name = name, .modified = entry.last_write_time()});
             }
@@ -1154,7 +1139,7 @@ ValueResult<std::vector<BackupInfo>> list_backups(
     } catch (const std::exception& exception) {
         return {failure(fmt::format("Unable to inspect backups: {}", exception.what())), {}};
     }
-    std::ranges::sort(backups, std::greater{}, &BackupInfo::name);
+    std::ranges::sort(backups, std::greater{}, &BackupInfo::modified);
     return {success(), std::move(backups)};
 }
 
@@ -1167,7 +1152,7 @@ Result restore_backup(
     if (artifact.value.kind != ArtifactKind::DuskSave) {
         return failure("The selected backup is not a Dusklight save.");
     }
-    return import_artifact(storage, identity, artifact.value, ModDataAction::Replace, true);
+    return import_artifact(storage, identity, artifact.value, ModDataAction::Replace);
 }
 
 Result delete_backup(const Storage& storage, const std::filesystem::path& path) {
