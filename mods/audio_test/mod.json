@@ -1,7 +1,0 @@
-{
-  "id": "dev.twilitrealm.audio_test",
-  "name": "AudioService Tests",
-  "version": "1.0.0",
-  "author": "Dusklight",
-  "description": "Opt-in AudioService runtime regression tests"
-}

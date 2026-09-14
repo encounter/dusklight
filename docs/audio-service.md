@@ -100,26 +100,3 @@ block so the final samples remain contiguous. Four additional stream objects and
 
 GameService major 3 is required for the AudioRes and PCM-source game struct changes. Service-only
 mods import AudioService independently of that game ABI epoch.
-
-## Runtime regression tests
-
-Build the opt-in test mod:
-
-```sh
-cmake --preset macos-default-debug -DDUSK_AUDIO_TESTS=ON
-cmake --build --preset macos-default-debug
-```
-
-Load `build/macos-default-debug/mods/audio_test.dusk` and `audio_detach_test.dusk` in a separate
-test user directory and launch
-`--stage F_SP108`. Disable unrelated demo mods for the run. The test emits `ALL TESTS PASSED` on
-success and fails its mod activation on an assertion. Coverage includes four-stream limits,
-argument validation, preparation locks, full-buffer backpressure, underrun pause/recovery,
-prepared phase switching, stale handles, cancellation during opening, short and block-aligned
-endings, running endpoints across the ring boundary, and mono F32 resampling at 44.1/48 kHz.
-
-After the playback tests, the test deliberately fails itself with four pending streams. The
-companion lifecycle observer verifies that all four slots can be reused after detach. This
-intentional failure is expected in the test log. Disable/re-enable or reload both test mods to
-repeat the checks. Audible track replacement and boss-specific hook selection
-remain mod-level smoke checks; the automated test uses silence.
