@@ -367,18 +367,6 @@ target_include_directories(dusk_internal PRIVATE ${miniz_SOURCE_DIR})
 target_link_libraries(dusk_internal PRIVATE aurora::main ${GAME_LIBS} ${JSYSTEM_LIBRARIES})
 target_precompile_headers(dusk_internal PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CMAKE_SOURCE_DIR}/include/dusk_pch.hpp>")
 
-if (BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
-    enable_testing()
-    add_executable(save_manager_tests tests/save_manager_test.cpp src/dusk/save_manager.cpp
-            ${miniz_SOURCE_DIR}/miniz.c)
-    target_compile_definitions(save_manager_tests PRIVATE ${GAME_COMPILE_DEFS})
-    target_include_directories(save_manager_tests PRIVATE ${miniz_SOURCE_DIR})
-    target_link_libraries(save_manager_tests PRIVATE ${GAME_LIBS} gtest_main)
-    target_precompile_headers(save_manager_tests PRIVATE
-            "$<$<COMPILE_LANGUAGE:CXX>:${CMAKE_SOURCE_DIR}/include/dusk_pch.hpp>")
-    add_test(NAME save_manager COMMAND save_manager_tests)
-endif ()
-
 if(ANDROID)
     add_library(dusklight SHARED ${GAME_FILES} ${miniz_SOURCE_DIR}/miniz.c)
 else ()

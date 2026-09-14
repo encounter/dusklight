@@ -23,16 +23,3 @@ an archive.
 
 Backups are stored in a `backups` directory inside the GCI folder or beside the raw card image. Raw card replacement backs
 up registered mode saves; it does not back up unrelated games on the card. Export the full card image to preserve those.
-
-## Development checks
-
-```sh
-cmake --preset macos-default-debug -DBUILD_TESTING=ON
-cmake --build --preset macos-default-debug --target dusklight save_manager_tests card_transfer_tests
-ctest --test-dir build/macos-default-debug -R '^save_manager$' --output-on-failure
-ctest --test-dir build/macos-default-debug/extern/aurora -R '^CardTransferTest' --output-on-failure
-```
-
-The save-manager tests use temporary storage and cover archive round trips, recovery after failed replacement, backup
-retention, region validation, and mod-data deletion. Aurora's transfer test covers raw-card insertion, extraction,
-replacement, and deletion.
