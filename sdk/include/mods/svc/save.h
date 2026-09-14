@@ -21,6 +21,7 @@ typedef uint64_t SaveObserverHandle;
  *
  * Blobs are scoped to the calling mod, active CARD save file, and slot. Current-slot calls
  * return MOD_UNAVAILABLE when no slot is active.
+ * Names must contain 1-256 bytes, excluding the NUL terminator.
  *
  * Callbacks run on the game thread. Observer registrations are removed when the calling mod is
  * detached.

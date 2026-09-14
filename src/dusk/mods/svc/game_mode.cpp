@@ -6,13 +6,13 @@
 #include "dusk/game_mode.hpp"
 #include "dusk/mod_loader.hpp"
 #include "dusk/mods/loader/loader.hpp"
+#include "dusk/utilities.hpp"
 
 #include <aurora/lib/logging.hpp>
 #include <fmt/format.h>
 
 #include <algorithm>
 #include <cctype>
-#include <cstring>
 #include <exception>
 #include <optional>
 #include <string>
@@ -79,30 +79,21 @@ std::string get_mod_game_mode_id(ModContext* ctx, const std::string& id) {
     return fullId;
 }
 
-std::optional<std::string> validate_save_name(const GameModeDesc& desc, std::string_view id) {
-    const auto* terminator =
-        static_cast<const char*>(std::memchr(desc.save_name, '\0', sizeof(desc.save_name)));
-    if (terminator == nullptr) {
+std::optional<std::string> parse_save_name(const GameModeDesc& desc, std::string_view id) {
+    const auto saveName = utils::bounded_string(desc.save_name, sizeof(desc.save_name));
+    if (!saveName) {
         Log.error("Game mode {} has a save name longer than {} characters", id,
             sizeof(desc.save_name) - 1);
         return std::nullopt;
     }
 
-    std::string saveName{desc.save_name, terminator};
-    if (saveName.empty()) {
-        return saveName;
-    }
-    const bool validCharacters = std::ranges::all_of(saveName, [](char ch) {
-        return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') ||
-               ch == '.' || ch == '_' || ch == '-';
-    });
-    if (!validCharacters || saveName == "." || saveName == "..") {
+    if (!saveName->empty() && !utils::is_valid_save_name(*saveName)) {
         Log.error("Game mode {} has invalid save name '{}'; expected only letters, digits, '.', "
                   "'_', and '-'",
-            id, saveName);
+            id, *saveName);
         return std::nullopt;
     }
-    return saveName;
+    return std::string{*saveName};
 }
 
 void game_mode_remove_mod(LoadedMod& mod) {
@@ -122,17 +113,11 @@ ModResult register_game_mode(ModContext* ctx, const GameModeDesc* desc) {
         return MOD_INVALID_ARGUMENT;
     }
 
-    std::string id;
-    if (!desc->game_mode_id) {
-        Log.error("Attempted to register a game mode with a null ID");
+    if (!utils::is_valid_name(desc->game_mode_id)) {
+        Log.error("Attempted to register a game mode with no ID");
         return MOD_ERROR;
     }
-    id = desc->game_mode_id;
-    if (id.empty()) {
-        Log.error("Attempted to register a game mode with an empty ID");
-        return MOD_ERROR;
-    }
-    id = get_mod_game_mode_id(ctx, id);
+    const auto id = get_mod_game_mode_id(ctx, desc->game_mode_id);
 
     std::string fullName;
     if (!desc->full_name) {
@@ -146,7 +131,7 @@ ModResult register_game_mode(ModContext* ctx, const GameModeDesc* desc) {
         }
     }
 
-    const auto saveName = validate_save_name(*desc, id);
+    const auto saveName = parse_save_name(*desc, id);
     if (!saveName) {
         return MOD_INVALID_ARGUMENT;
     }

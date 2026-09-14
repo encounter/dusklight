@@ -2,8 +2,8 @@
 
 #include "dusk/hash.hpp"
 #include "dusk/mod_loader.hpp"
-#include "dusk/mods/path.hpp"
 #include "dusk/ui/ui.hpp"
+#include "dusk/utilities.hpp"
 
 #include <borealis/http.hpp>
 #include <borealis/io.hpp>
@@ -126,7 +126,8 @@ std::string sha256_file(
 
 std::filesystem::path staging_path(
     const std::filesystem::path& stagingDir, std::string_view modId, std::string_view key) {
-    return stagingDir / fmt::format("{}-{}.dusk.part", safe_filename(modId), safe_filename(key));
+    return stagingDir /
+           fmt::format("{}-{}.dusk.part", utils::safe_filename(modId), utils::safe_filename(key));
 }
 
 bool copy_to_staging(const std::filesystem::path& source, const std::filesystem::path& destination,
@@ -304,7 +305,7 @@ void start_download(QueueItem& item) {
     }
 
     item.partialPath =
-        userDir / ".downloads" / fmt::format("{}.dusk.part", safe_filename(item.request.id));
+        userDir / ".downloads" / fmt::format("{}.dusk.part", utils::safe_filename(item.request.id));
     std::error_code ec;
     std::filesystem::create_directories(item.partialPath.parent_path(), ec);
     if (ec) {

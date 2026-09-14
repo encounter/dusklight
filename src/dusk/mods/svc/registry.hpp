@@ -48,7 +48,6 @@ struct ServiceModule {
     void (*shutdown)() = nullptr;
 };
 
-bool valid_service_id(const char* serviceId);
 ModResult register_service(const char* serviceId, uint16_t majorVersion, uint16_t minorVersion,
     const void* service, LoadedMod* provider, bool deferred);
 ModResult publish_deferred_service(

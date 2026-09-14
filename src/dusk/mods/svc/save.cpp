@@ -66,24 +66,6 @@ bool s_legacyMigrationChecked = false;
 std::vector<SaveObserverRecord> s_observers;
 uint64_t s_nextHandle = 1;
 
-bool is_valid_path_component(std::string_view value) {
-    if (value.empty() || value == "." || value == "..") {
-        return false;
-    }
-    return std::ranges::all_of(value, [](char ch) {
-        return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') ||
-               ch == '.' || ch == '_' || ch == '-';
-    });
-}
-
-bool is_valid_blob_name(std::string_view name) {
-    return !name.empty() && name.size() <= kMaxBlobNameLength;
-}
-
-bool is_valid_blob_name(const char* name) {
-    return name != nullptr && is_valid_blob_name(std::string_view{name});
-}
-
 std::filesystem::path legacy_sidecar_path() {
     return ConfigPath / kLegacySidecarName;
 }
@@ -181,7 +163,7 @@ bool write_mod_sidecar(
 
 bool write_mod_sidecar(
     const std::string& saveName, const std::string& modId, const SaveStore& store) {
-    if (!is_valid_path_component(saveName) || !is_valid_path_component(modId)) {
+    if (!utils::is_valid_save_name(saveName) || !utils::is_valid_mod_id(modId)) {
         Log.error("refusing to write mod save sidecar with invalid path components '{}/{}'",
             saveName, modId);
         return false;
@@ -214,7 +196,7 @@ void load_mod_sidecar(const std::filesystem::path& path, const std::string& save
             BlobMap blobs;
             size_t totalSize = 0;
             for (const auto& [name, encoded] : blobsJson.items()) {
-                if (!is_valid_blob_name(name) || !encoded.is_string()) {
+                if (!utils::is_valid_name(name, kMaxBlobNameLength) || !encoded.is_string()) {
                     Log.warn("mod save sidecar: invalid blob '{}' in {}/{} slot {}; dropped", name,
                         saveName, modId, slot);
                     continue;
@@ -280,7 +262,7 @@ SaveStore& load_save_store(const std::string& saveName) {
                 continue;
             }
             const auto modId = borealis::io::fs_path_to_string(entry.path().stem());
-            if (!is_valid_path_component(modId)) {
+            if (!utils::is_valid_mod_id(modId)) {
                 Log.warn("ignoring mod save sidecar with invalid mod ID '{}'", modId);
                 continue;
             }
@@ -296,7 +278,7 @@ SaveStore& load_save_store(const std::string& saveName) {
 std::optional<std::string> current_save_name() {
     const char* fileName = mDoMemCd_GetFileName();
     std::string saveName = fileName != nullptr ? fileName : "";
-    if (!is_valid_path_component(saveName)) {
+    if (!utils::is_valid_save_name(saveName)) {
         Log.error("CARD save file name '{}' is invalid for mod save storage", saveName);
         return std::nullopt;
     }
@@ -369,12 +351,12 @@ save_manager::Result migrate_legacy_sidecar(
             const auto& slotJson = slots[slot];
             const auto modsJson = slotJson.value("mods", nlohmann::json::object());
             for (const auto& [modId, blobs] : modsJson.items()) {
-                if (!is_valid_path_component(modId)) {
+                if (!utils::is_valid_mod_id(modId)) {
                     Log.warn("legacy mod save sidecar has invalid mod ID '{}'; dropped", modId);
                     continue;
                 }
                 for (const auto& [name, encoded] : blobs.items()) {
-                    if (!is_valid_blob_name(name) || !encoded.is_string()) {
+                    if (!utils::is_valid_name(name, kMaxBlobNameLength) || !encoded.is_string()) {
                         Log.warn(
                             "legacy mod save sidecar: invalid blob '{}/{}' in slot {}; dropped",
                             modId, name, slot);
@@ -542,8 +524,8 @@ CurrentBlobs current_blobs(const LoadedMod& mod, bool create) {
 
 ModResult save_set_blob(ModContext* context, const char* name, const void* data, size_t size) {
     auto* mod = mod_from_context(context);
-    if (mod == nullptr || !is_valid_blob_name(name) || (data == nullptr && size != 0) ||
-        size > SAVE_BLOB_BUDGET_BYTES)
+    if (mod == nullptr || !utils::is_valid_name(name, kMaxBlobNameLength) ||
+        (data == nullptr && size != 0) || size > SAVE_BLOB_BUDGET_BYTES)
     {
         return MOD_INVALID_ARGUMENT;
     }
@@ -574,7 +556,7 @@ ModResult save_set_blob(ModContext* context, const char* name, const void* data,
 
 ModResult save_get_blob(ModContext* context, const char* name, void* buf, size_t* inoutSize) {
     auto* mod = mod_from_context(context);
-    if (mod == nullptr || !is_valid_blob_name(name) || inoutSize == nullptr) {
+    if (mod == nullptr || !utils::is_valid_name(name, kMaxBlobNameLength) || inoutSize == nullptr) {
         return MOD_INVALID_ARGUMENT;
     }
     const auto [store, blobs] = current_blobs(*mod, false);
@@ -599,7 +581,7 @@ ModResult save_get_blob(ModContext* context, const char* name, void* buf, size_t
 
 ModResult save_delete_blob(ModContext* context, const char* name) {
     auto* mod = mod_from_context(context);
-    if (mod == nullptr || !is_valid_blob_name(name)) {
+    if (mod == nullptr || !utils::is_valid_name(name, kMaxBlobNameLength)) {
         return MOD_INVALID_ARGUMENT;
     }
     const auto [store, blobs] = current_blobs(*mod, false);
@@ -648,7 +630,9 @@ ModResult save_unobserve(ModContext* context, SaveObserverHandle handle) {
 ModResult save_peek_blob(
     ModContext* context, uint32_t slot, const char* name, void* buf, size_t* inoutSize) {
     auto* mod = mod_from_context(context);
-    if (mod == nullptr || !is_valid_blob_name(name) || inoutSize == nullptr || slot >= kSlotCount) {
+    if (mod == nullptr || !utils::is_valid_name(name, kMaxBlobNameLength) || inoutSize == nullptr ||
+        slot >= kSlotCount)
+    {
         return MOD_INVALID_ARGUMENT;
     }
     const auto saveName = current_save_name();

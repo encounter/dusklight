@@ -6,6 +6,7 @@
 #include "dusk/main.h"
 #include "dusk/mod_loader.hpp"
 #include "dusk/mods/svc/save.hpp"
+#include "dusk/utilities.hpp"
 #include "fmt/format.h"
 #include "helpers/bits.hpp"
 #include "m_Do/m_Do_MemCard.h"
@@ -173,16 +174,6 @@ std::filesystem::path backup_directory(const Storage& storage) {
            "backups";
 }
 
-bool is_valid_mod_id(std::string_view id) {
-    if (id.empty() || id.size() > 255 || id == "." || id == "..") {
-        return false;
-    }
-    return std::ranges::all_of(id, [](char ch) {
-        return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') ||
-               ch == '.' || ch == '_' || ch == '-';
-    });
-}
-
 ValueResult<std::map<std::string, std::vector<uint8_t>>> read_mod_files(
     const Storage& storage, const SaveIdentity& identity) {
     std::map<std::string, std::vector<uint8_t>> files;
@@ -202,7 +193,7 @@ ValueResult<std::map<std::string, std::vector<uint8_t>>> read_mod_files(
                 continue;
             }
             const std::string id = borealis::io::fs_path_to_string(entry.path().stem());
-            if (!is_valid_mod_id(id)) {
+            if (!utils::is_valid_mod_id(id)) {
                 continue;
             }
             const auto location = borealis::io::fs_path_to_string(entry.path());
@@ -366,7 +357,7 @@ ValueResult<Artifact> read_dusksave(std::vector<uint8_t> bytes, std::string sour
                 return {failure("The Dusklight save metadata is invalid."), {}};
             }
             const std::string id = mod.value("id", "");
-            if (!is_valid_mod_id(id) || !declaredIds.insert(id).second ||
+            if (!utils::is_valid_mod_id(id) || !declaredIds.insert(id).second ||
                 !mod.contains("version") || !mod["version"].is_string())
             {
                 return {failure("The Dusklight save metadata is invalid."), {}};
@@ -389,13 +380,11 @@ ValueResult<Artifact> read_dusksave(std::vector<uint8_t> bytes, std::string sour
             continue;
         }
         const std::string_view child = name.substr(5);
-        if (child.empty() || child.find('/') != std::string_view::npos ||
-            child.find('\\') != std::string_view::npos || !child.ends_with(".json"))
-        {
+        if (!utils::is_safe_path_component(child) || !child.ends_with(".json")) {
             return {failure("The save archive contains an unsafe mod data path."), {}};
         }
         const std::string id{child.substr(0, child.size() - 5)};
-        if (!is_valid_mod_id(id) || artifact.modFiles.contains(id)) {
+        if (!utils::is_valid_mod_id(id) || artifact.modFiles.contains(id)) {
             return {failure("The save archive contains an invalid mod data entry."), {}};
         }
         auto data = extract_zip_entry(zip, i, kMaxModFileSize);
@@ -721,18 +710,8 @@ ValueResult<std::vector<uint8_t>> gci_from_artifact(
 
 }  // namespace
 
-bool is_valid_save_name(std::string_view name) {
-    if (name.empty() || name.size() >= 32 || name == "." || name == "..") {
-        return false;
-    }
-    return std::ranges::all_of(name, [](char ch) {
-        return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') ||
-               ch == '.' || ch == '_' || ch == '-';
-    });
-}
-
 std::optional<SaveIdentity> identity_for_disc(const iso::DiscInfo& info, std::string saveName) {
-    if (info.platform != iso::Platform::GameCube || !is_valid_save_name(saveName)) {
+    if (info.platform != iso::Platform::GameCube || !utils::is_valid_save_name(saveName)) {
         return std::nullopt;
     }
     std::string game;
@@ -821,7 +800,7 @@ ValueResult<GciHeader> parse_gci(const std::vector<uint8_t>& bytes) {
 }
 
 Result rename_gci(std::vector<uint8_t>& bytes, std::string_view saveName) {
-    if (!is_valid_save_name(saveName) || bytes.size() < kGciHeaderSize) {
+    if (!utils::is_valid_save_name(saveName) || bytes.size() < kGciHeaderSize) {
         return failure("The selected save filename is invalid.");
     }
     std::fill_n(bytes.begin() + 8, 32, uint8_t{0});
@@ -1086,7 +1065,7 @@ Result delete_save(const Storage& storage, const SaveIdentity& identity) {
 
 Result delete_mod_data(
     const Storage& storage, const SaveIdentity& identity, std::string_view modId) {
-    if (!is_valid_mod_id(modId)) {
+    if (!utils::is_valid_mod_id(modId)) {
         return failure("The mod ID is invalid.");
     }
     if (const Result allowed = ensure_write_allowed(storage); !allowed) {

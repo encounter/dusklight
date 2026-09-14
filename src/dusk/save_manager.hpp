@@ -103,7 +103,6 @@ struct BackupInfo {
     std::filesystem::file_time_type modified;
 };
 
-bool is_valid_save_name(std::string_view name);
 std::optional<SaveIdentity> identity_for_disc(const iso::DiscInfo& info, std::string saveName);
 
 std::string card_file_stem(

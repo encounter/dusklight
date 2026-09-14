@@ -2,6 +2,7 @@
 
 #include <borealis/log.hpp>
 #include "dusk/mods/loader/loader.hpp"
+#include "dusk/utilities.hpp"
 #include "mods/svc/resource.h"
 
 #include <fmt/format.h>
@@ -42,7 +43,7 @@ ModResult resource_load(ModContext* context, const char* relativePath, ResourceB
     outBuffer->data = nullptr;
     outBuffer->size = 0;
     auto* mod = mod_from_context(context);
-    if (mod == nullptr || relativePath == nullptr || !is_safe_resource_path(relativePath)) {
+    if (mod == nullptr || relativePath == nullptr || !utils::is_safe_resource_path(relativePath)) {
         return MOD_INVALID_ARGUMENT;
     }
 

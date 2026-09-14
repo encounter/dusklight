@@ -13,6 +13,7 @@
 #include "dusk/ui/mod_window.hpp"
 #include "dusk/ui/modal.hpp"
 #include "dusk/ui/ui.hpp"
+#include "dusk/utilities.hpp"
 #include "mods/svc/ui.h"
 
 #include <aurora/rmlui.hpp>
@@ -1610,7 +1611,7 @@ ModResult ui_register_styles_file(
         *outStyle = 0;
     }
     auto* mod = mod_from_context(context);
-    if (mod == nullptr || path == nullptr || !is_safe_resource_path(path) ||
+    if (mod == nullptr || path == nullptr || !utils::is_safe_resource_path(path) ||
         scope > UI_SCOPE_GRAPHICS_TUNER)
     {
         return MOD_INVALID_ARGUMENT;
