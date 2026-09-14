@@ -1,5 +1,6 @@
 #include "save.hpp"
 
+#include "internal.hpp"
 #include "item.hpp"
 #include "registry.hpp"
 
@@ -12,8 +13,8 @@
 #include "mods/svc/save.h"
 
 #include <aurora/card.h>
-#include <aurora/lib/logging.hpp>
 #include <borealis/io.hpp>
+#include <borealis/log.hpp>
 
 #include <algorithm>
 #include <array>
@@ -28,7 +29,7 @@
 namespace dusk::mods::svc {
 namespace {
 
-aurora::Module Log("dusk::mods::save");
+borealis::Log Log{"dusk::mods::save"};
 
 constexpr uint32_t kSlotCount = 3;
 constexpr int kLegacySidecarVersion = 1;
@@ -77,6 +78,10 @@ bool is_valid_path_component(std::string_view value) {
 
 bool is_valid_blob_name(std::string_view name) {
     return !name.empty() && name.size() <= kMaxBlobNameLength;
+}
+
+bool is_valid_blob_name(const char* name) {
+    return name != nullptr && is_valid_blob_name(std::string_view{name});
 }
 
 std::filesystem::path legacy_sidecar_path() {
@@ -491,12 +496,12 @@ void invalidate_save(std::string_view saveName) {
 
 namespace {
 
-struct CurrentBlobAccess {
+struct CurrentBlobs {
     SaveStore* store = nullptr;
     BlobMap* blobs = nullptr;
 };
 
-CurrentBlobAccess current_blobs(const LoadedMod& mod, bool create) {
+CurrentBlobs current_blobs(const LoadedMod& mod, bool create) {
     if (s_currentSlot < 0) {
         return {};
     }
@@ -516,22 +521,26 @@ CurrentBlobAccess current_blobs(const LoadedMod& mod, bool create) {
     return {&store, &mods[mod.metadata.id]};
 }
 
-}  // namespace
-
-ModResult save_set_blob(LoadedMod& mod, const char* name, const void* data, size_t size) {
-    const auto access = current_blobs(mod, true);
-    if (access.blobs == nullptr) {
+ModResult save_set_blob(ModContext* context, const char* name, const void* data, size_t size) {
+    auto* mod = mod_from_context(context);
+    if (mod == nullptr || !is_valid_blob_name(name) || (data == nullptr && size != 0) ||
+        size > SAVE_BLOB_BUDGET_BYTES)
+    {
+        return MOD_INVALID_ARGUMENT;
+    }
+    const auto [store, blobs] = current_blobs(*mod, true);
+    if (blobs == nullptr) {
         return MOD_UNAVAILABLE;
     }
     size_t total = size;
-    for (const auto& [blobName, bytes] : *access.blobs) {
+    for (const auto& [blobName, bytes] : *blobs) {
         if (blobName != name) {
             total += bytes.size();
         }
     }
     if (total > SAVE_BLOB_BUDGET_BYTES) {
         Log.error("[{}] save blob '{}' rejected: {} bytes would exceed the {}-byte budget",
-            mod.metadata.id, name, total, SAVE_BLOB_BUDGET_BYTES);
+            mod->metadata.id, name, total, SAVE_BLOB_BUDGET_BYTES);
         return MOD_UNAVAILABLE;
     }
     const auto* bytes = static_cast<const uint8_t*>(data);
@@ -539,66 +548,88 @@ ModResult save_set_blob(LoadedMod& mod, const char* name, const void* data, size
     if (size != 0) {
         blob.assign(bytes, bytes + size);
     }
-    (*access.blobs)[name] = std::move(blob);
-    access.store->dirtyMods.insert(mod.metadata.id);
+    (*blobs)[name] = std::move(blob);
+    store->dirtyMods.insert(mod->metadata.id);
     return MOD_OK;
 }
 
-ModResult save_get_blob(LoadedMod& mod, const char* name, void* buf, size_t& inoutSize) {
-    const auto access = current_blobs(mod, false);
-    if (access.blobs == nullptr) {
+ModResult save_get_blob(ModContext* context, const char* name, void* buf, size_t* inoutSize) {
+    auto* mod = mod_from_context(context);
+    if (mod == nullptr || !is_valid_blob_name(name) || inoutSize == nullptr) {
+        return MOD_INVALID_ARGUMENT;
+    }
+    const auto [store, blobs] = current_blobs(*mod, false);
+    if (blobs == nullptr) {
         return MOD_UNAVAILABLE;
     }
-    const auto it = access.blobs->find(name);
-    if (it == access.blobs->end()) {
+    const auto it = blobs->find(name);
+    if (it == blobs->end()) {
         return MOD_UNAVAILABLE;
     }
     if (buf == nullptr) {
-        inoutSize = it->second.size();
+        *inoutSize = it->second.size();
         return MOD_OK;
     }
-    if (inoutSize < it->second.size()) {
+    if (*inoutSize < it->second.size()) {
         return MOD_INVALID_ARGUMENT;
     }
     std::memcpy(buf, it->second.data(), it->second.size());
-    inoutSize = it->second.size();
+    *inoutSize = it->second.size();
     return MOD_OK;
 }
 
-ModResult save_delete_blob(LoadedMod& mod, const char* name) {
-    const auto access = current_blobs(mod, false);
-    if (access.blobs == nullptr) {
-        return MOD_UNAVAILABLE;
-    }
-    if (access.blobs->erase(name) == 0) {
+ModResult save_delete_blob(ModContext* context, const char* name) {
+    auto* mod = mod_from_context(context);
+    if (mod == nullptr || !is_valid_blob_name(name)) {
         return MOD_INVALID_ARGUMENT;
     }
-    access.store->dirtyMods.insert(mod.metadata.id);
+    const auto [store, blobs] = current_blobs(*mod, false);
+    if (blobs == nullptr) {
+        return MOD_UNAVAILABLE;
+    }
+    if (blobs->erase(name) == 0) {
+        return MOD_INVALID_ARGUMENT;
+    }
+    store->dirtyMods.insert(mod->metadata.id);
     return MOD_OK;
 }
 
-ModResult save_observe(LoadedMod& mod, SaveEventFn onNewSave, SaveEventFn onLoaded,
-    SaveEventFn onWritten, void* userData, uint64_t& outHandle) {
+ModResult save_observe(ModContext* context, SaveEventFn onNewSave, SaveEventFn onLoaded,
+    SaveEventFn onWritten, void* userData, SaveObserverHandle* outHandle) {
+    if (outHandle != nullptr) {
+        *outHandle = 0;
+    }
+    auto* mod = mod_from_context(context);
+    if (mod == nullptr || (onNewSave == nullptr && onLoaded == nullptr && onWritten == nullptr)) {
+        return MOD_INVALID_ARGUMENT;
+    }
     auto& observer = s_observers.emplace_back();
     observer.handle = s_nextHandle++;
-    observer.mod = &mod;
+    observer.mod = mod;
     observer.onNewSave = onNewSave;
     observer.onLoaded = onLoaded;
     observer.onWritten = onWritten;
     observer.userData = userData;
-    outHandle = observer.handle;
+    if (outHandle != nullptr) {
+        *outHandle = observer.handle;
+    }
     return MOD_OK;
 }
 
-ModResult save_unobserve(LoadedMod& mod, uint64_t handle) {
+ModResult save_unobserve(ModContext* context, SaveObserverHandle handle) {
+    auto* mod = mod_from_context(context);
+    if (mod == nullptr || handle == 0) {
+        return MOD_INVALID_ARGUMENT;
+    }
     const auto removed = std::erase_if(s_observers,
-        [&](const auto& observer) { return observer.handle == handle && observer.mod == &mod; });
+        [&](const auto& observer) { return observer.handle == handle && observer.mod == mod; });
     return removed != 0 ? MOD_OK : MOD_INVALID_ARGUMENT;
 }
 
 ModResult save_peek_blob(
-    LoadedMod& mod, uint32_t slot, const char* name, void* buf, size_t& inoutSize) {
-    if (slot >= kSlotCount) {
+    ModContext* context, uint32_t slot, const char* name, void* buf, size_t* inoutSize) {
+    auto* mod = mod_from_context(context);
+    if (mod == nullptr || !is_valid_blob_name(name) || inoutSize == nullptr || slot >= kSlotCount) {
         return MOD_INVALID_ARGUMENT;
     }
     const auto saveName = current_save_name();
@@ -610,7 +641,7 @@ ModResult save_peek_blob(
         return MOD_UNAVAILABLE;
     }
     const auto& mods = store.slots[slot].mods;
-    const auto modIt = mods.find(mod.metadata.id);
+    const auto modIt = mods.find(mod->metadata.id);
     if (modIt == mods.end()) {
         return MOD_UNAVAILABLE;
     }
@@ -619,14 +650,14 @@ ModResult save_peek_blob(
         return MOD_UNAVAILABLE;
     }
     if (buf == nullptr) {
-        inoutSize = it->second.size();
+        *inoutSize = it->second.size();
         return MOD_OK;
     }
-    if (inoutSize < it->second.size()) {
+    if (*inoutSize < it->second.size()) {
         return MOD_INVALID_ARGUMENT;
     }
     std::memcpy(buf, it->second.data(), it->second.size());
-    inoutSize = it->second.size();
+    *inoutSize = it->second.size();
     return MOD_OK;
 }
 
@@ -635,83 +666,14 @@ void save_remove_mod(LoadedMod& mod) {
     // Blob data persists across mod reloads.
 }
 
-namespace {
-bool is_valid_blob_name(const char* name) {
-    if (name == nullptr) {
-        return false;
-    }
-    const std::string_view view{name};
-    return !view.empty() && view.size() <= kMaxBlobNameLength;
-}
-
-ModResult save_set_blob_(ModContext* context, const char* name, const void* data, size_t size) {
-    auto* mod = mod_from_context(context);
-    if (mod == nullptr || !is_valid_blob_name(name) || (data == nullptr && size != 0) ||
-        size > SAVE_BLOB_BUDGET_BYTES)
-    {
-        return MOD_INVALID_ARGUMENT;
-    }
-    return save_set_blob(*mod, name, data, size);
-}
-
-ModResult save_get_blob_(ModContext* context, const char* name, void* buf, size_t* inoutSize) {
-    auto* mod = mod_from_context(context);
-    if (mod == nullptr || !is_valid_blob_name(name) || inoutSize == nullptr) {
-        return MOD_INVALID_ARGUMENT;
-    }
-    return save_get_blob(*mod, name, buf, *inoutSize);
-}
-
-ModResult save_delete_blob_(ModContext* context, const char* name) {
-    auto* mod = mod_from_context(context);
-    if (mod == nullptr || !is_valid_blob_name(name)) {
-        return MOD_INVALID_ARGUMENT;
-    }
-    return save_delete_blob(*mod, name);
-}
-
-ModResult save_observe_saves_(ModContext* context, SaveEventFn onNewSave, SaveEventFn onLoaded,
-    SaveEventFn onWritten, void* userData, SaveObserverHandle* outHandle) {
-    if (outHandle != nullptr) {
-        *outHandle = 0;
-    }
-    auto* mod = mod_from_context(context);
-    if (mod == nullptr || (onNewSave == nullptr && onLoaded == nullptr && onWritten == nullptr)) {
-        return MOD_INVALID_ARGUMENT;
-    }
-    uint64_t handle = 0;
-    const auto result = save_observe(*mod, onNewSave, onLoaded, onWritten, userData, handle);
-    if (outHandle != nullptr) {
-        *outHandle = handle;
-    }
-    return result;
-}
-
-ModResult save_unobserve_saves_(ModContext* context, SaveObserverHandle handle) {
-    auto* mod = mod_from_context(context);
-    if (mod == nullptr || handle == 0) {
-        return MOD_INVALID_ARGUMENT;
-    }
-    return save_unobserve(*mod, handle);
-}
-
-ModResult save_peek_blob_(
-    ModContext* context, uint32_t slot, const char* name, void* buf, size_t* inoutSize) {
-    auto* mod = mod_from_context(context);
-    if (mod == nullptr || !is_valid_blob_name(name) || inoutSize == nullptr) {
-        return MOD_INVALID_ARGUMENT;
-    }
-    return save_peek_blob(*mod, slot, name, buf, *inoutSize);
-}
-
 constexpr SaveService s_saveService{
     .header = SERVICE_HEADER(SaveService, SAVE_SERVICE_MAJOR, SAVE_SERVICE_MINOR),
-    .set_blob = save_set_blob_,
-    .get_blob = save_get_blob_,
-    .delete_blob = save_delete_blob_,
-    .observe_saves = save_observe_saves_,
-    .unobserve_saves = save_unobserve_saves_,
-    .peek_blob = save_peek_blob_,
+    .set_blob = SERVICE_FUNCTION(save_set_blob),
+    .get_blob = SERVICE_FUNCTION(save_get_blob),
+    .delete_blob = SERVICE_FUNCTION(save_delete_blob),
+    .observe_saves = SERVICE_FUNCTION(save_observe),
+    .unobserve_saves = SERVICE_FUNCTION(save_unobserve),
+    .peek_blob = SERVICE_FUNCTION(save_peek_blob),
 };
 
 }  // namespace

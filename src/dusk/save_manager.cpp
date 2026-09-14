@@ -7,6 +7,7 @@
 #include "dusk/mod_loader.hpp"
 #include "dusk/mods/svc/save.hpp"
 #include "fmt/format.h"
+#include "helpers/bits.hpp"
 #include "m_Do/m_Do_MemCard.h"
 #include "miniz.h"
 #include "nlohmann/json.hpp"
@@ -47,15 +48,6 @@ Result failure(std::string message) {
     return {.ok = false, .message = std::move(message)};
 }
 
-uint16_t read_be16(const uint8_t* value) {
-    return static_cast<uint16_t>((static_cast<uint16_t>(value[0]) << 8) | value[1]);
-}
-
-uint32_t read_be32(const uint8_t* value) {
-    return (static_cast<uint32_t>(value[0]) << 24) | (static_cast<uint32_t>(value[1]) << 16) |
-           (static_cast<uint32_t>(value[2]) << 8) | static_cast<uint32_t>(value[3]);
-}
-
 std::string fixed_string(const uint8_t* value, size_t size) {
     const auto* end = static_cast<const uint8_t*>(std::memchr(value, '\0', size));
     return std::string{reinterpret_cast<const char*>(value),
@@ -76,7 +68,7 @@ bool valid_raw(const std::vector<uint8_t>& bytes) {
     uint16_t checksum = 0;
     uint16_t inverse = 0;
     for (size_t i = 0; i < 0xfe; ++i) {
-        const uint16_t word = read_be16(bytes.data() + i * 2);
+        const uint16_t word = read_bits<uint16_t>(bytes.data() + i * 2);
         checksum = static_cast<uint16_t>(checksum + word);
         inverse = static_cast<uint16_t>(inverse + static_cast<uint16_t>(word ^ 0xffff));
     }
@@ -86,11 +78,13 @@ bool valid_raw(const std::vector<uint8_t>& bytes) {
     if (inverse == 0xffff) {
         inverse = 0;
     }
-    if (checksum != read_be16(bytes.data() + 0x1fc) || inverse != read_be16(bytes.data() + 0x1fe)) {
+    if (checksum != read_bits<uint16_t>(bytes.data() + 0x1fc) ||
+        inverse != read_bits<uint16_t>(bytes.data() + 0x1fe))
+    {
         return false;
     }
 
-    const uint16_t sizeMb = read_be16(bytes.data() + 0x22);
+    const uint16_t sizeMb = read_bits<uint16_t>(bytes.data() + 0x22);
     return sizeMb >= 4 && sizeMb <= 128 && (sizeMb & (sizeMb - 1)) == 0 &&
            static_cast<size_t>(sizeMb) * 16 * kCardBlockSize == bytes.size();
 }
@@ -807,7 +801,7 @@ ValueResult<GciHeader> parse_gci(const std::vector<uint8_t>& bytes) {
     if (bytes.size() < kGciHeaderSize || (bytes.size() - kGciHeaderSize) % kCardBlockSize != 0) {
         return {failure("The selected file is not a valid GCI save."), {}};
     }
-    const uint16_t blockCount = read_be16(bytes.data() + 0x38);
+    const uint16_t blockCount = read_bits<uint16_t>(bytes.data() + 0x38);
     if (blockCount == 0 || blockCount != (bytes.size() - kGciHeaderSize) / kCardBlockSize ||
         !printable(std::span{bytes.data(), size_t{6}}))
     {
@@ -821,7 +815,7 @@ ValueResult<GciHeader> parse_gci(const std::vector<uint8_t>& bytes) {
                            .maker = fixed_string(bytes.data() + 4, 2),
                            .game = fixed_string(bytes.data(), 4),
                            .saveName = saveName,
-                           .modifiedTime = read_be32(bytes.data() + 0x28),
+                           .modifiedTime = read_bits<uint32_t>(bytes.data() + 0x28),
                            .blockCount = blockCount,
                        }};
 }
@@ -848,15 +842,25 @@ ValueResult<Artifact> read_artifact(std::string_view location) {
     }
     auto parsed = parse_gci(read.value);
     if (parsed) {
-        return {success(), Artifact{.kind = ArtifactKind::Gci,
-                               .header = std::move(parsed.value),
-                               .gci = std::move(read.value),
-                               .sourceName = sourceName}};
+        return {
+            success(),
+            Artifact{
+                .kind = ArtifactKind::Gci,
+                .header = std::move(parsed.value),
+                .gci = std::move(read.value),
+                .sourceName = sourceName,
+            },
+        };
     }
     if (valid_raw(read.value)) {
-        return {success(),
+        return {
+            success(),
             Artifact{
-                .kind = ArtifactKind::Raw, .raw = std::move(read.value), .sourceName = sourceName}};
+                .kind = ArtifactKind::Raw,
+                .raw = std::move(read.value),
+                .sourceName = sourceName,
+            },
+        };
     }
     return {failure("The selected file is not a GCI, raw card image, or Dusklight save."), {}};
 }
@@ -886,7 +890,11 @@ ValueResult<SaveInfo> inspect_save(const Storage& storage, const SaveIdentity& i
         return {mods.result, {}};
     }
     for (const auto& [id, data] : mods.value) {
-        info.mods.push_back({.id = id, .version = mod_version(id), .size = data.size()});
+        info.mods.push_back({
+            .id = id,
+            .version = mod_version(id),
+            .size = data.size(),
+        });
     }
     return {success(), std::move(info)};
 }
@@ -935,8 +943,12 @@ ValueResult<ExportArtifact> raw_card_export(const Storage& storage) {
         return {failure("There is no raw card image to export."), {}};
     }
     return {
-        success(), ExportArtifact{.path = storage.path,
-                       .suggestedName = borealis::io::fs_path_to_string(storage.path.filename())}};
+        success(),
+        ExportArtifact{
+            .path = storage.path,
+            .suggestedName = borealis::io::fs_path_to_string(storage.path.filename()),
+        },
+    };
 }
 
 Result import_artifact(const Storage& storage, const SaveIdentity& identity,
@@ -1132,8 +1144,11 @@ ValueResult<std::vector<BackupInfo>> list_backups(
                 continue;
             }
             if (entry.is_regular_file()) {
-                backups.push_back(
-                    {.path = entry.path(), .name = name, .modified = entry.last_write_time()});
+                backups.push_back({
+                    .path = entry.path(),
+                    .name = name,
+                    .modified = entry.last_write_time(),
+                });
             }
         }
     } catch (const std::exception& exception) {
