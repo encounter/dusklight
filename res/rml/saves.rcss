@@ -16,7 +16,6 @@ window.saves .save-title {
 
 window.saves .save-subtitle {
     display: block;
-    margin-top: calc(-1 * var(--space-sm));
     color: rgba(var(--color-text-rgb), 55%);
     font-size: var(--font-size-base);
 }

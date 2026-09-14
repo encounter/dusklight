@@ -88,71 +88,42 @@ std::filesystem::path legacy_sidecar_path() {
     return ConfigPath / kLegacySidecarName;
 }
 
-std::optional<std::filesystem::path> card_path() {
+std::optional<save_manager::Storage> card_storage() {
     const auto cardType = aurora_card_get_type(kCardChannel);
     if (cardType == AURORA_CARD_UNAVAILABLE) {
         return std::nullopt;
     }
     const auto& diskId = version::getDiskID();
-    const std::string game{diskId.gameName, sizeof(diskId.gameName)};
-    const size_t required = aurora_card_get_path(game.c_str(), cardType, kCardChannel, nullptr, 0);
-    if (required == 0) {
+    const std::string_view game{diskId.gameName, sizeof(diskId.gameName)};
+    const auto kind = cardType == AURORA_CARD_GCI_DIRECTORY ?
+                          save_manager::StorageKind::GciDirectory :
+                          save_manager::StorageKind::RawImage;
+    auto storage = save_manager::resolve_storage(game, kind, kCardChannel);
+    if (!storage) {
         return std::nullopt;
     }
-    std::vector<char> buffer(required);
-    if (aurora_card_get_path(game.c_str(), cardType, kCardChannel, buffer.data(), buffer.size()) !=
-        required)
-    {
-        return std::nullopt;
-    }
-    return borealis::io::fs_path_from_utf8(buffer.data());
+    return std::move(storage.value);
 }
 
-std::optional<std::filesystem::path> save_sidecar_directory(std::string_view saveName) {
-    auto backingPath = card_path();
-    if (!backingPath) {
-        return std::nullopt;
-    }
-
+std::filesystem::path save_sidecar_directory(
+    const save_manager::Storage& storage, std::string_view saveName) {
     const auto& diskId = version::getDiskID();
     const std::string_view maker{diskId.company, sizeof(diskId.company)};
     const std::string_view game{diskId.gameName, sizeof(diskId.gameName)};
-    switch (aurora_card_get_type(kCardChannel)) {
-    case AURORA_CARD_GCI_DIRECTORY:
-        return save_manager::save_sidecar_directory(
-            *backingPath, save_manager::StorageKind::GciDirectory, maker, game, saveName);
-    case AURORA_CARD_RAW_IMAGE:
-        return save_manager::save_sidecar_directory(
-            *backingPath, save_manager::StorageKind::RawImage, maker, game, saveName);
-    case AURORA_CARD_UNAVAILABLE:
-        return std::nullopt;
-    }
-    return std::nullopt;
+    return save_manager::save_sidecar_directory(storage.path, storage.kind, maker, game, saveName);
 }
 
 std::optional<std::filesystem::path> mod_sidecar_path(
     std::string_view saveName, std::string_view modId) {
-    const auto directory = save_sidecar_directory(saveName);
-    if (!directory) {
+    const auto storage = card_storage();
+    if (!storage) {
         return std::nullopt;
     }
-    return *directory / (std::string{modId} + ".json");
+    return save_sidecar_directory(*storage, saveName) / (std::string{modId} + ".json");
 }
 
 bool write_mod_sidecar(
-    const std::string& saveName, const std::string& modId, const SaveStore& store) {
-    if (!is_valid_path_component(saveName) || !is_valid_path_component(modId)) {
-        Log.error("refusing to write mod save sidecar with invalid path components '{}/{}'",
-            saveName, modId);
-        return false;
-    }
-
-    const auto path = mod_sidecar_path(saveName, modId);
-    if (!path) {
-        Log.error("CARD backing storage is unavailable for mod save sidecars");
-        return false;
-    }
-
+    const std::filesystem::path& path, const std::string& modId, const SaveStore& store) {
     nlohmann::json slots = nlohmann::json::array();
     bool hasBlobs = false;
     for (const auto& slot : store.slots) {
@@ -169,9 +140,10 @@ bool write_mod_sidecar(
 
     if (!hasBlobs) {
         std::error_code ec;
-        std::filesystem::remove(*path, ec);
+        std::filesystem::remove(path, ec);
         if (ec) {
-            Log.error("failed to remove mod save sidecar '{}': {}", path->string(), ec.message());
+            Log.error("failed to remove mod save sidecar '{}': {}",
+                borealis::io::fs_path_to_string(path), ec.message());
             return false;
         }
         return true;
@@ -181,100 +153,46 @@ bool write_mod_sidecar(
         {"version", kModSidecarVersion},
         {"slots", std::move(slots)},
     };
-    const auto tempPath = std::filesystem::path{path->string() + ".tmp"};
+    std::filesystem::path tempPath{path};
+    tempPath += ".tmp";
     try {
-        std::filesystem::create_directories(path->parent_path());
+        std::filesystem::create_directories(path.parent_path());
         {
             std::ofstream out{tempPath, std::ios::trunc};
             out << json.dump(2);
+            out.close();
             if (!out.good()) {
                 throw std::runtime_error{"write failed"};
             }
         }
         std::string error;
-        if (!borealis::io::atomic_replace(tempPath, *path, error)) {
+        if (!borealis::io::atomic_replace(tempPath, path, error)) {
             throw std::runtime_error{error};
         }
         return true;
     } catch (const std::exception& e) {
-        Log.error("failed to write mod save sidecar '{}': {}", path->string(), e.what());
+        Log.error("failed to write mod save sidecar '{}': {}",
+            borealis::io::fs_path_to_string(path), e.what());
         std::error_code ec;
         std::filesystem::remove(tempPath, ec);
         return false;
     }
 }
 
-void migrate_legacy_sidecar() {
-    if (s_legacyMigrationChecked) {
-        return;
-    }
-    const auto destination = save_sidecar_directory(kDefaultSaveName);
-    if (!destination) {
-        return;
-    }
-    s_legacyMigrationChecked = true;
-
-    const auto path = legacy_sidecar_path();
-    std::ifstream in{path};
-    if (!in.is_open()) {
-        return;
+bool write_mod_sidecar(
+    const std::string& saveName, const std::string& modId, const SaveStore& store) {
+    if (!is_valid_path_component(saveName) || !is_valid_path_component(modId)) {
+        Log.error("refusing to write mod save sidecar with invalid path components '{}/{}'",
+            saveName, modId);
+        return false;
     }
 
-    SaveStore legacyStore;
-    std::set<std::string> modIds;
-    try {
-        const auto json = nlohmann::json::parse(in);
-        if (json.value("version", 0) != kLegacySidecarVersion) {
-            Log.warn("legacy mod save sidecar has unknown version {}; ignoring it",
-                json.value("version", 0));
-            return;
-        }
-        const auto& slots = json.at("slots");
-        for (uint32_t slot = 0; slot < kSlotCount && slot < slots.size(); ++slot) {
-            const auto& slotJson = slots[slot];
-            const auto modsJson = slotJson.value("mods", nlohmann::json::object());
-            for (const auto& [modId, blobs] : modsJson.items()) {
-                if (!is_valid_path_component(modId)) {
-                    Log.warn("legacy mod save sidecar has invalid mod ID '{}'; dropped", modId);
-                    continue;
-                }
-                for (const auto& [name, encoded] : blobs.items()) {
-                    if (!is_valid_blob_name(name) || !encoded.is_string()) {
-                        Log.warn(
-                            "legacy mod save sidecar: invalid blob '{}/{}' in slot {}; dropped",
-                            modId, name, slot);
-                        continue;
-                    }
-                    std::vector<uint8_t> bytes;
-                    if (!utils::base64_decode(encoded.get<std::string>(), bytes)) {
-                        Log.warn("legacy mod save sidecar: bad blob '{}/{}' in slot {}; dropped",
-                            modId, name, slot);
-                        continue;
-                    }
-                    legacyStore.slots[slot].mods[modId][name] = std::move(bytes);
-                    modIds.insert(modId);
-                }
-            }
-        }
-    } catch (const std::exception& e) {
-        Log.error("failed to read legacy mod save sidecar: {}", e.what());
-        return;
+    const auto path = mod_sidecar_path(saveName, modId);
+    if (!path) {
+        Log.error("CARD backing storage is unavailable for mod save sidecars");
+        return false;
     }
-
-    for (const auto& modId : modIds) {
-        if (!write_mod_sidecar(kDefaultSaveName, modId, legacyStore)) {
-            return;
-        }
-    }
-
-    const auto backupPath = std::filesystem::path{path.string() + ".bak"};
-    std::string error;
-    if (!borealis::io::atomic_replace(path, backupPath, error)) {
-        Log.error("migrated legacy mod save data but failed to rename '{}' to '{}': {}",
-            path.string(), backupPath.string(), error);
-        return;
-    }
-    Log.info("migrated legacy mod save data to '{}'", destination->string());
+    return write_mod_sidecar(*path, modId, store);
 }
 
 void load_mod_sidecar(const std::filesystem::path& path, const std::string& saveName,
@@ -321,7 +239,8 @@ void load_mod_sidecar(const std::filesystem::path& path, const std::string& save
             }
         }
     } catch (const std::exception& e) {
-        Log.error("failed to read mod save sidecar '{}': {}", path.string(), e.what());
+        Log.error("failed to read mod save sidecar '{}': {}", borealis::io::fs_path_to_string(path),
+            e.what());
     }
 }
 
@@ -330,29 +249,37 @@ SaveStore& load_save_store(const std::string& saveName) {
     if (store.loaded) {
         return store;
     }
-    const auto directory = save_sidecar_directory(saveName);
-    if (!directory) {
+    const auto storage = card_storage();
+    if (!storage) {
         return store;
     }
 
-    migrate_legacy_sidecar();
+    const auto& diskId = version::getDiskID();
+    if (const auto migrated = migrate_legacy_sidecar(*storage,
+            {diskId.company, sizeof(diskId.company)}, {diskId.gameName, sizeof(diskId.gameName)});
+        !migrated)
+    {
+        Log.error("{}", migrated.message);
+        return store;
+    }
     store.loaded = true;
 
+    const auto directory = save_sidecar_directory(*storage, saveName);
     std::error_code ec;
-    if (!std::filesystem::exists(*directory, ec)) {
+    if (!std::filesystem::exists(directory, ec)) {
         if (ec) {
-            Log.error(
-                "failed to inspect mod save directory '{}': {}", directory->string(), ec.message());
+            Log.error("failed to inspect mod save directory '{}': {}",
+                borealis::io::fs_path_to_string(directory), ec.message());
         }
         return store;
     }
 
     try {
-        for (const auto& entry : std::filesystem::directory_iterator{*directory}) {
+        for (const auto& entry : std::filesystem::directory_iterator{directory}) {
             if (!entry.is_regular_file() || entry.path().extension() != ".json") {
                 continue;
             }
-            const auto modId = entry.path().stem().string();
+            const auto modId = borealis::io::fs_path_to_string(entry.path().stem());
             if (!is_valid_path_component(modId)) {
                 Log.warn("ignoring mod save sidecar with invalid mod ID '{}'", modId);
                 continue;
@@ -360,7 +287,8 @@ SaveStore& load_save_store(const std::string& saveName) {
             load_mod_sidecar(entry.path(), saveName, modId, store);
         }
     } catch (const std::exception& e) {
-        Log.error("failed to enumerate mod save directory '{}': {}", directory->string(), e.what());
+        Log.error("failed to enumerate mod save directory '{}': {}",
+            borealis::io::fs_path_to_string(directory), e.what());
     }
     return store;
 }
@@ -410,6 +338,97 @@ void notify(uint32_t slot, SaveEventFn SaveObserverRecord::* which, const char* 
 }
 
 }  // namespace
+
+save_manager::Result migrate_legacy_sidecar(
+    const save_manager::Storage& storage, std::string_view maker, std::string_view game) {
+    if (s_legacyMigrationChecked) {
+        return {.ok = true};
+    }
+
+    const auto path = legacy_sidecar_path();
+    try {
+        if (!std::filesystem::exists(path)) {
+            s_legacyMigrationChecked = true;
+            return {.ok = true};
+        }
+        std::ifstream in{path};
+        if (!in.is_open()) {
+            throw std::runtime_error{"Unable to open the legacy mod save file."};
+        }
+        const auto json = nlohmann::json::parse(in);
+        in.close();
+        if (json.value("version", 0) != kLegacySidecarVersion) {
+            throw std::runtime_error{
+                fmt::format("Unsupported legacy mod save version {}.", json.value("version", 0))};
+        }
+
+        SaveStore legacyStore;
+        std::set<std::string> modIds;
+        const auto& slots = json.at("slots");
+        for (uint32_t slot = 0; slot < kSlotCount && slot < slots.size(); ++slot) {
+            const auto& slotJson = slots[slot];
+            const auto modsJson = slotJson.value("mods", nlohmann::json::object());
+            for (const auto& [modId, blobs] : modsJson.items()) {
+                if (!is_valid_path_component(modId)) {
+                    Log.warn("legacy mod save sidecar has invalid mod ID '{}'; dropped", modId);
+                    continue;
+                }
+                for (const auto& [name, encoded] : blobs.items()) {
+                    if (!is_valid_blob_name(name) || !encoded.is_string()) {
+                        Log.warn(
+                            "legacy mod save sidecar: invalid blob '{}/{}' in slot {}; dropped",
+                            modId, name, slot);
+                        continue;
+                    }
+                    std::vector<uint8_t> bytes;
+                    if (!utils::base64_decode(encoded.get<std::string>(), bytes)) {
+                        Log.warn("legacy mod save sidecar: bad blob '{}/{}' in slot {}; dropped",
+                            modId, name, slot);
+                        continue;
+                    }
+                    legacyStore.slots[slot].mods[modId][name] = std::move(bytes);
+                    modIds.insert(modId);
+                }
+            }
+        }
+
+        for (const auto& modId : modIds) {
+            // Legacy blobs had no save identity, but the randomizer used its own CARD file.
+            const std::string_view saveName =
+                modId == "dev.twilitrealm.randomizer" ? "randomizer" : kDefaultSaveName;
+            const auto destination = save_manager::save_sidecar_directory(
+                                         storage.path, storage.kind, maker, game, saveName) /
+                                     (modId + ".json");
+            if (std::filesystem::exists(destination)) {
+                if (!std::filesystem::is_regular_file(destination)) {
+                    throw std::runtime_error{
+                        fmt::format("The mod save destination is not a file: {}",
+                            borealis::io::fs_path_to_string(destination))};
+                }
+                // Preserve imported saves and completed writes from an earlier migration attempt.
+                continue;
+            }
+            if (!write_mod_sidecar(destination, modId, legacyStore)) {
+                throw std::runtime_error{fmt::format("Unable to write migrated mod data: {}",
+                    borealis::io::fs_path_to_string(destination))};
+            }
+        }
+
+        std::filesystem::path backupPath{path};
+        backupPath += ".bak";
+        std::string error;
+        if (!borealis::io::atomic_replace(path, backupPath, error)) {
+            throw std::runtime_error{
+                fmt::format("Unable to preserve the legacy mod save file: {}", error)};
+        }
+        s_legacyMigrationChecked = true;
+        Log.info(
+            "migrated legacy mod save data to '{}'", borealis::io::fs_path_to_string(storage.path));
+        return {.ok = true};
+    } catch (const std::exception& e) {
+        return {.message = fmt::format("Legacy mod save migration failed: {}", e.what())};
+    }
+}
 
 void save_slot_new(uint32_t slot) {
     if (slot >= kSlotCount) {

@@ -10,6 +10,7 @@
 #include "dusk/game_mode.hpp"
 #include "dusk/main.h"
 #include "dusk/mod_loader.hpp"
+#include "dusk/mods/svc/save.hpp"
 #include "dusk/save_manager.hpp"
 #include "dusk/settings.h"
 #include "format.hpp"
@@ -20,7 +21,6 @@
 #include "ui.hpp"
 #include "window.hpp"
 
-#include <SDL3/SDL_misc.h>
 #include <fmt/format.h>
 
 #include <algorithm>
@@ -140,8 +140,19 @@ save_manager::ValueResult<Context> current_context() {
     if (!storage) {
         return {storage.result, {}};
     }
-    return {{.ok = true},
-        Context{.identity = std::move(*identity), .storage = std::move(storage.value)}};
+    if (auto migrated =
+            mods::svc::migrate_legacy_sidecar(storage.value, identity->maker, identity->game);
+        !migrated)
+    {
+        return {std::move(migrated), {}};
+    }
+    return {
+        {.ok = true},
+        Context{
+            .identity = std::move(*identity),
+            .storage = std::move(storage.value),
+        },
+    };
 }
 
 void dismiss_modal(Modal& modal) {
@@ -385,18 +396,24 @@ void confirm_import(Artifact artifact) {
         dismiss_modal(modal);
         finish_import_flow();
     };
+
     struct ImportOptions {
         bool all = false;
         bool keepModData = false;
     };
+
     auto options = std::make_shared<ImportOptions>();
     auto modal = std::make_unique<Modal>(Modal::Props{
         .title = "Import Save",
         .bodyRml = std::move(body),
         .actions =
             {
-                {.label = "Cancel", .onPressed = cancel},
-                {.label = "Import",
+                {
+                    .label = "Cancel",
+                    .onPressed = cancel,
+                },
+                {
+                    .label = "Import",
                     .onPressed =
                         [items, selectedIndex, options, hasBundledModData](Modal& modal) {
                             const auto modDataAction = hasBundledModData ? ModDataAction::Replace :
@@ -404,7 +421,8 @@ void confirm_import(Artifact artifact) {
                                                                               ModDataAction::Clear;
                             perform_import(
                                 items, selectedIndex, options->all, modDataAction, modal);
-                        }},
+                        },
+                },
             },
         .onDismiss = cancel,
         .icon = "warning",
@@ -483,14 +501,19 @@ void begin_delete() {
                 escape(selected_mode_label())),
             .actions =
                 {
-                    {.label = "Cancel", .onPressed = &dismiss_modal},
-                    {.label = "Delete",
+                    {
+                        .label = "Cancel",
+                        .onPressed = &dismiss_modal,
+                    },
+                    {
+                        .label = "Delete",
                         .onPressed =
                             [context = context.value](Modal& modal) {
                                 modal.pop();
                                 show_result("The save was deleted.",
                                     save_manager::delete_save(context.storage, context.identity));
-                            }},
+                            },
+                    },
                 },
             .onDismiss = &dismiss_modal,
             .icon = "warning",
@@ -595,8 +618,12 @@ private:
                                "will be backed up first.",
                     .actions =
                         {
-                            {.label = "Cancel", .onPressed = &dismiss_modal},
-                            {.label = "Restore",
+                            {
+                                .label = "Cancel",
+                                .onPressed = &dismiss_modal,
+                            },
+                            {
+                                .label = "Restore",
                                 .onPressed =
                                     [this, context, path](Modal& modal) {
                                         modal.pop();
@@ -609,7 +636,8 @@ private:
                                         show_message("Restore Backup",
                                             result ? "The backup was restored." : result.message,
                                             !result);
-                                    }},
+                                    },
+                            },
                         },
                     .onDismiss = &dismiss_modal,
                     .icon = "warning",
@@ -626,8 +654,12 @@ private:
                         .bodyRml = fmt::format("Delete <b>{}</b>?", escape(name)),
                         .actions =
                             {
-                                {.label = "Cancel", .onPressed = &dismiss_modal},
-                                {.label = "Delete",
+                                {
+                                    .label = "Cancel",
+                                    .onPressed = &dismiss_modal,
+                                },
+                                {
+                                    .label = "Delete",
                                     .onPressed =
                                         [this, storage, path](Modal& modal) {
                                             modal.pop();
@@ -639,7 +671,8 @@ private:
                                             } else {
                                                 show_message("Delete Backup", result.message, true);
                                             }
-                                        }},
+                                        },
+                                },
                             },
                         .onDismiss = &dismiss_modal,
                         .icon = "warning",
@@ -666,9 +699,9 @@ void open_save_folder() {
     const auto folder = context.value.storage.kind == save_manager::StorageKind::GciDirectory ?
                             context.value.storage.path :
                             context.value.storage.path.parent_path();
-    const std::string url = "file://" + borealis::io::fs_path_to_generic_string(folder);
-    if (!SDL_OpenURL(url.c_str())) {
-        show_message("Open Save Folder", SDL_GetError(), true);
+    if (!data::manager().open_folder(folder)) {
+        show_message(
+            "Open Save Folder", "The save folder could not be opened in the file browser.", true);
     }
 }
 
@@ -681,15 +714,20 @@ void confirm_delete_mod_data(Context context, std::string id) {
                 escape(id)),
             .actions =
                 {
-                    {.label = "Cancel", .onPressed = &dismiss_modal},
-                    {.label = "Delete",
+                    {
+                        .label = "Cancel",
+                        .onPressed = &dismiss_modal,
+                    },
+                    {
+                        .label = "Delete",
                         .onPressed =
                             [context = std::move(context), id = std::move(id)](Modal& modal) {
                                 modal.pop();
                                 show_result("The mod data was deleted.",
                                     save_manager::delete_mod_data(
                                         context.storage, context.identity, id));
-                            }},
+                            },
+                    },
                 },
             .onDismiss = &dismiss_modal,
             .icon = "warning",
@@ -768,12 +806,16 @@ void build_save_detail(Pane& pane) {
     exportButton.on_pressed([anchor = exportButton.root()] {
         push_document(
             std::make_unique<ContextMenu>(anchor, std::vector<ContextMenu::Item>{
-                                                      {.text = "Save + mod data (.dusksave)",
+                                                      {
+                                                          .text = "Save + mod data (.dusksave)",
                                                           .icon = "folder_open",
-                                                          .onPressed = [] { begin_export(true); }},
-                                                      {.text = "Save only (.gci)",
+                                                          .onPressed = [] { begin_export(true); },
+                                                      },
+                                                      {
+                                                          .text = "Save only (.gci)",
                                                           .icon = "description",
-                                                          .onPressed = [] { begin_export(false); }},
+                                                          .onPressed = [] { begin_export(false); },
+                                                      },
                                                   }));
     });
     pane.add_button(ControlledButton::Props{
@@ -805,9 +847,9 @@ void build_save_detail(Pane& pane) {
                         })
             .on_pressed(&begin_raw_export);
     }
-#if !defined(__ANDROID__) && !(defined(__APPLE__) && TARGET_OS_IOS)
-    pane.add_button("Open Save Folder").on_pressed(&open_save_folder);
-#endif
+    if (data::manager().capabilities().canOpenFolder) {
+        pane.add_button("Open Save Folder").on_pressed(&open_save_folder);
+    }
     pane.add_rml(fmt::format(R"(<div class="save-path">{}</div>)",
         escape(borealis::io::fs_path_to_generic_string(storage.path))));
 
