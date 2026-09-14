@@ -9,11 +9,22 @@
 #define AUDIO_SERVICE_MINOR 0u
 
 typedef uint64_t AudioStreamHandle;
-typedef enum AudioSourceKind { AUDIO_SOURCE_PCM = 0 } AudioSourceKind;
-typedef enum AudioSampleFormat { AUDIO_FORMAT_S16 = 0, AUDIO_FORMAT_F32 = 1 } AudioSampleFormat;
+
+typedef enum AudioSourceKind {
+    AUDIO_SOURCE_PCM = 0,
+} AudioSourceKind;
+
+typedef enum AudioSampleFormat {
+    AUDIO_FORMAT_S16 = 0,
+    AUDIO_FORMAT_F32 = 1,
+} AudioSampleFormat;
+
 typedef enum AudioStreamPhase {
-    AUDIO_STREAM_OPENING, AUDIO_STREAM_PREPARED, AUDIO_STREAM_PLAYING,
-    AUDIO_STREAM_PAUSED, AUDIO_STREAM_ENDED
+    AUDIO_STREAM_OPENING,
+    AUDIO_STREAM_PREPARED,
+    AUDIO_STREAM_PLAYING,
+    AUDIO_STREAM_PAUSED,
+    AUDIO_STREAM_ENDED
 } AudioStreamPhase;
 
 typedef struct AudioStreamDesc {
@@ -45,13 +56,15 @@ typedef struct AudioStreamState {
  * Fade/ramp arguments use 32 kHz audio frames, rounded up to JAudio ticks (30 ticks/second).
  * Open prepares and locks; play may be requested before preparation completes.
  * End-of-stream is irreversible. Stop is terminal; close releases the handle.
- * Defaults: S16, 32000 Hz, stereo, full preparation, volume 1, scene stop and BGM ducking enabled. */
+ * Defaults: S16, 32000 Hz, stereo, full preparation, volume 1, scene stop and BGM ducking enabled.
+ */
 typedef struct AudioService {
     ServiceHeader header;
     const AudioStreamDesc* default_stream_desc;
     ModResult (*open)(ModContext*, const AudioStreamDesc*, AudioStreamHandle*);
     /* Copies up to out_accepted source frames. Zero acceptance is normal backpressure. */
-    ModResult (*write)(ModContext*, AudioStreamHandle, const void*, uint32_t, uint32_t* out_accepted);
+    ModResult (*write)(
+        ModContext*, AudioStreamHandle, const void*, uint32_t, uint32_t* out_accepted);
     /* Immediately writable source frames. Poll/write again on subsequent mod updates. */
     ModResult (*free_frames)(ModContext*, AudioStreamHandle, uint32_t*);
     ModResult (*end_of_stream)(ModContext*, AudioStreamHandle);
@@ -64,4 +77,6 @@ typedef struct AudioService {
     ModResult (*get_state)(ModContext*, AudioStreamHandle, AudioStreamState*);
     ModResult (*close)(ModContext*, AudioStreamHandle);
 } AudioService;
-MOD_DECLARE_SERVICE(AudioService, svc_audio, AUDIO_SERVICE_ID, AUDIO_SERVICE_MAJOR, AUDIO_SERVICE_MINOR);
+
+MOD_DECLARE_SERVICE(
+    AudioService, svc_audio, AUDIO_SERVICE_ID, AUDIO_SERVICE_MAJOR, AUDIO_SERVICE_MINOR);

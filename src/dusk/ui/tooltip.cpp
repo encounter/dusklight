@@ -21,7 +21,6 @@ Tooltip::Tooltip(Rml::Element* anchor, const Rml::String& label)
           },
           true} {
     // Attach outside the pane so scrolling and overflow cannot clip the label.
-    // Context listeners distinguish retained mouse focus from keyboard/controller navigation.
     append_text(mRoot, label);
 }
 
