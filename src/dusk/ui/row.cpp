@@ -4,26 +4,29 @@
 
 #include <algorithm>
 #include <cmath>
+#include <ranges>
 
 namespace dusk::ui {
 
 Row::Row(Rml::Element* parent, Props props) : FluentComponent{append(parent, "ui-row")} {
-    const char* align = "flex-start";
+    auto align = Rml::Style::JustifyContent::FlexStart;
     switch (props.align) {
-    case Align::Center:
-        align = "center";
-        break;
     case Align::End:
-        align = "flex-end";
+        align = Rml::Style::JustifyContent::FlexEnd;
+        break;
+    case Align::Center:
+        align = Rml::Style::JustifyContent::Center;
         break;
     case Align::SpaceBetween:
-        align = "space-between";
+        align = Rml::Style::JustifyContent::SpaceBetween;
         break;
     default:
         break;
     }
-    mRoot->SetProperty("justify-content", align);
-    mRoot->SetProperty("flex-wrap", props.wrap ? "wrap" : "nowrap");
+    mRoot->SetProperty(Rml::PropertyId::JustifyContent, align);
+    mRoot->SetProperty(Rml::PropertyId::FlexWrap,
+        props.wrap ? Rml::Style::FlexWrap::Wrap : Rml::Style::FlexWrap::Nowrap);
+
     listen(Rml::EventId::Keydown, [this](Rml::Event& event) {
         const auto cmd = map_nav_event(event);
         if (cmd != NavCommand::Left && cmd != NavCommand::Right) {
@@ -70,14 +73,13 @@ bool Row::focus_from(NavCommand direction) {
         candidates.push_back(child.get());
     }
     if (direction == NavCommand::Left) {
-        std::reverse(candidates.begin(), candidates.end());
+        std::ranges::reverse(candidates);
     } else if (direction == NavCommand::Up || direction == NavCommand::Down) {
         // Keep the horizontal position when moving between rows of controls.
-        auto* focused = mRoot->GetContext()->GetFocusElement();
-        if (focused != nullptr) {
+        if (auto* focused = mRoot->GetContext()->GetFocusElement()) {
             const float x = focused->GetAbsoluteOffset().x + focused->GetBox().GetSize().x * 0.5f;
-            std::stable_sort(candidates.begin(), candidates.end(), [x](Component* a, Component* b) {
-                const auto distance = [x](Component* c) {
+            std::ranges::stable_sort(candidates, [x](const Component* a, const Component* b) {
+                const auto distance = [x](const Component* c) {
                     return std::abs(c->root()->GetAbsoluteOffset().x +
                                     c->root()->GetBox().GetSize().x * 0.5f - x);
                 };
@@ -94,8 +96,7 @@ bool Row::focus_from(NavCommand direction) {
 }
 
 bool Row::selected() const {
-    return std::any_of(mChildren.begin(), mChildren.end(),
-                       [](const auto& child) { return child->selected(); });
+    return std::ranges::any_of(mChildren, [](const auto& child) { return child->selected(); });
 }
 
 void Row::set_selected(bool value) {

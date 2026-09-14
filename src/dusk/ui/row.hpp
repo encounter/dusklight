@@ -6,7 +6,8 @@ namespace dusk::ui {
 
 class Row : public FluentComponent<Row> {
 public:
-    enum class Align { Start, Center, End, SpaceBetween };
+    enum class Align { Start, End, Center, SpaceBetween };
+
     struct Props {
         Align align = Align::Start;
         bool wrap = false;
