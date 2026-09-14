@@ -102,8 +102,8 @@ void report(const std::exception& error) {
     svc_log->error(mod_ctx, message.c_str());
 }
 
-uint32_t fade_frames() {
-    return static_cast<uint32_t>(fadeMs * 32);
+uint32_t fade_ms() {
+    return static_cast<uint32_t>(fadeMs);
 }
 
 double duration() {
@@ -361,8 +361,7 @@ void pressed(ModContext*, void* data) {
                 break;
             }
             if (paused && stream) {
-                check(svc_audio->resume(mod_ctx, stream, fade_frames()), "Resuming music");
-                check(svc_audio->play(mod_ctx, stream, fade_frames()), "Playing music");
+                check(svc_audio->play(mod_ctx, stream, fade_ms()), "Resuming music");
                 paused = false;
                 playing = true;
                 message.clear();
@@ -375,7 +374,7 @@ void pressed(ModContext*, void* data) {
             break;
         case Control::Pause:
             if (stream) {
-                check(svc_audio->pause(mod_ctx, stream, fade_frames()), "Pausing music");
+                check(svc_audio->pause(mod_ctx, stream, fade_ms()), "Pausing music");
             }
             paused = true;
             playing = false;
@@ -456,14 +455,15 @@ void set_value(ModContext*, void* data, const UiControlValue* value) {
         case Control::Volume:
             volume = std::clamp<int64_t>(value->int_value, 0, 200);
             if (stream) {
-                check(svc_audio->set_volume(mod_ctx, stream, volume / 100.0f, fade_frames()),
+                check(svc_audio->set_volume(mod_ctx, stream, volume / 100.0f, fade_ms()),
                     "Setting volume");
             }
             break;
         case Control::Pitch:
             pitch = std::clamp<int64_t>(value->int_value, 50, 200);
             if (stream) {
-                check(svc_audio->set_pitch(mod_ctx, stream, pitch / 100.0f), "Setting pitch");
+                check(svc_audio->set_pitch(mod_ctx, stream, pitch / 100.0f, fade_ms()),
+                    "Setting pitch");
             }
             break;
         case Control::Fade:
@@ -502,6 +502,7 @@ void pump() {
         desc.sample_rate = track->decoder.sample_rate();
         desc.channels = track->decoder.channels();
         desc.volume = volume / 100.0f;
+        desc.pitch = pitch / 100.0f;
         desc.duck_bgm = duckBgm;
         desc.stop_on_scene_change = false;
         const auto result = svc_audio->open(mod_ctx, &desc, &stream);
@@ -510,9 +511,8 @@ void pump() {
         }
         check(result,
             "Opening audio stream (start the game and free another music stream if necessary)");
-        check(svc_audio->set_pitch(mod_ctx, stream, pitch / 100.0f), "Setting pitch");
         if (playing) {
-            check(svc_audio->play(mod_ctx, stream, fade_frames()), "Starting playback");
+            check(svc_audio->play(mod_ctx, stream, fade_ms()), "Starting playback");
         }
         startPending = false;
         message.clear();
@@ -525,7 +525,8 @@ void pump() {
     {
         remember_track();
     }
-    positionSeconds = startSeconds + snapshot.position_frames / 32000.0;
+    positionSeconds =
+        startSeconds + snapshot.position_frames / static_cast<double>(track->decoder.sample_rate());
     if (wrapped) {
         positionSeconds = std::fmod(positionSeconds, duration());
     } else {
@@ -548,7 +549,7 @@ void pump() {
     // Bound decode work per update and retain PCM that write() cannot accept yet.
     for (unsigned batch = 0; batch < 4 && !eof; ++batch) {
         uint32_t budget{};
-        check(svc_audio->free_frames(mod_ctx, stream, &budget), "Checking stream capacity");
+        check(svc_audio->get_writable_frames(mod_ctx, stream, &budget), "Checking stream capacity");
         if (!budget) {
             break;
         }

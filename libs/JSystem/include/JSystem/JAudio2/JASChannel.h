@@ -186,6 +186,16 @@ public:
      * @see JASSampleDataReference
      */
     std::unique_ptr<JASSampleDataReference> mSampleReference;
+
+    JASPCMStream* mPcmStream = nullptr;
+    u8 mPcmLane = 0;
+
+    void retirePcm();
+    void setPcmSource(JASPCMStream* stream, u8 lane) {
+        mPcmStream = stream;
+        mPcmLane = lane;
+        mAnon.mChannelType = 3;
+    }
 #endif
 
     static DUSK_GAME_DATA OSMessageQueue sBankDisposeMsgQ;

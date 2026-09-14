@@ -1,122 +1,100 @@
 # AudioService
 
-AudioService 1.0 accepts decoded PCM on the game thread and plays it through JAudio's stream
-pipeline. Import `mods/svc/audio.h`; game linkage is not required for playback. Use AudioResService
-for resident sound effects and HookService for intercepting BGM selection or boss phase changes.
+AudioService 1.0 accepts decoded PCM through the normal JAI stream mixer. Include
+`mods/svc/audio.h`; game linkage is unnecessary. AudioResService manages resident wave and
+file-based sound replacements. This unreleased interface replaces the previous streaming API;
+rebuild consumers against the new header.
 
-## Playback
+Calls run on the game thread. Handles belong to their opening mod and become invalid on close
+or unload. At most four stream allocations, including retiring streams, can exist across mods.
+A stream that has ended still owns its allocation until closed.
 
-Initialize a descriptor with `AUDIO_STREAM_DESC_INIT`, set the source format and rate, and call
-`open`. Passing `NULL` selects the same defaults. Sources are native-endian
-interleaved S16 or F32, 8000 through 192000 Hz, with one or two channels. SDL converts each source to
-32 kHz PCM16 before it enters the stream ring. No mod callbacks run on the audio or load thread.
+## Input and buffering
 
-`open` prepares a locked stream. Push frames in `mod_update` until the desired preparation threshold
-is reached. `play` may be requested earlier; playback starts after preparation completes. A source
-shorter than the threshold becomes prepared when `end_of_stream` flushes its final data.
+Initialize `AudioStreamDesc` with `AUDIO_STREAM_DESC_INIT`. Passing `NULL` to `open` selects the
+same defaults: interleaved native-endian F32, 48000 Hz, stereo, volume/pitch 1, scene stop and BGM
+ducking enabled. S16, mono, and source rates from 8000 through 192000 Hz are also supported.
+The source format, rate, and channel count cannot change after opening.
+
+Every `_frames` field counts source frames. One frame contains one sample per channel.
+`capacity_frames == 0` selects 500 ms of source content. Explicit capacities must represent
+50 through 2000 ms. `prepare_frames == 0` selects 100 ms, limited to capacity; an explicit value
+must be between one and capacity. Durations describe source content at pitch 1.
+
+`write` copies up to the available ring space and returns the accepted prefix. Partial and zero
+acceptance are normal; retain and retry the remainder. A null sample pointer requires zero
+frames. `get_writable_frames` reports immediate ring space. `buffered_frames` estimates all
+unpresented source content, including converter read-ahead, so it can exceed ring capacity.
+Finite F32 headroom is preserved. Non-finite samples become silence.
 
 ```cpp
-IMPORT_SERVICE(AudioService, svc_audio);
-
-AudioStreamHandle music{};
-
-ModResult open_music() {
-    AudioStreamDesc desc = AUDIO_STREAM_DESC_INIT;
-    desc.format = AUDIO_FORMAT_F32;
-    desc.sample_rate = 48000;
-    desc.channels = 2;
-    return svc_audio->open(mod_ctx, &desc, &music);
+AudioStreamHandle music = 0;
+AudioStreamDesc desc = AUDIO_STREAM_DESC_INIT;
+desc.sample_rate = decoder.sample_rate();
+desc.channels = decoder.channels();
+ModResult result = svc_audio->open(mod_ctx, &desc, &music);
+if (result == MOD_OK) {
+    result = svc_audio->play(mod_ctx, music, 200);
 }
-
-// Keep unaccepted decoder output for the next update.
-ModResult push_music(const float* pcm, uint32_t frames, uint32_t* accepted) {
-    return svc_audio->write(mod_ctx, music, pcm, frames, accepted);
-}
-
-ModResult poll_music(AudioStreamState& state) {
-    state = AUDIO_STREAM_STATE_INIT;
-    return svc_audio->get_state(mod_ctx, music, &state);
-}
+// On subsequent updates, retain any unaccepted frames for the next write.
+uint32_t accepted = 0;
+result = svc_audio->write(mod_ctx, music, pcm, frameCount, &accepted);
 ```
 
-Descriptors and state outputs carry `struct_size`. The host rejects undersized structures,
-preserves the caller's output size, and leaves any trailing extension fields untouched.
-Callers that copy `default_stream_desc` must reset the copy's `struct_size` to
-`sizeof(AudioStreamDesc)`, since a newer host may expose a larger descriptor.
+Decode files outside the audio callback. Source loops seek the decoder and continue writing;
+they do not seal or reset the stream. Seeking replaces playback with a new stream. The
+`mods/music_player` example demonstrates decoder buffering, loops, and controls.
 
-The mod owns decoding and file format support. Read compressed files through FileService at
-assignment time, then decode incrementally from memory. Implement loops by seeking the decoder
-and continuing to push. Call `end_of_stream` only after the last input frame has been accepted;
-subsequent writes are invalid. The host flushes resampler history and pads only the unused portion
-of the final transfer block. That padding is excluded from the playback endpoint.
+## Playback and controls
 
-## Buffering and timing
+`play` requests playback while preparing and resumes paused playback. Preparation completes at
+the source-frame threshold, or at EOF for a shorter nonempty source. Repeating `play` during
+playback does nothing; during a pause fade it cancels the pause and fades back in.
 
-`ring_frames` describes usable depth at 32 kHz. The default is five 5040-frame blocks (0.7875 seconds).
-Explicit depths round down to whole blocks and clamp to three through ten blocks; each channel
-also receives one guard block. `prepare_frames` rounds up to blocks within that usable depth and
-defaults to the full ring. Smaller thresholds start sooner but provide less protection against
-shader compilation or other game-thread stalls.
+`pause` fades to silence before suspending source consumption. Repeated pause does not restart
+the fade. Before playback, pause cancels the pending play request. Game-wide pause remains a
+separate JAI policy.
 
-The load thread transfers complete blocks from a two-block staging queue into emulated ARAM.
-`free_frames` reports the source frames that can be accepted immediately, accounting for staging,
-partial blocks and queued resampler input. It does not count ring capacity that the asynchronous
-load thread has not yet made available through staging. Callers must honor `write`'s accepted count,
-including zero, and retry during later updates. The resampler input queue is bounded by this budget.
+`end_of_stream` seals input without requesting playback. It is idempotent and requires no
+producer flush or frame-end pump. An empty sealed stream ends without acquiring playback voices.
+A temporarily empty ring preserves converter history and leaves the phase `PLAYING`, with
+`starved` set. `underrun_count` increments once on entry into starvation. Pause, preparation and
+normal EOF are not underruns.
 
-An underrun pauses before the DSP reaches unwritten ring data. Refills resume automatically once
-sufficient data is available. `underrun_count` counts starvation transitions, excluding preparation;
-`position_frames` counts consumed 32 kHz frames. Pause transitions can have up to two DSP subframes
-of in-flight position bookkeeping. `buffered_frames` includes the ring, staging and queued input.
+`stop` is terminal and seals input. The phase remains `STOPPING` during an active fade/release,
+then becomes `ENDED` after channel retirement. A paused or unstarted stream can retire
+immediately. Stop and EOF remain successful no-ops after termination. `close` cancels playback
+and releases the public handle immediately; internal references can retire later.
 
-Fade and ramp arguments are 32 kHz audio frames. They round up to 30 Hz JAudio game ticks:
-`ceil(frames * 30 / 32000)`. They inherit game pause and tick timing. Pitch ratios must be greater
-than zero and at most four. Pitch changes take effect through the stream parameters; source
-position and buffering remain expressed in 32 kHz frames. Streams are bounded to JAS's signed
-sample range (approximately 18.6 hours at unit pitch); close and reopen for longer playback.
+Volume must be finite in `[0, 2]`; pitch must be finite in `[1/32, 4]`. Setters replace their
+service-controlled targets; game/JAI modifiers still compose around them. Fade and ramp
+arguments use milliseconds, rounded up to 30 Hz JAI control ticks. Zero changes immediately.
+Pitch changes both playback speed and duration.
 
-## Controls and lifetime
+After JAS composition, PCM pitch is capped at 8, and the source step has a minimum of `1/256`.
+`effective_pitch` reports the applied multiplier and `pitch_limited` indicates either limit.
+Finite non-positive composed pitch holds silently without consuming input. Non-finite composed
+pitch terminates playback with `AUDIO_STREAM_ERROR_INVALID_PITCH`.
 
-`pause` fades out before freezing playback; `resume` fades back in from the current intensity.
-`set_volume` sets an absolute gain from zero through two, optionally ramped. `stop` is terminal and
-uses the vanilla sound fade; stopping an already paused stream ends it immediately. `close` stops
-playback and invalidates the generational handle. An ended stream retains its handle until closed.
-Stopped streams reject playback controls and writes. Repeated `stop` and `end_of_stream` calls
-are harmless; `free_frames` returns zero after flushing, stopping, or playback end.
+## State and errors
 
-Invalid descriptors, undersized outputs, and stale or foreign handles return
-`MOD_INVALID_ARGUMENT`. `open` clears its output handle on failure and returns `MOD_UNAVAILABLE`
-until game audio is initialized or while stream capacity is exhausted. Conversion failures return
-`MOD_ERROR` and log the SDL error with the owning mod's ID. If conversion fails after `write` has
-copied input, its accepted count still reports those frames. Asynchronous conversion failures
-stop the affected stream, which subsequently reports `AUDIO_STREAM_ENDED`.
+Initialize state with `AUDIO_STREAM_STATE_INIT` before `get_state`. The host preserves
+`struct_size` and unknown trailing bytes. Undersized structures are rejected. Counts and handles
+are cleared before a failed call when their output pointer is supplied.
 
-At most four AudioService streams may be open across all mods. Closing releases the public handle
-immediately, while JAudio retains its source and ARAM until pending tasks and DSP channels retire.
-A replacement open may therefore return `MOD_UNAVAILABLE` for a few updates after closing.
+`position_frames` is the floor of source presentation progress represented by generated mixer
+output, rather than converter read-ahead or the physical device cursor. Pause and starvation
+silence do not advance it. Natural drain reports the exact final source position; cancellation
+preserves the last presented position. Terminal streams report no playable buffered content.
 
-Streams use section-2 sound-table entries and inherit JAudio master volume, game pause and
-`stop_on_scene_change`. BGM ducking defaults on and is shared across playing custom streams;
-prepared and paused streams do not hold the duck. Closing or detaching removes table entries and
-stops owned streams. Mods must not reuse a handle owned by another mod.
+`ENDED` with no error covers natural EOF and explicit stop. Async errors persist in state and
+are logged once to the owning mod's logger. State, close, and idempotent stop/EOF remain available
+after failure. Control operations on a failed stream return `MOD_ERROR`.
 
-Prepare multiple phase tracks before a fight, then use `play`, `pause` and `resume` to switch or
-cross-fade them. Hook `Z2SeqMgr::bgmStart`, `bgmStreamPrepare`, `bgmStop` and related functions when
-replacing the game's BGM policy. `changeBgmStatus` operates on sequenced BGM handles and does not
-control the separate custom stream handles.
+Invalid arguments and stale/foreign handles return `MOD_INVALID_ARGUMENT`; closed-input and
+illegal lifecycle operations return `MOD_CONFLICT`; resource exhaustion returns
+`MOD_UNAVAILABLE`. A partial write to open input returns `MOD_OK`.
 
-## Implementation notes
-
-The PC stream source replaces header and block production inside `JASAramStream`. Synthetic file
-entries resolve through both `Z2SoundInfo` and `JAUStreamFileTable`. Empty reads retain their pending
-work for retry rather than dropping vanilla's first-load chain. Disc streams retain their existing
-DVD producer and shared read buffer.
-
-PCM streams retain fixed usable ring geometry. Their endpoint can arrive after playback has
-started, so the final block's ring index is calculated when the endpoint becomes known. Short
-streams receive their endpoint before channel start; block-aligned endpoints include the whole
-final block. A late endpoint within 800 frames after a wrap is copied into the reserved guard
-block so the final samples remain contiguous. Four additional stream objects and their child parameters are reserved on PC.
-
-GameService major 3 is required for the AudioRes and PCM-source game struct changes. Service-only
-mods import AudioService independently of that game ABI epoch.
+Scene-stop and BGM ducking use the existing Z2 sound policy. Ducking ends on pause, retirement,
+close, or mod unload. State remains available after JAI releases its sound handle, until close.
+EOF describes converter drain; effect tails and device latency can continue afterward.

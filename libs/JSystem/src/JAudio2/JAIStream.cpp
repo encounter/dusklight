@@ -1,3 +1,6 @@
+#if TARGET_PC
+#include "JSystem/JAudio2/JASPCMStream.h"
+#endif
 #include "JSystem/JSystem.h" // IWYU pragma: keep
 
 #include "JSystem/JAudio2/JAIStream.h"
@@ -6,9 +9,6 @@
 #include "JSystem/JAudio2/JAIStreamDataMgr.h"
 #include "JSystem/JAudio2/JAIAudience.h"
 #include "dusk/mods/svc/audio_res/bst.hpp"
-#if TARGET_PC
-#include "dusk/mods/svc/audio/source.hpp"
-#endif
 
 static void JAIStream_JASAramStreamCallback_(u32 type, JASAramStream* aramStream, void* userData) {
     JAIStream* stream = (JAIStream*)userData;
@@ -52,6 +52,15 @@ void JAIStream::JAIStreamMgr_startID_(JAISoundID id, s32 streamFileEntry,
 }
 
 bool JAIStream::prepare_prepareStream_() {
+#if TARGET_PC
+    if (pcmStream_) {
+        if (pcmStream_->getState().phase == JASPCMStream::Phase::PREPARED) {
+            field_0x290 = 3;
+            return true;
+        }
+        return false;
+    }
+#endif
     u32 size;
     JAIStreamAramMgr* streamAramMgr;
 
@@ -60,13 +69,6 @@ bool JAIStream::prepare_prepareStream_() {
         streamAramMgr = streamMgr_->getStreamAramMgr();
         JUT_ASSERT(100, streamAramMgr);
 
-#if TARGET_PC
-        inner_.aramStream_.mPcmSource = dusk::mods::svc::audio::find_source(field_0x294);
-        if (auto& source = inner_.aramStream_.mPcmSource) {
-            streamAramAddr_ = source->heap.getBase();
-            size = source->heap.getSize();
-        } else
-#endif
         streamAramAddr_ = streamAramMgr->newStreamAram(&size);
         if (streamAramAddr_ != NULL) {
             inner_.aramStream_.init((uintptr_t)streamAramAddr_, size, &JAIStream_JASAramStreamCallback_, this);
@@ -140,6 +142,16 @@ void JAIStream::prepare_() {
 }
 
 void JAIStream::prepare_startStream_() {
+#if TARGET_PC
+    if (pcmStream_) {
+        if (pcmStream_->start() == JASPCMStream::Error::NONE) {
+            field_0x2c6 = 0;
+            field_0x2c4 = 0;
+            field_0x290 = 4;
+        }
+        return;
+    }
+#endif
     if (inner_.aramStream_.start()) {
         field_0x2c6 = 0;
         field_0x2c4 = 0;
@@ -167,6 +179,31 @@ void JAIStream::JAIStreamMgr_mixOut_(const JASSoundParams& inParams, JAISoundAct
             }
         }
     }
+
+#if TARGET_PC
+    if (pcmStream_) {
+        JASPCMStream::Params params{};
+        params.pitch = mixParams->mPitch;
+        for (int i = 0; i < 2; ++i) {
+            auto& lane = params.channels[i];
+            lane.volume = mixParams->mVolume;
+            lane.pan = mixParams->mPan;
+            lane.fxMix = mixParams->mFxMix;
+            lane.dolby = mixParams->mDolby;
+            if (children_[i]) {
+                const auto& child = children_[i]->mMove.params_;
+                lane.volume *= child.mVolume;
+                lane.pan += child.mPan - 0.5f;
+                lane.fxMix += child.mFxMix;
+                lane.dolby += child.mDolby;
+            }
+        }
+        pcmStream_->setParams(params);
+        prepare_();
+        pcmStream_->pause(status_.isPaused() || activity.field_0x0.flags.flag2);
+        return;
+    }
+#endif
 
     for (int i = 0; i < NUM_CHILDREN; i++) {
         inner_.aramStream_.setPitch(mixParams->mPitch);
@@ -211,6 +248,16 @@ void JAIStream::die_JAIStream_() {
 }
 
 bool JAIStream::JAISound_tryDie_() {
+#if TARGET_PC
+    if (pcmStream_) {
+        pcmStream_->stop(10);
+        if (pcmStream_->getState().retired) {
+            die_JAIStream_();
+            return true;
+        }
+        return false;
+    }
+#endif
     if (field_0x2c6) {
         die_JAIStream_();
         return true;
@@ -236,6 +283,11 @@ bool JAIStream::JAISound_tryDie_() {
 }
 
 void JAIStream::JAIStreamMgr_calc_() {
+#if TARGET_PC
+    if (pcmStream_ && pcmStream_->getState().retired) {
+        field_0x2c6 = 1;
+    }
+#endif
     if (field_0x2c6 != 0) {
         field_0x290 = 0;
         stop_JAISound_();

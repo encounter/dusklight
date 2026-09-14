@@ -16,6 +16,10 @@ class JAIStreamMgr : public JASGlobalInstance<JAIStreamMgr> {
 public:
     JAIStreamMgr(bool setInstance);
     bool startSound(JAISoundID id, JAISoundHandle* handle, const JGeometry::TVec3<f32>* posPtr IF_DUSK_ARG(std::shared_ptr<dusk::mods::svc::audio_res::bst::StreamReplacementSlot> replacement));
+#if TARGET_PC
+    bool startPcmSound(JAISoundID id, JAISoundHandle* handle, const JGeometry::TVec3<f32>* posPtr,
+        std::shared_ptr<dusk::mods::svc::audio_res::bst::StreamReplacementSlot> replacement);
+#endif
     void freeDeadStream_();
     void calc();
     void stop();

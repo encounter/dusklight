@@ -1,5 +1,4 @@
 #if TARGET_PC
-#include "dusk/mods/svc/audio/source.hpp"
 #include "dusk/mods/svc/audio_res/bst.hpp"
 #endif
 #include "JSystem/JSystem.h" // IWYU pragma: keep
@@ -37,16 +36,14 @@ const char* JAUStreamFileTable::getFilePath(int index) const {
 
 s32 JAUStreamDataMgr_StreamFileTable::getStreamFileEntry(JAISoundID soundId IF_DUSK_ARG(StreamReplacementSlot2 const* replacement)) {
 #if TARGET_PC
-    const char* filePath = replacement ? replacement->file_path.c_str() : getFilePath(soundId.id_.info.waveID);
+    const char* filePath = replacement ?
+                               (replacement->pcmStream ? nullptr : replacement->file_path.c_str()) :
+                               getFilePath(soundId.id_.info.waveID);
 #else
     const char* filePath = getFilePath(soundId.id_.info.waveID);
 #endif
     if (filePath == NULL) {
         return -1;
     }
-#if TARGET_PC
-    const int entry = dusk::mods::svc::audio::resolve_path(filePath);
-    if (entry >= 0) return entry;
-#endif
     return DVDConvertPathToEntrynum(filePath);
 }

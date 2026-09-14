@@ -50,6 +50,13 @@ JASChannel::JASChannel(Callback i_callback, void* i_callbackData) :
 }
 
 JASChannel::~JASChannel() {
+#if TARGET_PC
+    if (mPcmStream && mDspCh) {
+        mDspCh->free();
+        mDspCh->drop();
+        mDspCh = nullptr;
+    }
+#endif
     if (mDspCh != NULL) {
         JUT_WARN(62, "%s","~JASChannel:: mDspCh != NULL");
         mDspCh->drop();
@@ -59,10 +66,34 @@ JASChannel::~JASChannel() {
     }
 }
 
+#if TARGET_PC
+void JASChannel::retirePcm() {
+    if (mDspCh) {
+        mDspCh->free();
+        mDspCh->drop();
+        mDspCh = nullptr;
+    }
+    mStatus = STATUS_STOP;
+    auto callback = mCallback;
+    auto* user = mCallbackData;
+    mCallback = nullptr;
+    mCallbackData = nullptr;
+    mPcmStream = nullptr;
+    mPcmLane = 0;
+    if (callback) {
+        callback(CB_STOP, this, nullptr, user);
+    }
+}
+#endif
 
 int JASChannel::play() {
     JASDSPChannel* channel = JASDSPChannel::alloc(JSULoByte(mPriority), dspUpdateCallback, this);
     if (channel == NULL) {
+#if TARGET_PC
+        if (mPcmStream) {
+            retirePcm();
+        } else
+#endif
         JKR_DELETE(this);
         return 0;
     }
@@ -76,6 +107,11 @@ int JASChannel::playForce() {
     JASDSPChannel* channel = JASDSPChannel::allocForce(JSULoByte(mPriority),
                                                        dspUpdateCallback, this);
     if (channel == NULL) {
+#if TARGET_PC
+        if (mPcmStream) {
+            retirePcm();
+        } else
+#endif
         JKR_DELETE(this);
         return 0;
     }
@@ -219,6 +255,11 @@ s32 JASChannel::dspUpdateCallback(u32 i_type, JASDsp::TChannel* i_channel, void*
     case JASDSPChannel::CB_DROP:
         _this->mDspCh->free();
         _this->mDspCh = NULL;
+#if TARGET_PC
+        if (_this->mPcmStream) {
+            _this->retirePcm();
+        } else
+#endif
         JKR_DELETE(_this);
         return -1;
     default:
@@ -236,23 +277,46 @@ s32 JASChannel::initialUpdateDSPChannel(JASDsp::TChannel* i_channel) {
         mCallback(CB_START, this, i_channel, mCallbackData);
     }
 
+#if TARGET_PC
+    if (!mPcmStream && mAnon.mWaveInfo.mpLoaded[0] == 0) {
+#else
     if (mAnon.mWaveInfo.mpLoaded[0] == 0) {
+#endif
         JUT_WARN_DEVICE(346, 2, "%s", "Lost wave data while playing");
         mDspCh->free();
         mDspCh = NULL;
+#if TARGET_PC
+        if (mPcmStream) {
+            retirePcm();
+        } else
+#endif
         JKR_DELETE(this);
         return -1;
     }
-    
+
+#if TARGET_PC
+    if (!mPcmStream && checkBankDispose()) {
+#else
     if (checkBankDispose()) {
+#endif
         JUT_WARN_DEVICE(357, 2, "%s","Lost bank data while playing");
         mDspCh->free();
         mDspCh = NULL;
+#if TARGET_PC
+        if (mPcmStream) {
+            retirePcm();
+        } else
+#endif
         JKR_DELETE(this);
         return -1;
     }
 
     switch (mAnon.mChannelType) {
+#if TARGET_PC
+    case 3:
+        i_channel->setPcmSource(mPcmStream, mPcmLane);
+        break;
+#endif
     case 0:
         i_channel->setWaveInfo(mAnon.mWaveInfo, mWaveAramAddress, mSkipSamples);
 #if TARGET_PC
@@ -299,11 +363,18 @@ s32 JASChannel::initialUpdateDSPChannel(JASDsp::TChannel* i_channel) {
 
     f32 pitch = JASCalc::pow2(mParams.field_0x8 + (mKey + mKeySweep) / 12.0f
                                                 + effect_params._14 * mVibrate.getValue());
-    pitch = mSoundParams.mPitch * effect_params.mPitch * pitch * mParams.mPitch * 4096.0f;
-    if (pitch < 0.0f) {
-        pitch = 0.0f;
+#if TARGET_PC
+    if (mPcmStream) {
+        i_channel->setPcmPitch(mSoundParams.mPitch * effect_params.mPitch * pitch * mParams.mPitch);
+    } else
+#endif
+    {
+        pitch = mSoundParams.mPitch * effect_params.mPitch * pitch * mParams.mPitch * 4096.0f;
+        if (pitch < 0.0f) {
+            pitch = 0.0f;
+        }
+        i_channel->setPitch(pitch);
     }
-    i_channel->setPitch(pitch);
 
     i_channel->setPauseFlag(mPauseFlag);
     i_channel->field_0x066 = 0;
@@ -317,18 +388,36 @@ s32 JASChannel::updateDSPChannel(JASDsp::TChannel* i_channel) {
         mCallback(CB_PLAY, this, i_channel, mCallbackData);
     }
 
+#if TARGET_PC
+    if (!mPcmStream && mAnon.mWaveInfo.mpLoaded[0] == 0) {
+#else
     if (mAnon.mWaveInfo.mpLoaded[0] == 0) {
+#endif
         JUT_WARN_DEVICE(456, 2, "%s","Lost wave data while playing");
         mDspCh->free();
         mDspCh = NULL;
+#if TARGET_PC
+        if (mPcmStream) {
+            retirePcm();
+        } else
+#endif
         JKR_DELETE(this);
         return -1;
     }
-    
+
+#if TARGET_PC
+    if (!mPcmStream && checkBankDispose()) {
+#else
     if (checkBankDispose()) {
+#endif
         JUT_WARN_DEVICE(467, 2, "%s", "Lost bank data while playing");
         mDspCh->free();
         mDspCh = NULL;
+#if TARGET_PC
+        if (mPcmStream) {
+            retirePcm();
+        } else
+#endif
         JKR_DELETE(this);
         return -1;
     }
@@ -339,6 +428,11 @@ s32 JASChannel::updateDSPChannel(JASDsp::TChannel* i_channel) {
         if (mOscillators[0].isRelease()) {
             mDspCh->free();
             mDspCh = NULL;
+#if TARGET_PC
+            if (mPcmStream) {
+                retirePcm();
+            } else
+#endif
             JKR_DELETE(this);
             return -1;
         }
@@ -360,6 +454,11 @@ s32 JASChannel::updateDSPChannel(JASDsp::TChannel* i_channel) {
                 if (i == 0 && mOscillators[i].isStop()) {
                     mDspCh->free();
                     mDspCh = NULL;
+#if TARGET_PC
+                    if (mPcmStream) {
+                        retirePcm();
+                    } else
+#endif
                     JKR_DELETE(this);
                     return -1;
                 }
@@ -375,11 +474,18 @@ s32 JASChannel::updateDSPChannel(JASDsp::TChannel* i_channel) {
 
     f32 pitch = JASCalc::pow2(mParams.field_0x8 + (mKey + mKeySweep) / 12.0f
                                                 + effect_params._14 * mVibrate.getValue());
-    pitch = mSoundParams.mPitch * effect_params.mPitch * pitch * mParams.mPitch * 4096.0f;
-    if (pitch < 0.0f) {
-        pitch = 0.0f;
+#if TARGET_PC
+    if (mPcmStream) {
+        i_channel->setPcmPitch(mSoundParams.mPitch * effect_params.mPitch * pitch * mParams.mPitch);
+    } else
+#endif
+    {
+        pitch = mSoundParams.mPitch * effect_params.mPitch * pitch * mParams.mPitch * 4096.0f;
+        if (pitch < 0.0f) {
+            pitch = 0.0f;
+        }
+        i_channel->setPitch(pitch);
     }
-    i_channel->setPitch(pitch);
 
     if (!mPauseFlag && mKeySweepCount != 0) {
         mKeySweep += (mKeySweepTarget - mKeySweep) / mKeySweepCount;

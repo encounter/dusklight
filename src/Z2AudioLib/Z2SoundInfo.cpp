@@ -1,6 +1,3 @@
-#if TARGET_PC
-#include "dusk/mods/svc/audio/source.hpp"
-#endif
 #include "Z2AudioLib/Z2SoundInfo.h"
 
 #include "JSystem/JAudio2/JAISe.h"
@@ -309,7 +306,7 @@ const char* Z2SoundInfo::getStreamFilePath(JAISoundID soundID IF_DUSK_ARG(Stream
     case SOUND_TYPEID_STREAM:
 #if TARGET_PC
         if (replacement) {
-            return replacement->file_path.c_str();
+            return replacement->pcmStream ? nullptr : replacement->file_path.c_str();
         }
 #endif
 
@@ -325,10 +322,6 @@ const char* Z2SoundInfo::getStreamFilePath(JAISoundID soundID IF_DUSK_ARG(Stream
 
 s32 Z2SoundInfo::getStreamFileEntry(JAISoundID soundID IF_DUSK_ARG(StreamReplacementSlot const* replacement)) {
     const char* path = getStreamFilePath(soundID IF_DUSK_ARG(replacement));
-#if TARGET_PC
-    const int entry = dusk::mods::svc::audio::resolve_path(path);
-    if (entry >= 0) return entry;
-#endif
     return !path ? -1 : DVDConvertPathToEntrynum(path);
 }
 

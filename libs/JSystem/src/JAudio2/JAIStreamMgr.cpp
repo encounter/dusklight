@@ -1,9 +1,15 @@
+#if TARGET_PC
+#include "JSystem/JAudio2/JASPCMStream.h"
+#endif
 #include "JSystem/JSystem.h" // IWYU pragma: keep
 
 #include "JSystem/JAudio2/JAIStreamMgr.h"
 #include "JSystem/JAudio2/JAISoundHandles.h"
 #include "JSystem/JAudio2/JAIStreamDataMgr.h"
 #include "JSystem/JAudio2/JAISoundInfo.h"
+#if TARGET_PC
+#include "dusk/mods/svc/audio_res/bst.hpp"
+#endif
 
 JAIStreamMgr::JAIStreamMgr(bool setInstance) : JASGlobalInstance<JAIStreamMgr>(setInstance) {
     streamDataMgr_ = NULL;
@@ -15,6 +21,11 @@ JAIStreamMgr::JAIStreamMgr(bool setInstance) : JASGlobalInstance<JAIStreamMgr>(s
 }
 
 bool JAIStreamMgr::startSound(JAISoundID id, JAISoundHandle* handle, const JGeometry::TVec3<f32>* posPtr IF_DUSK_ARG(std::shared_ptr<dusk::mods::svc::audio_res::bst::StreamReplacementSlot> replacement)) {
+#if TARGET_PC
+    if (replacement && replacement->pcmStream) {
+        return startPcmSound(id, handle, posPtr, std::move(replacement));
+    }
+#endif
     JUT_ASSERT(37, streamDataMgr_);
     if (handle != NULL && *handle) {
         (*handle)->stop();
@@ -50,6 +61,36 @@ bool JAIStreamMgr::startSound(JAISoundID id, JAISoundHandle* handle, const JGeom
     return false;
 }
 
+#if TARGET_PC
+bool JAIStreamMgr::startPcmSound(JAISoundID id, JAISoundHandle* handle,
+    const JGeometry::TVec3<f32>* posPtr,
+    std::shared_ptr<dusk::mods::svc::audio_res::bst::StreamReplacementSlot> replacement) {
+    auto* stream = JKR_NEW JAIStream{this, field_0x6c};
+    if (!stream) {
+        return false;
+    }
+    auto* info = JASGlobalInstance<JAISoundInfo>::getInstance();
+    stream->JAIStreamMgr_startID_(
+        id, -1, posPtr, mAudience, info ? info->getCategory(id) : -1, replacement);
+    stream->pcmStream_ = replacement->pcmStream;
+    if (info) {
+        info->getStreamInfo(id, stream, replacement.get());
+    }
+    stream->getAuxiliary().moveVolume(replacement->initialVolume, 0);
+    stream->getAuxiliary().movePitch(replacement->initialPitch, 0);
+    if (stream->pcmStream_->attach() != JASPCMStream::Error::NONE) {
+        stream->die_JAIStream_();
+        JKR_DELETE(stream);
+        return false;
+    }
+    mStreamList.append(stream);
+    if (handle) {
+        stream->attachHandle(handle);
+    }
+    return true;
+}
+#endif
+
 void JAIStreamMgr::freeDeadStream_() {
     JSULink<JAIStream>* i = mStreamList.getFirst();
     while (i != NULL) {
@@ -58,11 +99,7 @@ void JAIStreamMgr::freeDeadStream_() {
         if (stream->status_.isDead()) {
             mStreamList.remove(i);
             void* aramAddr = stream->JAIStreamMgr_getAramAddr_();
-#if TARGET_PC
-            if (aramAddr != NULL && !stream->inner_.aramStream_.mPcmSource) {
-#else
             if (aramAddr != NULL) {
-#endif
                 bool result = mStreamAramMgr->deleteStreamAram((uintptr_t)aramAddr);
                 JUT_ASSERT(105, result);
             }

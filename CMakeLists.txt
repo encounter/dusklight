@@ -189,8 +189,17 @@ FetchContent_Declare(picosha2
     DOWNLOAD_EXTRACT_TIMESTAMP TRUE
     EXCLUDE_FROM_ALL
 )
+message(STATUS "dusklight: Fetching libsamplerate")
+set(LIBSAMPLERATE_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(LIBSAMPLERATE_INSTALL OFF CACHE BOOL "" FORCE)
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
+FetchContent_Declare(samplerate
+    GIT_REPOSITORY https://github.com/libsndfile/libsamplerate.git
+    GIT_TAG c96f5e3de9c4488f4e6c97f59f5245f22fda22f7
+    EXCLUDE_FROM_ALL
+)
 
-set(_fetch_content_deps miniz picosha2)
+set(_fetch_content_deps miniz picosha2 samplerate)
 
 if (DUSK_ENABLE_OPUS)
     message(STATUS "dusklight: Fetching opusfile")
@@ -276,6 +285,16 @@ if(_arch MATCHES "^(arm|aarch64)" AND CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQU
 endif()
 
 include(files.cmake)
+
+# Add custom PCM stream & libsamplerate to JAudio2
+target_sources(JSystem_JAudio2 PRIVATE libs/JSystem/src/JAudio2/JASPCMStream.cpp)
+target_link_libraries(JSystem_JAudio2 PUBLIC samplerate)
+target_compile_features(JSystem_JAudio2 PUBLIC cxx_std_23)
+if (MSVC)
+    target_compile_options(samplerate PRIVATE /O2)
+else ()
+    target_compile_options(samplerate PRIVATE -O2)
+endif ()
 
 # TODO: version handling for res includes
 

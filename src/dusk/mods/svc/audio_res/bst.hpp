@@ -6,6 +6,8 @@
 #include "JSystem/JAudio2/JAUSoundTable.h"
 #include "mods/svc/audio_res.h"
 
+class JASPCMStream;
+
 namespace dusk::mods::svc::audio_res::bst {
 
 struct SoundTableReplacementSlot {
@@ -32,6 +34,9 @@ struct SoundEffectReplacementSlot final : SoundTableReplacementSlot {
 };
 
 struct StreamReplacementSlot final : SoundTableReplacementSlot {
+    std::shared_ptr<JASPCMStream> pcmStream;
+    float initialVolume = 1.0f;
+    float initialPitch = 1.0f;
     std::string file_path;
     bool stop_on_scene_change;
 
@@ -56,6 +61,10 @@ struct SoundEffectKey {
         return other.category == category && other.id == id;
     }
 };
+
+ModResult add_pcm_stream(ModContext* ctx, std::shared_ptr<JASPCMStream> stream,
+    const AudioSoundTableStreamInfo& info, float volume, float pitch,
+    AudioSoundTableHandle* outHandle, uint16_t* outId);
 
 std::shared_ptr<SoundTableReplacementSlot> get_override_for(JAISoundID id);
 std::shared_ptr<SoundEffectReplacementSlot> get_override_for_se(JAISoundID id);

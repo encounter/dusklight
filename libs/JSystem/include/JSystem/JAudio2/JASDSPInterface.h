@@ -3,6 +3,9 @@
 
 #include <cstdint>
 #include <types.h>
+#if TARGET_PC
+#include "global.h"
+#endif
 
 /**
  * Amount of separate audio channels (i.e. individual playbacks, voices) the DSP can mix at once.
@@ -20,6 +23,9 @@
 #define DSP_SUBFRAME_SIZE   0x50
 
 struct JASWaveInfo;
+#if TARGET_PC
+class JASPCMStream;
+#endif
 
 namespace JASDsp {
     struct FxlineConfig_ {
@@ -209,6 +215,14 @@ namespace JASDsp {
          * If nullptr, the regular emulated ARAM is used.
          */
         void const* mAramBaseAddress;
+
+        JASPCMStream* mPcmStream = nullptr;
+        u8 mPcmLane = 0;
+        float mPcmPitch = 1.0f;
+
+        void setPcmSource(JASPCMStream* stream, u8 lane);
+        void setPcmPitch(float pitch) { mPcmPitch = pitch; }
+        void clearPcmSource();
 #endif
     };
 

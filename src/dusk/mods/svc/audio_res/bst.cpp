@@ -278,13 +278,14 @@ ModResult add_sound_table_effect(ModContext* ctx, SoundEffectCategory category_i
 
 static ModResult insert_sound_table_stream_core(ModContext* ctx, uint16_t stream_id,
     bool mod_defined, char const* file_path, AudioSoundTableStreamInfo const* info,
-    AudioSoundTableHandle* out_handle) {
+    AudioSoundTableHandle* out_handle, std::shared_ptr<JASPCMStream> pcm = {}, float volume = 1.0f,
+    float pitch = 1.0f) {
     if (out_handle != nullptr) {
         *out_handle = 0;
     }
 
     auto mod = mod_from_context(ctx);
-    if (mod == nullptr || file_path == nullptr) {
+    if (mod == nullptr || (file_path == nullptr && !pcm)) {
         return MOD_INVALID_ARGUMENT;
     }
 
@@ -292,7 +293,11 @@ static ModResult insert_sound_table_stream_core(ModContext* ctx, uint16_t stream
         info = &default_stream_info;
     }
 
-    auto slot = std::make_shared<StreamReplacementSlot>(mod_defined, stream_id, file_path, *info);
+    auto slot = std::make_shared<StreamReplacementSlot>(
+        mod_defined, stream_id, file_path ? file_path : "", *info);
+    slot->pcmStream = std::move(pcm);
+    slot->initialVolume = volume;
+    slot->initialPitch = pitch;
     sound_replacements_dirty = true;
 
     auto const handle = sound_replacements.emplace(*mod, std::move(slot));
@@ -301,6 +306,20 @@ static ModResult insert_sound_table_stream_core(ModContext* ctx, uint16_t stream
     }
 
     return MOD_OK;
+}
+
+ModResult add_pcm_stream(ModContext* ctx, std::shared_ptr<JASPCMStream> stream,
+    const AudioSoundTableStreamInfo& info, float volume, float pitch,
+    AudioSoundTableHandle* outHandle, uint16_t* outId) {
+    const auto id = stream_id_allocator.alloc();
+    const auto result = insert_sound_table_stream_core(
+        ctx, id, true, nullptr, &info, outHandle, std::move(stream), volume, pitch);
+    if (result != MOD_OK) {
+        stream_id_allocator.free(id);
+    } else {
+        *outId = id;
+    }
+    return result;
 }
 
 AudioSoundTableStreamInfo const default_stream_info(128, 1, {STREAM_PAN_LEFT, STREAM_PAN_RIGHT});

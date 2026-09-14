@@ -19,6 +19,14 @@ JASDSPChannel::JASDSPChannel() :
 }
 
 void JASDSPChannel::free() {
+#if TARGET_PC
+    if (mChannel) {
+        if (mChannel->mPcmStream) {
+            mChannel->mIsActive = 0;
+        }
+        mChannel->clearPcmSource();
+    }
+#endif
     mCallback = NULL;
     mCallbackData = NULL;
 }
@@ -28,6 +36,14 @@ void JASDSPChannel::start() {
 }
 
 void JASDSPChannel::drop() {
+#if TARGET_PC
+    if (mChannel) {
+        if (mChannel->mPcmStream) {
+            mChannel->mIsActive = 0;
+        }
+        mChannel->clearPcmSource();
+    }
+#endif
     if (mCallback != NULL) {
         mCallback(CB_DROP, NULL, mCallbackData);
     }

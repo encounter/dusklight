@@ -1,5 +1,8 @@
 #ifndef JAISTREAM_H
 #define JAISTREAM_H
+#if TARGET_PC
+class JASPCMStream;
+#endif
 
 #include "JSystem/JAudio2/JAISound.h"
 #include "JSystem/JAudio2/JASAramStream.h"
@@ -52,6 +55,9 @@ public:
     /* 0x2C4 */ bool field_0x2c4;
     /* 0x2C5 */ u8 field_0x2c5;
     /* 0x2C6 */ u8 field_0x2c6;
+#if TARGET_PC
+    std::shared_ptr<JASPCMStream> pcmStream_{};
+#endif
 };
 
 #endif /* JAISTREAM_H */

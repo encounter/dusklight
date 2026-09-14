@@ -1512,7 +1512,6 @@ set(DUSK_FILES
         src/dusk/mods/svc/actor.cpp
         src/dusk/mods/svc/audio_res/audio_res.hpp
         src/dusk/mods/svc/audio/audio.cpp
-        src/dusk/mods/svc/audio/source.cpp
         src/dusk/mods/svc/audio_res/audio_res.cpp
         src/dusk/mods/svc/audio_res/bst.cpp
         src/dusk/mods/svc/audio_res/bst.hpp

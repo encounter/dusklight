@@ -1,5 +1,5 @@
 #if TARGET_PC
-#include "dusk/mods/svc/audio/source.hpp"
+#include "dusk/mods/svc/audio/audio.hpp"
 #endif
 #include "Z2AudioLib/Z2SeqMgr.h"
 #include "Z2AudioLib/Z2LinkMgr.h"

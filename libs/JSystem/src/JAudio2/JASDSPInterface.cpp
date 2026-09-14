@@ -509,7 +509,26 @@ BOOL JASDsp::changeFXLineParam(u8 param_0, u8 param_1, uintptr_t param_2) {
     return 1;
 }
 
+#if TARGET_PC
+void JASDsp::TChannel::clearPcmSource() {
+    mPcmStream = nullptr;
+    mPcmLane = 0;
+    mPcmPitch = 1.0f;
+}
+
+void JASDsp::TChannel::setPcmSource(JASPCMStream* stream, u8 lane) {
+    mPcmStream = stream;
+    mPcmLane = lane;
+    mPcmPitch = 1.0f;
+    mAramBaseAddress = nullptr;
+    mWaveAramAddress = 0;
+}
+#endif
+
 void JASDsp::TChannel::init() {
+#if TARGET_PC
+    clearPcmSource();
+#endif
     JUT_ASSERT(489, dspMutex);
     mPauseFlag = 0;
     mIsFinished = 0;
@@ -542,17 +561,30 @@ void JASDsp::TChannel::playStart() {
 }
 
 void JASDsp::TChannel::playStop() {
+#if TARGET_PC
+    clearPcmSource();
+#endif
     JUT_ASSERT(540, dspMutex);
     mIsActive = 0;
 }
 
 void JASDsp::TChannel::replyFinishRequest() {
+#if TARGET_PC
+    clearPcmSource();
+#endif
     JUT_ASSERT(549, dspMutex);
     mIsFinished = 0;
     mIsActive = 0;
 }
 
 void JASDsp::TChannel::forceStop() {
+#if TARGET_PC
+    if (mPcmStream) {
+        mIsFinished = 1;
+        mIsActive = 0;
+    }
+    clearPcmSource();
+#endif
     JUT_ASSERT(559, dspMutex);
     mForcedStop = 1;
 }

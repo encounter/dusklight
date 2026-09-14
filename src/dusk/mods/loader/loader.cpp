@@ -370,7 +370,9 @@ void ModLoader::init() {
                 data::abbreviated_path_string(selected->path), selected->metadata.version);
             continue;
         }
-        if (auto* mod = try_load_mod(package.path, package.fromDirectory, package.searchDirIndex)) {
+        if (auto* mod =
+                try_load_mod(package.path, package.fromDirectory, package.searchDirIndex, {}))
+        {
             record_package_sources(*mod, packages);
         }
     }

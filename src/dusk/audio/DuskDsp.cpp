@@ -1,4 +1,5 @@
 #include "DuskDsp.hpp"
+#include "JSystem/JAudio2/JASPCMStream.h"
 
 #include "Adpcm.hpp"
 #include "DuskAudioSystem.h"
@@ -108,7 +109,9 @@ static u32 ConvertSamplesToDataLength(const JASDsp::TChannel& channel, u32 sampl
 static void ResetChannel(JASDsp::TChannel& channel, ChannelAuxData& aux) {
     aux.resetCount += 1;
 
-    channel.mSamplesLeft = channel.mEndSample - channel.mSamplePosition;
+    if (!channel.mPcmStream) {
+        channel.mSamplesLeft = channel.mEndSample - channel.mSamplePosition;
+    }
 
     aux.hist0 = 0;
     aux.hist1 = 0;
@@ -386,6 +389,42 @@ static void FillDecodeBuf(JASDsp::TChannel& channel, ChannelAuxData& aux, int ne
     channel.mAramStreamPosition = channel.mWaveAramAddress + ConvertSamplesToDataLength(channel, channel.mSamplePosition);
 }
 
+static void filter_channel(
+    JASDsp::TChannel& channel, ChannelAuxData& channelAux, DspSubframe& buf) {
+    // IIR FILTER
+
+    // IIR part 1, low-pass: out[n] = (in[n] - in[n-1]) * (coeff/128) + out[n-1]
+    if (s16 coeff = channel.iir_filter_params[4]; coeff != 0) {
+        for (f32& sample : buf) {
+            f32 out = std::clamp(
+                (sample - channelAux.prev_lp_in) * ((f32)coeff / 128.0f) + channelAux.prev_lp_out,
+                -1.0f, 1.0f);
+
+            channelAux.prev_lp_in = sample;         // in[n-1]  = in[n]
+            sample = channelAux.prev_lp_out = out;  // out[n-1] = out[n]
+        }
+    }
+
+    // IIR part 2, biquad: out[n] = (b1*in[n-1] + b2*in[n-2] + a1*out[n-1] + a2*out[n-2]) / 32768
+    if ((channel.mFilterMode & 0x20) != 0) {
+        for (f32& sample : buf) {
+            f32 out = std::clamp((channel.iir_filter_params[0] * channelAux.biq_in1 +      // b1
+                                     channel.iir_filter_params[1] * channelAux.biq_in2 +   // b2
+                                     channel.iir_filter_params[2] * channelAux.biq_out1 +  // a1
+                                     channel.iir_filter_params[3] * channelAux.biq_out2    // a2
+                                     ) /
+                                     32768.0f,
+                -1.0f, 1.0f);
+
+            // shift history, then store new input and output
+            channelAux.biq_in2 = channelAux.biq_in1;    // in[n-2]  = in[n-1]
+            channelAux.biq_in1 = sample;                // in[n-1]  = in[n]
+            channelAux.biq_out2 = channelAux.biq_out1;  // out[n-2] = out[n-1]
+            sample = channelAux.biq_out1 = out;         // out[n-1] = out[n]
+        }
+    }
+}
+
 /**
  * Render the audio data contributed by a single DSP channel. Reads & decodes new input samples.
  */
@@ -432,37 +471,7 @@ static void RenderChannel(
     channelAux.resamplePos = pos;
     channelAux.resamplePrev = prev;
 
-    // IIR FILTER
-
-    // IIR part 1, low-pass: out[n] = (in[n] - in[n-1]) * (coeff/128) + out[n-1]
-    if (s16 coeff = channel.iir_filter_params[4]; coeff != 0) {
-        for (f32& sample : buf) {
-            f32 out = std::clamp(
-                (sample - channelAux.prev_lp_in) * ((f32)coeff / 128.0f) + channelAux.prev_lp_out, -1.0f, 1.0f
-            );
-
-            channelAux.prev_lp_in = sample;        // in[n-1]  = in[n]
-            sample = channelAux.prev_lp_out = out; // out[n-1] = out[n]
-        }
-    }
-
-    // IIR part 2, biquad: out[n] = (b1*in[n-1] + b2*in[n-2] + a1*out[n-1] + a2*out[n-2]) / 32768
-    if ((channel.mFilterMode & 0x20) != 0) {
-        for (f32& sample : buf) {
-            f32 out = std::clamp((
-                channel.iir_filter_params[0] * channelAux.biq_in1  + // b1
-                channel.iir_filter_params[1] * channelAux.biq_in2  + // b2
-                channel.iir_filter_params[2] * channelAux.biq_out1 + // a1
-                channel.iir_filter_params[3] * channelAux.biq_out2   // a2
-            ) / 32768.0f, -1.0f, 1.0f);
-
-            // shift history, then store new input and output
-            channelAux.biq_in2 = channelAux.biq_in1;   // in[n-2]  = in[n-1]
-            channelAux.biq_in1 = sample;               // in[n-1]  = in[n]
-            channelAux.biq_out2 = channelAux.biq_out1; // out[n-2] = out[n-1]
-            sample = channelAux.biq_out1 = out;        // out[n-1] = out[n]
-        }
-    }
+    filter_channel(channel, channelAux, buf);
 
     // move any remaining samples in the decode buf to the beginning
     int remainingDecodeBuf = channelAux.decodeBufCount - srcIdx;
@@ -761,6 +770,67 @@ void dusk::audio::DspRender(OutputSubframe& subframe) {
     DspSubframe surroundBus = {};
     bool anySurroundInput = false;
 
+    struct PcmGroup {
+        JASPCMStream* stream = nullptr;
+        std::array<int, 2> slots{-1, -1};
+        JASPCMStream::RenderBlock block{};
+        bool invalid = false;
+        bool invalidPitch = false;
+    };
+
+    std::array<PcmGroup, DSP_CHANNELS> pcmGroups{};
+    std::array<int, DSP_CHANNELS> pcmGroupForSlot{};
+    size_t pcmCount = 0;
+    for (int i = 0; i < voices.size(); ++i) {
+        auto& voice = voices[i];
+        if (!voice.mIsActive || !voice.mPcmStream) {
+            continue;
+        }
+        size_t group = 0;
+        while (group < pcmCount && pcmGroups[group].stream != voice.mPcmStream) {
+            ++group;
+        }
+        if (group == pcmCount) {
+            pcmGroups[pcmCount++].stream = voice.mPcmStream;
+        }
+        auto& pcm = pcmGroups[group];
+        pcmGroupForSlot[i] = group;
+        if (voice.mPcmLane >= pcm.stream->getChannelCount() || pcm.slots[voice.mPcmLane] >= 0) {
+            pcm.invalid = true;
+        } else {
+            pcm.slots[voice.mPcmLane] = i;
+        }
+        if (voice.mForcedStop || voice.mIsFinished) {
+            pcm.invalid = true;
+        }
+    }
+    for (size_t group = 0; group < pcmCount; ++group) {
+        auto& pcm = pcmGroups[group];
+        // Lane zero is the timeline authority, regardless of DSP slot ordering.
+        if (pcm.slots[0] < 0 || (pcm.stream->getChannelCount() == 2 && pcm.slots[1] < 0)) {
+            pcm.invalid = true;
+        }
+        if (pcm.slots[0] >= 0 && pcm.slots[1] >= 0) {
+            const auto& left = voices[pcm.slots[0]];
+            const auto& right = voices[pcm.slots[1]];
+            pcm.invalidPitch = !std::isfinite(left.mPcmPitch) || !std::isfinite(right.mPcmPitch);
+            pcm.invalid |= (!pcm.invalidPitch && left.mPcmPitch != right.mPcmPitch) ||
+                           left.mPauseFlag != right.mPauseFlag;
+        }
+        if (pcm.invalid) {
+            for (auto slot : pcm.slots) {
+                if (slot >= 0) {
+                    voices[slot].mIsFinished = true;
+                }
+            }
+            continue;
+        }
+        auto& primary = voices[pcm.slots[0]];
+        pcm.stream->renderSubFrame(
+            {SampleRate, pcm.invalidPitch ? NAN : primary.mPcmPitch, primary.mPauseFlag != 0},
+            pcm.block);
+    }
+
     for (int i = 0; i < voices.size(); i++) {
         auto& voice = voices[i];
         auto& aux = ChannelAux[i];
@@ -779,7 +849,20 @@ void dusk::audio::DspRender(OutputSubframe& subframe) {
         }
 
         DspSubframe monoBuf = {};
-        if (voice.mWaveAramAddress == 0 && !voice.mAramBaseAddress) {
+        if (voice.mPcmStream) {
+            auto& pcm = pcmGroups[pcmGroupForSlot[i]];
+            if (pcm.invalid) {
+                continue;
+            }
+            if (voice.mResetFlag) {
+                ResetChannel(voice, aux);
+            }
+            monoBuf = pcm.block.channels[voice.mPcmLane];
+            filter_channel(voice, aux, monoBuf);
+            if (pcm.block.drained) {
+                voice.mIsFinished = true;
+            }
+        } else if (voice.mWaveAramAddress == 0 && !voice.mAramBaseAddress) {
             RenderOscChannel(voice, aux, monoBuf);
         } else {
             ValidateChannel(voice);
