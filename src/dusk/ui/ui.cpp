@@ -194,14 +194,7 @@ void handle_event(const SDL_Event& event) noexcept {
     } else if (event.type == SDL_EVENT_DROP_FILE && event.drop.data != nullptr) {
         sDroppedPackages.push_back(borealis::io::fs_path_from_utf8(event.drop.data));
     } else if (event.type == SDL_EVENT_DROP_COMPLETE) {
-        if (sDroppedPackages.empty()) {
-            push_toast({
-                .type = "warning",
-                .title = "No packages found",
-                .content = "Drop a save file or Dusklight package to import it.",
-                .duration = std::chrono::seconds{4},
-            });
-        } else {
+        if (!sDroppedPackages.empty()) {
             auto paths = std::exchange(sDroppedPackages, {});
             std::erase_if(paths, [](const std::filesystem::path& path) {
                 const auto extension = Rml::StringUtilities::ToLower(
