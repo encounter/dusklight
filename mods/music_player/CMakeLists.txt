@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(audio_demo CXX)
+project(music_player CXX)
 
 if (CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     set(DUSK_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../.." CACHE PATH "Path to dusk source root")
@@ -12,10 +12,10 @@ if (CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     endif ()
 endif ()
 
-add_mod(audio_demo
+add_mod(music_player
     SOURCES src/mod.cpp src/decoder.cpp
     MOD_JSON mod.json
     RES_DIR res
     BUNDLE
 )
-target_include_directories(audio_demo PRIVATE vendor)
+target_include_directories(music_player PRIVATE vendor)

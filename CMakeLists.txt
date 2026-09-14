@@ -560,7 +560,7 @@ if (DUSK_ENABLE_CODE_MODS AND CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR
     add_subdirectory(mods/cosmetics)
     add_subdirectory(mods/randomizer)
     add_subdirectory(mods/audio_mod)
-    add_subdirectory(mods/audio_demo)
+    add_subdirectory(mods/music_player)
 endif ()
 
 if (APPLE)

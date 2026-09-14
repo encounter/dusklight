@@ -6,7 +6,8 @@ for resident sound effects and HookService for intercepting BGM selection or bos
 
 ## Playback
 
-Copy `default_stream_desc`, set the source format and rate, and call `open`. Sources are native-endian
+Initialize a descriptor with `AUDIO_STREAM_DESC_INIT`, set the source format and rate, and call
+`open`. Passing `NULL` selects the same defaults. Sources are native-endian
 interleaved S16 or F32, 8000 through 192000 Hz, with one or two channels. SDL converts each source to
 32 kHz PCM16 before it enters the stream ring. No mod callbacks run on the audio or load thread.
 
@@ -20,7 +21,7 @@ IMPORT_SERVICE(AudioService, svc_audio);
 AudioStreamHandle music{};
 
 ModResult open_music() {
-    auto desc = *svc_audio->default_stream_desc;
+    AudioStreamDesc desc = AUDIO_STREAM_DESC_INIT;
     desc.format = AUDIO_FORMAT_F32;
     desc.sample_rate = 48000;
     desc.channels = 2;
@@ -31,7 +32,17 @@ ModResult open_music() {
 ModResult push_music(const float* pcm, uint32_t frames, uint32_t* accepted) {
     return svc_audio->write(mod_ctx, music, pcm, frames, accepted);
 }
+
+ModResult poll_music(AudioStreamState& state) {
+    state = AUDIO_STREAM_STATE_INIT;
+    return svc_audio->get_state(mod_ctx, music, &state);
+}
 ```
+
+Descriptors and state outputs carry `struct_size`. The host rejects undersized structures,
+preserves the caller's output size, and leaves any trailing extension fields untouched.
+Callers that copy `default_stream_desc` must reset the copy's `struct_size` to
+`sizeof(AudioStreamDesc)`, since a newer host may expose a larger descriptor.
 
 The mod owns decoding and file format support. Read compressed files through FileService at
 assignment time, then decode incrementally from memory. Implement loops by seeking the decoder
@@ -70,6 +81,15 @@ sample range (approximately 18.6 hours at unit pitch); close and reopen for long
 `set_volume` sets an absolute gain from zero through two, optionally ramped. `stop` is terminal and
 uses the vanilla sound fade; stopping an already paused stream ends it immediately. `close` stops
 playback and invalidates the generational handle. An ended stream retains its handle until closed.
+Stopped streams reject playback controls and writes. Repeated `stop` and `end_of_stream` calls
+are harmless; `free_frames` returns zero after flushing, stopping, or playback end.
+
+Invalid descriptors, undersized outputs, and stale or foreign handles return
+`MOD_INVALID_ARGUMENT`. `open` clears its output handle on failure and returns `MOD_UNAVAILABLE`
+until game audio is initialized or while stream capacity is exhausted. Conversion failures return
+`MOD_ERROR` and log the SDL error with the owning mod's ID. If conversion fails after `write` has
+copied input, its accepted count still reports those frames. Asynchronous conversion failures
+stop the affected stream, which subsequently reports `AUDIO_STREAM_ENDED`.
 
 At most four AudioService streams may be open across all mods. Closing releases the public handle
 immediately, while JAudio retains its source and ARAM until pending tasks and DSP channels retire.

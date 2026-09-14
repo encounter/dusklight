@@ -1,9 +1,12 @@
 #include "mods/svc/audio.h"
 #include <SDL3/SDL_audio.h>
+#include <SDL3/SDL_error.h>
 #include <algorithm>
+#include <borealis/log.hpp>
 #include <charconv>
 #include <cmath>
 #include <cstring>
+#include <fmt/format.h>
 #include <limits>
 #include <string>
 #include "../audio_res/audio_res.hpp"
@@ -13,13 +16,13 @@
 #include "JSystem/JAudio2/JASCriticalSection.h"
 #include "Z2AudioLib/Z2SeqMgr.h"
 #include "Z2AudioLib/Z2SoundMgr.h"
+#include "dusk/mods/log_buffer.hpp"
 #include "m_Do/m_Do_audio.h"
 #include "source.hpp"
 
 namespace dusk::mods::svc::audio {
 namespace {
-constexpr AudioStreamDesc defaultDesc{sizeof(AudioStreamDesc), AUDIO_SOURCE_PCM, AUDIO_FORMAT_S16,
-    outputRate, 2, 0, 0, 1.0f, true, true};
+constexpr borealis::Log Log{"dusk::mods::audio"};
 
 struct Stream {
     std::shared_ptr<Source> source{};
@@ -27,7 +30,7 @@ struct Stream {
     JAISoundHandle sound{};
     AudioSoundTableHandle table{};
     ModContext* context{};
-    AudioStreamDesc desc{};
+    AudioStreamDesc desc = AUDIO_STREAM_DESC_INIT;
     int entry{};
     uint32_t partial{}, fadeIn{};
     uint64_t outputFrames{};
@@ -56,6 +59,11 @@ std::array<Registration, 4> sources{};
 int nextEntry = entryBase;
 uint32_t duckCount{};
 
+void report_sdl_error(ModContext* context, const char* operation) {
+    log::emit(log::Source::Mod, mod_id_from_context(context), LOG_LEVEL_ERROR,
+        fmt::format("{}: {}", operation, SDL_GetError()));
+}
+
 uint32_t fade_ticks(uint32_t frames) {
     return static_cast<uint32_t>((uint64_t{frames} * 30 + outputRate - 1) / outputRate);
 }
@@ -82,12 +90,16 @@ void set_ducking(Stream& stream, bool enabled) {
 }
 
 bool drain(Stream& stream) {
+    if (stream.stopped || !stream.sound) {
+        return true;
+    }
     auto& source = *stream.source;
     const auto channels = source.channels;
     auto produced = source.produced.load(std::memory_order_relaxed);
     while (produced - source.consumed.load(std::memory_order_acquire) < source.blocks.size()) {
         const int available = SDL_GetAudioStreamAvailable(stream.converter);
         if (available < 0) {
+            report_sdl_error(stream.context, "query converted audio");
             return false;
         }
         const auto count = std::min<uint32_t>(
@@ -98,6 +110,7 @@ bool drain(Stream& stream) {
         const int bytes = SDL_GetAudioStreamData(
             stream.converter, stream.scratch.data(), count * channels * sizeof(int16_t));
         if (bytes < 0) {
+            report_sdl_error(stream.context, "convert audio");
             return false;
         }
         if (bytes == 0) {
@@ -120,7 +133,15 @@ bool drain(Stream& stream) {
             source.produced.store(++produced, std::memory_order_release);
         }
     }
-    if (stream.eof && SDL_GetAudioStreamAvailable(stream.converter) == 0) {
+    if (!stream.eof) {
+        return true;
+    }
+    const int available = SDL_GetAudioStreamAvailable(stream.converter);
+    if (available < 0) {
+        report_sdl_error(stream.context, "query final audio");
+        return false;
+    }
+    if (available == 0) {
         if (stream.partial != 0) {
             auto& block = source.blocks[produced % source.blocks.size()];
             for (uint32_t channel = 0; channel < channels; ++channel) {
@@ -140,16 +161,18 @@ bool drain(Stream& stream) {
     return true;
 }
 
-uint32_t writable(Stream& stream) {
+ModResult writable_frames(Stream& stream, uint32_t& outFrames) {
+    outFrames = 0;
     if (stream.eof || stream.stopped || !stream.sound) {
-        return 0;
+        return MOD_OK;
     }
     auto& source = *stream.source;
     const uint32_t staged = source.produced.load() - source.consumed.load();
     const uint64_t capacity = (source.blocks.size() - staged) * blockFrames - stream.partial;
     const int queued = SDL_GetAudioStreamQueued(stream.converter);
     if (queued < 0) {
-        return 0;
+        report_sdl_error(stream.context, "query queued audio");
+        return MOD_ERROR;
     }
     const uint64_t budget = capacity * stream.desc.sample_rate / outputRate;
     const uint32_t sampleBytes = stream.desc.format == AUDIO_FORMAT_S16 ? 2 : 4;
@@ -159,7 +182,9 @@ uint32_t writable(Stream& stream) {
         stream.outputFrames < 0x7fff0000u ?
             (0x7fff0000u - stream.outputFrames) * stream.desc.sample_rate / outputRate :
             0;
-    return static_cast<uint32_t>(std::min(budget > pending ? budget - pending : 0, remaining));
+    const uint64_t limit = std::min(budget, remaining);
+    outFrames = static_cast<uint32_t>(limit > pending ? limit - pending : 0);
+    return MOD_OK;
 }
 
 ModResult open(ModContext* context, const AudioStreamDesc* desc, AudioStreamHandle* outHandle) {
@@ -170,10 +195,7 @@ ModResult open(ModContext* context, const AudioStreamDesc* desc, AudioStreamHand
     if (!mod || !outHandle) {
         return MOD_INVALID_ARGUMENT;
     }
-    if (!desc) {
-        desc = &defaultDesc;
-    }
-    if (desc->struct_size < sizeof(AudioStreamDesc) || desc->source != AUDIO_SOURCE_PCM ||
+    if (!desc || desc->struct_size < sizeof(AudioStreamDesc) || desc->source != AUDIO_SOURCE_PCM ||
         (desc->format != AUDIO_FORMAT_S16 && desc->format != AUDIO_FORMAT_F32) ||
         desc->sample_rate < 8000 || desc->sample_rate > 192000 || desc->channels < 1 ||
         desc->channels > 2 || !std::isfinite(desc->volume) || desc->volume < 0 || desc->volume > 2)
@@ -212,6 +234,7 @@ ModResult open(ModContext* context, const AudioStreamDesc* desc, AudioStreamHand
     SDL_AudioSpec output{SDL_AUDIO_S16, desc->channels, outputRate};
     stream->converter = SDL_CreateAudioStream(&input, &output);
     if (!stream->converter) {
+        report_sdl_error(context, "open audio stream");
         return MOD_ERROR;
     }
     stream->entry = nextEntry++;
@@ -261,19 +284,26 @@ ModResult write(ModContext* context, AudioStreamHandle handle, const void* frame
     if (accepted) {
         *accepted = 0;
     }
+    JASCriticalSection lock;
     auto* stream = get_stream(context, handle);
-    if (!stream || !accepted || (!frames && count) || stream->eof || stream->stopped) {
+    if (!stream || !accepted || (!frames && count) || stream->eof || stream->stopped ||
+        !stream->sound)
+    {
         return MOD_INVALID_ARGUMENT;
     }
-    JASCriticalSection lock;
     if (!drain(*stream)) {
         return MOD_ERROR;
     }
-    const auto take = std::min(count, writable(*stream));
+    uint32_t capacity{};
+    if (writable_frames(*stream, capacity) != MOD_OK) {
+        return MOD_ERROR;
+    }
+    const auto take = std::min(count, capacity);
     if (take &&
         !SDL_PutAudioStreamData(stream->converter, frames,
             take * stream->desc.channels * (stream->desc.format == AUDIO_FORMAT_S16 ? 2 : 4)))
     {
+        report_sdl_error(context, "write audio");
         return MOD_ERROR;
     }
     *accepted = take;
@@ -284,25 +314,31 @@ ModResult free_frames(ModContext* context, AudioStreamHandle handle, uint32_t* o
     if (outFrames) {
         *outFrames = 0;
     }
+    JASCriticalSection lock;
     auto* stream = get_stream(context, handle);
     if (!stream || !outFrames) {
         return MOD_INVALID_ARGUMENT;
     }
-    JASCriticalSection lock;
     if (!drain(*stream)) {
         return MOD_ERROR;
     }
-    *outFrames = writable(*stream);
-    return MOD_OK;
+    return writable_frames(*stream, *outFrames);
 }
 
 ModResult end_of_stream(ModContext* context, AudioStreamHandle handle) {
+    JASCriticalSection lock;
     auto* stream = get_stream(context, handle);
-    if (!stream || stream->stopped) {
+    if (!stream) {
         return MOD_INVALID_ARGUMENT;
     }
-    JASCriticalSection lock;
-    if (!stream->eof && !SDL_FlushAudioStream(stream->converter)) {
+    if (stream->eof) {
+        return MOD_OK;
+    }
+    if (stream->stopped || !stream->sound) {
+        return MOD_INVALID_ARGUMENT;
+    }
+    if (!SDL_FlushAudioStream(stream->converter)) {
+        report_sdl_error(context, "flush audio");
         return MOD_ERROR;
     }
     stream->eof = true;
@@ -310,11 +346,11 @@ ModResult end_of_stream(ModContext* context, AudioStreamHandle handle) {
 }
 
 ModResult play(ModContext* context, AudioStreamHandle handle, uint32_t fade) {
+    JASCriticalSection lock;
     auto* stream = get_stream(context, handle);
     if (!stream || stream->stopped || !stream->sound) {
         return MOD_INVALID_ARGUMENT;
     }
-    JASCriticalSection lock;
     if (stream->sound->status_.state.unk >= 4) {
         return MOD_OK;
     }
@@ -324,24 +360,32 @@ ModResult play(ModContext* context, AudioStreamHandle handle, uint32_t fade) {
 }
 
 ModResult stop(ModContext* context, AudioStreamHandle handle, uint32_t fade) {
+    JASCriticalSection lock;
     auto* stream = get_stream(context, handle);
     if (!stream) {
         return MOD_INVALID_ARGUMENT;
     }
-    JASCriticalSection lock;
+    if (stream->stopped) {
+        return MOD_OK;
+    }
+    stream->playRequested = false;
+    stream->pauseRequested = false;
     if (stream->sound) {
         stream->sound->stop(stream->sound->isPaused() ? 0 : fade_ticks(fade));
     }
     stream->stopped = true;
+    if (!stream->sound) {
+        set_ducking(*stream, false);
+    }
     return MOD_OK;
 }
 
 ModResult pause(ModContext* context, AudioStreamHandle handle, uint32_t fade) {
+    JASCriticalSection lock;
     auto* stream = get_stream(context, handle);
     if (!stream || !stream->sound || stream->stopped) {
         return MOD_INVALID_ARGUMENT;
     }
-    JASCriticalSection lock;
     stream->pauseRequested = true;
     stream->sound->fadeOut(fade_ticks(fade));
     if (!fade) {
@@ -351,11 +395,11 @@ ModResult pause(ModContext* context, AudioStreamHandle handle, uint32_t fade) {
 }
 
 ModResult resume(ModContext* context, AudioStreamHandle handle, uint32_t fade) {
+    JASCriticalSection lock;
     auto* stream = get_stream(context, handle);
     if (!stream || !stream->sound || stream->stopped) {
         return MOD_INVALID_ARGUMENT;
     }
-    JASCriticalSection lock;
     stream->pauseRequested = false;
     stream->sound->pause(false);
     stream->sound->getFader()->fadeIn(fade_ticks(fade));
@@ -363,11 +407,13 @@ ModResult resume(ModContext* context, AudioStreamHandle handle, uint32_t fade) {
 }
 
 ModResult set_volume(ModContext* context, AudioStreamHandle handle, float volume, uint32_t ramp) {
+    JASCriticalSection lock;
     auto* stream = get_stream(context, handle);
-    if (!stream || !stream->sound || !std::isfinite(volume) || volume < 0 || volume > 2) {
+    if (!stream || !stream->sound || stream->stopped || !std::isfinite(volume) || volume < 0 ||
+        volume > 2)
+    {
         return MOD_INVALID_ARGUMENT;
     }
-    JASCriticalSection lock;
     // Transfer the table's initial gain to the movable parameter before the first ramp.
     auto& property = stream->sound->getProperty();
     auto& auxiliary = stream->sound->getAuxiliary();
@@ -380,24 +426,33 @@ ModResult set_volume(ModContext* context, AudioStreamHandle handle, float volume
 }
 
 ModResult set_pitch(ModContext* context, AudioStreamHandle handle, float ratio) {
+    JASCriticalSection lock;
     auto* stream = get_stream(context, handle);
-    if (!stream || !stream->sound || !std::isfinite(ratio) || ratio <= 0 || ratio > 4) {
+    if (!stream || !stream->sound || stream->stopped || !std::isfinite(ratio) || ratio <= 0 ||
+        ratio > 4)
+    {
         return MOD_INVALID_ARGUMENT;
     }
-    JASCriticalSection lock;
     stream->sound->getAuxiliary().movePitch(ratio, 0);
     return MOD_OK;
 }
 
 ModResult get_state(ModContext* context, AudioStreamHandle handle, AudioStreamState* state) {
-    if (state) {
-        *state = {};
-    }
-    auto* stream = get_stream(context, handle);
-    if (!stream || !state) {
+    if (!state || state->struct_size < sizeof(AudioStreamState)) {
         return MOD_INVALID_ARGUMENT;
     }
+    const uint32_t structSize = state->struct_size;
+    *state = AudioStreamState{.struct_size = structSize};
     JASCriticalSection lock;
+    auto* stream = get_stream(context, handle);
+    if (!stream) {
+        return MOD_INVALID_ARGUMENT;
+    }
+    const int queued = SDL_GetAudioStreamQueued(stream->converter);
+    if (queued < 0) {
+        report_sdl_error(context, "get audio state");
+        return MOD_ERROR;
+    }
     auto& source = *stream->source;
     const auto position = source.position.load();
     state->position_frames =
@@ -408,7 +463,6 @@ ModResult get_state(ModContext* context, AudioStreamHandle handle, AudioStreamSt
     state->buffered_frames = stream->outputFrames > state->position_frames ?
                                  stream->outputFrames - state->position_frames :
                                  0;
-    const int queued = SDL_GetAudioStreamQueued(stream->converter);
     if (queued > 0) {
         state->buffered_frames += uint64_t{static_cast<uint32_t>(queued)} * outputRate /
                                   (stream->desc.sample_rate * stream->desc.channels *
@@ -429,11 +483,11 @@ ModResult get_state(ModContext* context, AudioStreamHandle handle, AudioStreamSt
 }
 
 ModResult close(ModContext* context, AudioStreamHandle handle) {
+    JASCriticalSection lock;
     auto* stream = get_stream(context, handle);
     if (!stream) {
         return MOD_INVALID_ARGUMENT;
     }
-    JASCriticalSection lock;
     set_ducking(*stream, false);
     streams.erase(handle);
     return MOD_OK;
@@ -443,20 +497,21 @@ void frame_end() {
     JASCriticalSection lock;
     streams.for_each([](auto, auto& entry) {
         auto& stream = *entry.value;
+        if (!stream.stopped && stream.sound && !drain(stream)) {
+            stream.sound->stop();
+            stream.stopped = true;
+        }
+        // Draining an empty final buffer or stopping after an error releases the sound handle.
         if (!stream.sound) {
             set_ducking(stream, false);
             return;
         }
-        if (!stream.stopped && !drain(stream)) {
-            stream.sound->stop();
-            stream.stopped = true;
-        }
-        if (stream.playRequested && stream.sound->isPrepared()) {
+        if (!stream.stopped && stream.playRequested && stream.sound->isPrepared()) {
             stream.sound->unlockIfLocked();
             stream.sound->fadeIn(stream.fadeIn);
             stream.playRequested = false;
         }
-        if (stream.pauseRequested && stream.sound->getFader()->isOut()) {
+        if (!stream.stopped && stream.pauseRequested && stream.sound->getFader()->isOut()) {
             stream.sound->pause(true);
         }
         set_ducking(stream, stream.sound->status_.state.unk >= 4 && !stream.sound->isPaused());
@@ -471,6 +526,9 @@ void mod_detached(LoadedMod& mod) {
     auto entries = streams.take_all(mod);
     for (auto& entry : entries) {
         set_ducking(*entry.value, false);
+    }
+    if (!entries.empty()) {
+        Log.warn("[{}] reclaimed {} open audio stream(s)", mod.metadata.id, entries.size());
     }
     // Destroy handles while the owner's context and AudioRes registry are still available.
 }
@@ -515,7 +573,6 @@ namespace dusk::mods::svc {
 namespace {
 constexpr AudioService service{
     .header = SERVICE_HEADER(AudioService, AUDIO_SERVICE_MAJOR, AUDIO_SERVICE_MINOR),
-    .default_stream_desc = &audio::defaultDesc,
     .open = SERVICE_FUNCTION(audio::open),
     .write = SERVICE_FUNCTION(audio::write),
     .free_frames = SERVICE_FUNCTION(audio::free_frames),

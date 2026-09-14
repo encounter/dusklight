@@ -1,10 +1,12 @@
 #pragma once
+
 #include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <span>
 
 namespace audio_demo {
+
 class Decoder {
 public:
     Decoder();
@@ -20,8 +22,10 @@ public:
     uint32_t channels() const;
     uint64_t length_frames() const;
     const char* format_name() const;
+
 private:
     struct Impl;
     std::unique_ptr<Impl> impl;
 };
-}
+
+}  // namespace audio_demo

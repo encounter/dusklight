@@ -1253,7 +1253,7 @@ svc_game_mode->register_game_mode(mod_ctx, &gameModeDesc);
 
 Push decoded music through JAudio with preparation locks, buffering, fades and scene-change
 cleanup. See [AudioService](audio-service.md) for playback and decoder integration, and
-[the audio demo](../mods/audio_demo/README.md) for a FileService music player with bundled decoders.
+[the audio demo](../mods/music_player/README.md) for a FileService music player with bundled decoders.
 
 ### ActorService (`mods/svc/actor.h`)
 
