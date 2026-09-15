@@ -2,6 +2,21 @@ window.saves pane.list {
     flex: 0 0 320dp;
 }
 
+window.saves pane.list > header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+window.saves pane.list > header section-heading {
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+window.saves select-button key icon {
+    margin-right: var(--space-sm);
+}
+
 window.saves pane.detail {
     gap: var(--space-md);
 }

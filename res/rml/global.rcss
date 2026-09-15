@@ -47,6 +47,7 @@ icon {
     height: 1em;
     font-family: var(--font-family-icons);
     font-weight: normal;
+    line-height: 1;
     display: inline-block;
     vertical-align: middle;
 }

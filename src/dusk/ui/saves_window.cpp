@@ -13,6 +13,7 @@
 #include "dusk/mods/svc/save.hpp"
 #include "dusk/save_manager.hpp"
 #include "dusk/settings.h"
+#include "dusk/utilities.hpp"
 #include "format.hpp"
 #include "icon_button.hpp"
 #include "modal.hpp"
@@ -39,7 +40,7 @@ using save_manager::Result;
 using save_manager::SaveIdentity;
 using save_manager::Storage;
 
-struct ModeOption {
+struct SaveOption {
     std::string saveName;
     std::string label;
 };
@@ -52,16 +53,11 @@ struct Context {
 struct ImportItem {
     Context context;
     Artifact artifact;
-    std::vector<SaveIdentity> rawImageIdentities;
-};
-
-struct PendingImport {
-    std::string location;
-    std::string saveName;
+    bool selected = true;
 };
 
 std::atomic_uint64_t s_refreshGeneration = 1;
-std::deque<PendingImport> s_pendingImports;
+std::deque<std::string> s_pendingImports;
 bool s_importActive = false;
 
 void process_next_import();
@@ -71,8 +67,8 @@ void finish_import_flow() {
     process_next_import();
 }
 
-std::vector<ModeOption> mode_options() {
-    std::vector<ModeOption> modes;
+std::vector<SaveOption> registered_save_options() {
+    std::vector<SaveOption> modes;
     std::set<std::string> seen;
     const auto& registered = gamemode::getGameModeManager().getRegisteredGameModes();
     const auto add_mode = [&](const gamemode::GameMode& mode) {
@@ -99,11 +95,11 @@ std::string active_save_name() {
 
 bool is_registered_save(std::string_view saveName) {
     return std::ranges::any_of(
-        mode_options(), [saveName](const ModeOption& mode) { return mode.saveName == saveName; });
+        registered_save_options(), [saveName](const SaveOption& mode) { return mode.saveName == saveName; });
 }
 
 std::string mode_label(std::string_view saveName) {
-    for (const auto& mode : mode_options()) {
+    for (const auto& mode : registered_save_options()) {
         if (mode.saveName == saveName) {
             return mode.label;
         }
@@ -239,20 +235,21 @@ void begin_raw_export(const std::string& saveName) {
     export_artifact(std::move(artifact.value), "raw");
 }
 
-void perform_import(std::shared_ptr<std::vector<ImportItem>> items, size_t selectedIndex,
-    bool importAll, ModDataAction modDataAction, Modal& modal) {
+void perform_import(
+    std::shared_ptr<std::vector<ImportItem>> items, ModDataAction modDataAction, Modal& modal) {
     modal.pop();
-    const bool replacingRawImage = !(*items)[selectedIndex].rawImageIdentities.empty();
+    const bool replacingRawImage = items->front().artifact.kind == save_manager::ArtifactKind::Raw;
     Result result{.ok = true};
     size_t importedCount = 0;
-    for (size_t i = 0; i < items->size(); ++i) {
-        if (!importAll && i != selectedIndex) {
+    std::string importedLabel;
+    for (const auto& item : *items) {
+        if (!item.selected) {
             continue;
         }
-        const auto& item = (*items)[i];
-        if (!item.rawImageIdentities.empty()) {
-            result = save_manager::import_raw_image(
-                item.context.storage, item.rawImageIdentities, item.artifact, modDataAction);
+        if (replacingRawImage) {
+            result =
+                save_manager::import_raw_image(item.context.storage, item.context.identity.game,
+                    item.context.identity.maker, item.artifact, modDataAction);
         } else {
             result = save_manager::import_artifact(
                 item.context.storage, item.context.identity, item.artifact, modDataAction);
@@ -260,19 +257,16 @@ void perform_import(std::shared_ptr<std::vector<ImportItem>> items, size_t selec
         if (!result) {
             break;
         }
+        importedLabel = mode_label(item.context.identity.saveName);
         ++importedCount;
     }
-    if (importedCount != 0) {
-        ++s_refreshGeneration;
-    }
+    // A failed mod-data write may still have changed the game save.
+    ++s_refreshGeneration;
     std::string message;
     if (result) {
-        message = replacingRawImage ?
-                      "The memory card image was imported." :
-                  importedCount == 1 ?
-                      fmt::format("The {} save was imported.",
-                          mode_label((*items)[selectedIndex].context.identity.saveName)) :
-                      fmt::format("{} saves were imported.", importedCount);
+        message = replacingRawImage  ? "The memory card image was imported." :
+                  importedCount == 1 ? fmt::format("The {} save was imported.", importedLabel) :
+                                       fmt::format("{} saves were imported.", importedCount);
     } else if (importedCount != 0) {
         message = fmt::format("{} save{} imported before the operation stopped: {}", importedCount,
             importedCount == 1 ? " was" : "s were", result.message);
@@ -282,107 +276,85 @@ void perform_import(std::shared_ptr<std::vector<ImportItem>> items, size_t selec
     show_message("Save Files", std::move(message), !result, &finish_import_flow);
 }
 
-void confirm_import(Artifact artifact, std::string saveName) {
+void confirm_import(Artifact artifact) {
+    const bool raw = artifact.kind == save_manager::ArtifactKind::Raw;
     const bool hasBundledModData = artifact.kind == save_manager::ArtifactKind::DuskSave;
-    if (is_registered_save(artifact.header.saveName)) {
-        saveName = artifact.header.saveName;
+    if (!raw && !utils::is_valid_save_name(artifact.header.saveName)) {
+        show_message("Import Failed", "The save contains an unsupported filename.", true,
+            &finish_import_flow);
+        return;
     }
-    auto context = context_for_save(saveName);
+    auto context =
+        context_for_save(raw ? gamemode::kDefaultGameModeSaveName : artifact.header.saveName);
     if (!context) {
         show_message("Import Failed", context.result.message, true, &finish_import_flow);
         return;
     }
+    if (!raw && (artifact.header.game != context.value.identity.game ||
+                    artifact.header.maker != context.value.identity.maker))
+    {
+        show_message("Import Failed", "This save does not match the configured disc.", true,
+            &finish_import_flow);
+        return;
+    }
 
-    const bool rawToGci = artifact.kind == save_manager::ArtifactKind::Raw &&
-                          context.value.storage.kind == save_manager::StorageKind::GciDirectory;
     auto items = std::make_shared<std::vector<ImportItem>>();
-    size_t selectedIndex = 0;
-    if (rawToGci) {
-        std::vector<SaveIdentity> identities;
-        for (const auto& mode : mode_options()) {
-            if (auto identity = save_manager::identity_for_disc(
-                    prelaunch_state().configuredDiscInfo, mode.saveName))
-            {
-                identities.push_back(std::move(*identity));
-            }
-        }
-        auto extracted = save_manager::extract_raw_saves(artifact, identities);
+    if (raw && context.value.storage.kind == save_manager::StorageKind::GciDirectory) {
+        auto extracted = save_manager::extract_raw_saves(
+            artifact, context.value.identity.game, context.value.identity.maker);
         if (!extracted) {
             show_message("Import Failed", extracted.result.message, true, &finish_import_flow);
             return;
         }
-        for (auto& extractedArtifact : extracted.value) {
-            auto identity = save_manager::identity_for_disc(
-                prelaunch_state().configuredDiscInfo, extractedArtifact.header.saveName);
-            if (identity) {
-                items->push_back({.context = {.identity = std::move(*identity),
-                                      .storage = context.value.storage},
-                    .artifact = std::move(extractedArtifact)});
-            }
-        }
-        if (items->empty()) {
+        if (extracted.value.empty()) {
             show_message("Import Failed",
-                "The card image does not contain a save for a registered Dusklight mode.", true,
+                "The card image does not contain saves for the configured disc.", true,
                 &finish_import_flow);
             return;
         }
-        const auto selected = std::ranges::find_if(*items, [&saveName](const ImportItem& item) {
-            return item.context.identity.saveName == saveName;
-        });
-        if (selected != items->end()) {
-            selectedIndex = static_cast<size_t>(selected - items->begin());
+        for (auto& save : extracted.value) {
+            auto target = context.value;
+            target.identity.saveName = save.header.saveName;
+            items->push_back({.context = std::move(target), .artifact = std::move(save)});
         }
     } else {
-        ImportItem item{.context = context.value, .artifact = std::move(artifact)};
-        if (item.artifact.kind == save_manager::ArtifactKind::Raw &&
-            item.context.storage.kind == save_manager::StorageKind::RawImage)
-        {
-            for (const auto& mode : mode_options()) {
-                if (auto identity = save_manager::identity_for_disc(
-                        prelaunch_state().configuredDiscInfo, mode.saveName))
-                {
-                    item.rawImageIdentities.push_back(std::move(*identity));
-                }
-            }
-        }
-        items->push_back(std::move(item));
+        items->push_back({.context = context.value, .artifact = std::move(artifact)});
     }
 
-    const bool replacingRawImage =
-        items->front().artifact.kind == save_manager::ArtifactKind::Raw &&
-        items->front().context.storage.kind == save_manager::StorageKind::RawImage;
-    const bool canImportAll = items->size() > 1;
-    const std::string modeLabel = mode_label((*items)[selectedIndex].context.identity.saveName);
+    const bool replacingRawImage = items->front().artifact.kind == save_manager::ArtifactKind::Raw;
+    const bool multiple = items->size() > 1;
+    bool replacingSave = false;
+    if (!replacingRawImage && !multiple) {
+        const auto& target = items->front().context;
+        auto info = save_manager::inspect_save(target.storage, target.identity);
+        if (!info) {
+            show_message("Import Failed", info.result.message, true, &finish_import_flow);
+            return;
+        }
+        replacingSave = info.value.present;
+    }
 
     const auto cancel = [](Modal& modal) {
         dismiss_modal(modal);
         finish_import_flow();
     };
-
-    struct ImportOptions {
-        bool all = false;
-        bool keepModData = false;
-    };
-
-    auto options = std::make_shared<ImportOptions>();
+    auto keepModData = std::make_shared<bool>(false);
     auto modal = std::make_unique<Modal>(Modal::Props{
         .title = "Import Save",
         .actions =
             {
-                {
-                    .label = "Cancel",
-                    .onPressed = cancel,
-                },
+                {.label = "Cancel", .onPressed = cancel},
                 {
                     .label = "Import",
                     .onPressed =
-                        [items, selectedIndex, options, hasBundledModData](Modal& modal) {
-                            const auto modDataAction = hasBundledModData ? ModDataAction::Replace :
-                                                       options->keepModData ? ModDataAction::Keep :
-                                                                              ModDataAction::Clear;
-                            perform_import(
-                                items, selectedIndex, options->all, modDataAction, modal);
+                        [items, keepModData, hasBundledModData](Modal& modal) {
+                            const auto action = hasBundledModData ? ModDataAction::Replace :
+                                                *keepModData      ? ModDataAction::Keep :
+                                                                    ModDataAction::Clear;
+                            perform_import(items, action, modal);
                         },
+                    .isDisabled =
+                        [items] { return std::ranges::none_of(*items, &ImportItem::selected); },
                 },
             },
         .onDismiss = cancel,
@@ -391,24 +363,36 @@ void confirm_import(Artifact artifact, std::string saveName) {
     if (replacingRawImage) {
         modal->set_body_text(
             "Replace the entire memory card image? Every save on the current card will be "
-            "replaced. Existing saves for registered Dusklight modes and their mod data will "
-            "be backed up first.");
-    } else if (canImportAll) {
-        modal->set_body_text(
-            fmt::format("The card image contains {} registered mode saves:", items->size()));
-        auto& pane = modal->content_pane();
-        auto* modes = append(pane.root(), "text-list");
-        for (const auto& item : *items) {
-            append_text_element(modes, "item", mode_label(item.context.identity.saveName));
+            "replaced. Existing saves for the configured disc and their mod data will be "
+            "backed up first.");
+    } else if (multiple) {
+        modal->set_body_text("Choose the saves to import. Each existing save and its mod data will "
+                             "be backed up first.");
+        for (size_t i = 0; i < items->size(); ++i) {
+            modal->content_pane().add_child<BoolButton>(BoolButton::Props{
+                .key = mode_label((*items)[i].context.identity.saveName),
+                .getValue = [items, i] { return (*items)[i].selected; },
+                .setValue = [items, i](bool value) { (*items)[i].selected = value; },
+            });
         }
-        auto* prompt = append(pane.root(), "p");
-        append_text(prompt, "Import the selected ");
-        append_text_element(prompt, "b", modeLabel);
-        append_text(prompt, " save or all of them? Each existing save will be backed up first.");
     } else {
-        modal->set_body(
-            fmt::format("Replace the existing <b>{}</b> save? A backup will be made first.",
-                escape(modeLabel)));
+        modal->set_body_text(fmt::format("{} the {} save?{}", replacingSave ? "Replace" : "Import",
+            mode_label(items->front().context.identity.saveName),
+            replacingSave ? " A backup will be made first." : ""));
+    }
+    if (!replacingRawImage) {
+        Rml::Element* unregistered = nullptr;
+        for (const auto& item : *items) {
+            if (!is_registered_save(item.context.identity.saveName)) {
+                if (unregistered == nullptr) {
+                    unregistered = append(modal->content_pane().root(), "text-list");
+                    append_text_element(unregistered, "small",
+                        "No registered game mode uses these saves. They will remain available in "
+                        "the Save Manager.");
+                }
+                append_text_element(unregistered, "item", item.context.identity.saveName);
+            }
+        }
     }
     if (!items->front().artifact.declaredMods.empty()) {
         auto* modData = append(modal->content_pane().root(), "text-list");
@@ -417,19 +401,12 @@ void confirm_import(Artifact artifact, std::string saveName) {
             append_text_element(modData, "item", fmt::format("{} {}", mod.id, mod.version));
         }
     }
-    if (canImportAll) {
-        modal->content_pane().add_child<BoolButton>(BoolButton::Props{
-            .key = "Import all modes",
-            .getValue = [options] { return options->all; },
-            .setValue = [options](bool value) { options->all = value; },
-        });
-    }
     if (!hasBundledModData) {
         auto& pane = modal->content_pane();
         pane.add_child<BoolButton>(BoolButton::Props{
             .key = "Keep existing mod data",
-            .getValue = [options] { return options->keepModData; },
-            .setValue = [options](bool value) { options->keepModData = value; },
+            .getValue = [keepModData] { return *keepModData; },
+            .setValue = [keepModData](bool value) { *keepModData = value; },
         });
         append_text_element(pane.root(), "small",
             "Leave this off unless the mod data belongs to the imported save.");
@@ -441,21 +418,7 @@ void confirm_import(Artifact artifact, std::string saveName) {
     }
 }
 
-void queue_import(std::string location, std::string saveName) {
-    if (!is_prelaunch_open()) {
-        push_toast({
-            .type = "warning",
-            .title = "Save Import",
-            .content = "Return to the main menu before importing save files.",
-            .duration = std::chrono::seconds{4},
-        });
-        return;
-    }
-    s_pendingImports.push_back({.location = std::move(location), .saveName = std::move(saveName)});
-    process_next_import();
-}
-
-void import_dialog_callback(borealis::file_select::Result result, std::string saveName) {
+void import_dialog_callback(borealis::file_select::Result result) {
     if (result.status == borealis::file_select::Status::Canceled) {
         return;
     }
@@ -465,7 +428,7 @@ void import_dialog_callback(borealis::file_select::Result result, std::string sa
             true);
         return;
     }
-    queue_import(std::move(result.locations.front()), std::move(saveName));
+    import_save_location(std::move(result.locations.front()));
 }
 
 void process_next_import() {
@@ -473,26 +436,38 @@ void process_next_import() {
         return;
     }
     s_importActive = true;
-    auto pending = std::move(s_pendingImports.front());
+    auto location = std::move(s_pendingImports.front());
     s_pendingImports.pop_front();
-    auto artifact = save_manager::read_artifact(pending.location);
+    auto artifact = save_manager::read_artifact(location);
     if (!artifact) {
         show_message("Import Failed", artifact.result.message, true, &finish_import_flow);
         return;
     }
-    confirm_import(std::move(artifact.value), std::move(pending.saveName));
+    confirm_import(std::move(artifact.value));
 }
 
-void begin_import(std::string saveName) {
+void begin_import() {
     borealis::file_select::open_file(
         {
             .parentWindow = aurora::window::get_sdl_window(),
             .filters = {{"Save files", "gci;raw;dusksave"}},
         },
-        [saveName = std::move(saveName)](borealis::file_select::Result result) {
-            import_dialog_callback(std::move(result), saveName);
-        });
+        &import_dialog_callback);
 }
+
+class SaveListHeader final : public Component {
+public:
+    SaveListHeader(Rml::Element* parent, bool available) : Component{append(parent, "header")} {
+        append_text_element(mRoot, "section-heading", "Save Files");
+        add_child<IconButton>(
+            IconButton::Props{
+                .icon = "sim_card_download",
+                .label = "Import Save",
+                .isDisabled = [available] { return !available || borealis::file_select::busy(); },
+            })
+            .on_pressed(&begin_import);
+    }
+};
 
 void begin_delete(const std::string& saveName) {
     auto context = context_for_save(saveName);
@@ -676,6 +651,7 @@ private:
                                             const Result result =
                                                 save_manager::delete_backup(storage, path);
                                             if (result) {
+                                                ++s_refreshGeneration;
                                                 mSelectedPath.clear();
                                                 rebuild_content();
                                             } else {
@@ -784,6 +760,14 @@ void build_save_detail(Pane& pane, const std::string& saveName) {
     const std::string storageLabel =
         storage.kind == save_manager::StorageKind::GciDirectory ? "GCI folder" : "Raw memory card";
     append_save_header(pane.root(), modeLabel, fmt::format("{} · Card A", storageLabel));
+    const bool registered = is_registered_save(saveName);
+    if (!registered) {
+        auto* association = append(pane.root(), "p");
+        auto* icon =
+            append_text_element(association, "icon", material_icon("indeterminate_question_box"));
+        icon->SetAttribute("aria-hidden", "true");
+        append_text(association, " No registered game mode uses this save.");
+    }
 
     auto info = save_manager::inspect_save(storage, context.value.identity);
     pane.add_section("Save File");
@@ -793,11 +777,12 @@ void build_save_detail(Pane& pane, const std::string& saveName) {
         auto* overview = append(pane.root(), "save-overview");
         overview->SetClass(info.value.present ? "present" : "empty", true);
         append_text_element(
-            overview, "heading", info.value.present ? "Save present" : "No save yet");
+            overview, "heading", info.value.present ? "Save present" : "No save file");
         const auto detail = info.value.present ?
                                 fmt::format("{} · Modified {}", format_bytes(info.value.size),
                                     save_manager::format_gc_time(info.value.modifiedTime)) :
-                                "Import a save or start this mode to create one.";
+                            registered ? "Import a save or start this mode to create one." :
+                                         "Restore a backup or import this save to use it again.";
         append_text_element(overview, "small", detail);
     }
 
@@ -824,11 +809,6 @@ void build_save_detail(Pane& pane, const std::string& saveName) {
                         },
                     }));
     });
-    pane.add_button(ControlledButton::Props{
-                        .text = "Import Save",
-                        .isDisabled = [] { return borealis::file_select::busy(); },
-                    })
-        .on_pressed([saveName] { begin_import(saveName); });
 
     if (info && !info.value.mods.empty()) {
         pane.add_section(fmt::format("Mod Data ({})", info.value.mods.size()));
@@ -880,9 +860,6 @@ SavesWindow::SavesWindow()
 }
 
 void SavesWindow::build_content(Rml::Element* content) {
-    if (!is_registered_save(mSaveName)) {
-        mSaveName = active_save_name();
-    }
     mGeneration = s_refreshGeneration.load();
 
     auto& listPane = add_child<Pane>(content, Pane::Type::Controlled);
@@ -890,32 +867,58 @@ void SavesWindow::build_content(Rml::Element* content) {
     auto& detailPane = add_child<Pane>(content, Pane::Type::Uncontrolled);
     detailPane.root()->SetClass("detail", true);
 
-    listPane.add_section("Save Files");
-    const auto modes = mode_options();
-    if (modes.empty()) {
-        append_text_element(listPane.root(), "p", "No game modes are registered.");
-        build_save_detail(detailPane, mSaveName);
+    auto context = context_for_save(mSaveName);
+    listPane.add_child<SaveListHeader>(context.result.ok);
+    if (!context) {
+        append_text_element(detailPane.root(), "small", context.result.message);
         return;
     }
-    for (const auto& mode : modes) {
+    auto saves = save_manager::list_saves(
+        context.value.storage, context.value.identity.game, context.value.identity.maker);
+    if (!saves) {
+        append_text_element(detailPane.root(), "small", saves.result.message);
+        return;
+    }
+    auto options = registered_save_options();
+    for (const auto& identity : saves.value) {
+        if (std::ranges::none_of(options,
+                [&](const SaveOption& option) { return option.saveName == identity.saveName; }))
+        {
+            options.push_back({.saveName = identity.saveName, .label = identity.saveName});
+        }
+    }
+    if (std::ranges::none_of(
+            options, [this](const SaveOption& option) { return option.saveName == mSaveName; }))
+    {
+        mSaveName = active_save_name();
+    }
+    for (const auto& option : options) {
         auto& entry = listPane.add_group_button({
-            .text = mode.label,
-            .isSelected = [this, saveName = mode.saveName] { return mSaveName == saveName; },
+            .text = option.label,
+            .isSelected = [this, saveName = option.saveName] { return mSaveName == saveName; },
             .isDisabled = [] { return borealis::file_select::busy(); },
         });
-        listPane.register_control(entry, detailPane, [this, saveName = mode.saveName](Pane& pane) {
-            if (mSaveName != saveName) {
-                mSaveName = saveName;
-                mDoAud_seStartMenu(kSoundItemChange);
-            }
-            build_save_detail(pane, mSaveName);
-        });
+        if (!is_registered_save(option.saveName)) {
+            auto* key = entry.root()->QuerySelector("key");
+            auto icon = key->GetOwnerDocument()->CreateElement("icon");
+            icon->SetAttribute("aria-hidden", "true");
+            auto* insertedIcon = key->InsertBefore(std::move(icon), key->GetFirstChild());
+            append_text(insertedIcon, material_icon("indeterminate_question_box"));
+        }
+        listPane.register_control(
+            entry, detailPane, [this, saveName = option.saveName](Pane& pane) {
+                if (mSaveName != saveName) {
+                    mSaveName = saveName;
+                    mDoAud_seStartMenu(kSoundItemChange);
+                }
+                build_save_detail(pane, mSaveName);
+            });
     }
     build_save_detail(detailPane, mSaveName);
 }
 
 void SavesWindow::update() {
-    if (!is_registered_save(mSaveName) || mGeneration != s_refreshGeneration.load()) {
+    if (mGeneration != s_refreshGeneration.load()) {
         rebuild_content();
     }
     Window::update();
@@ -939,7 +942,7 @@ void add_save_files_control(Pane& leftPane, Pane& rightPane) {
         rightPane, [](Pane& pane) {
             pane.add_section("Save Files");
             append_text_element(pane.root(), "small",
-                "Import, export, back up, and remove saves for each registered game mode.");
+                "Import, export, back up, and remove saves for the configured disc.");
             pane.add_button("Open Save Manager").on_pressed([] {
                 if (auto* host = top_document()) {
                     host->push(std::make_unique<SavesWindow>());
@@ -949,7 +952,17 @@ void add_save_files_control(Pane& leftPane, Pane& rightPane) {
 }
 
 void import_save_location(std::string location) {
-    queue_import(std::move(location), active_save_name());
+    if (!is_prelaunch_open()) {
+        push_toast({
+            .type = "warning",
+            .title = "Save Import",
+            .content = "Return to the main menu before importing save files.",
+            .duration = std::chrono::seconds{4},
+        });
+        return;
+    }
+    s_pendingImports.push_back(std::move(location));
+    process_next_import();
 }
 
 }  // namespace dusk::ui

@@ -403,6 +403,85 @@ ValueResult<Artifact> read_dusksave(std::vector<uint8_t> bytes, std::string sour
     return {success(), std::move(artifact)};
 }
 
+ValueResult<std::vector<SaveIdentity>> list_card_saves(
+    const Storage& storage, std::string_view game, std::string_view maker) {
+    std::set<std::string> names;
+    try {
+        if (!std::filesystem::exists(storage.path)) {
+            return {success(), {}};
+        }
+        if (storage.kind == StorageKind::RawImage) {
+            if (!aurora_card_raw_list(
+                    borealis::io::fs_path_to_string(storage.path).c_str(),
+                    std::string{game}.c_str(), std::string{maker}.c_str(),
+                    [](const char* name, void* userData) {
+                        static_cast<std::set<std::string>*>(userData)->insert(name);
+                    },
+                    &names))
+            {
+                return {failure("The memory card image could not be read."), {}};
+            }
+        } else {
+            for (const auto& entry : std::filesystem::directory_iterator{storage.path}) {
+                if (!entry.is_regular_file() || entry.path().extension() != ".gci") {
+                    continue;
+                }
+                auto read = read_location(
+                    borealis::io::fs_path_to_string(entry.path()), kMaxRawSize + kGciHeaderSize);
+                auto parsed = read ? parse_gci(read.value) : ValueResult<GciHeader>{};
+                if (parsed && parsed.value.game == game && parsed.value.maker == maker) {
+                    names.insert(parsed.value.saveName);
+                }
+            }
+        }
+    } catch (const std::exception& exception) {
+        return {failure(fmt::format("Unable to list saves: {}", exception.what())), {}};
+    }
+    std::vector<SaveIdentity> identities;
+    for (const auto& name : names) {
+        if (utils::is_valid_save_name(name)) {
+            identities.push_back({
+                .maker = std::string{maker},
+                .game = std::string{game},
+                .saveName = name,
+            });
+        }
+    }
+    return {success(), std::move(identities)};
+}
+
+std::string_view backup_save_name(
+    std::string_view name, std::string_view game, std::string_view maker) {
+    const std::string prefix = card_file_stem(maker, game, "");
+    if (!name.starts_with(prefix) || !name.ends_with(".dusksave")) {
+        return {};
+    }
+    name.remove_prefix(prefix.size());
+    name.remove_suffix(std::string_view{".dusksave"}.size());
+    const auto digits = [](std::string_view value) {
+        return !value.empty() &&
+               std::ranges::all_of(value, [](char ch) { return ch >= '0' && ch <= '9'; });
+    };
+    if (!name.ends_with('Z')) {
+        const auto separator = name.rfind('-');
+        if (separator == std::string_view::npos || !digits(name.substr(separator + 1))) {
+            return {};
+        }
+        name = name.substr(0, separator);
+    }
+    if (name.size() < 18) {
+        return {};
+    }
+    const auto timestamp = name.substr(name.size() - 16);
+    if (name[name.size() - 17] != '-' || timestamp[8] != 'T' || timestamp[15] != 'Z' ||
+        !digits(timestamp.substr(0, 8)) || !digits(timestamp.substr(9, 6)))
+    {
+        return {};
+    }
+    const auto saveName = name.substr(0, name.size() - 17);
+    return utils::is_valid_save_name(saveName) ? saveName : std::string_view{};
+}
+
 ValueResult<std::vector<uint8_t>> read_current_gci(
     const Storage& storage, const SaveIdentity& identity) {
     if (storage.kind == StorageKind::RawImage) {
@@ -642,72 +721,6 @@ ValueResult<std::filesystem::path> create_backup(
     return {success(), std::move(destination)};
 }
 
-ValueResult<std::vector<Artifact>> extract_raw_saves_impl(
-    const Artifact& artifact, const std::vector<SaveIdentity>& identities) {
-    if (artifact.kind != ArtifactKind::Raw) {
-        return {failure("The selected artifact is not a raw card image."), {}};
-    }
-    const auto staged = temporary_path(".raw");
-    std::string error;
-    if (!write_bytes(staged, artifact.raw, error)) {
-        return {failure(std::move(error)), {}};
-    }
-    const std::string path = borealis::io::fs_path_to_string(staged);
-    std::vector<Artifact> extracted;
-    std::set<std::string> seen;
-    for (const auto& identity : identities) {
-        const std::string key = identity.maker + identity.game + identity.saveName;
-        if (!seen.insert(key).second) {
-            continue;
-        }
-        const size_t required = aurora_card_raw_extract(path.c_str(), identity.game.c_str(),
-            identity.maker.c_str(), identity.saveName.c_str(), nullptr, 0);
-        if (required == 0) {
-            continue;
-        }
-        std::vector<uint8_t> gci(required);
-        if (aurora_card_raw_extract(path.c_str(), identity.game.c_str(), identity.maker.c_str(),
-                identity.saveName.c_str(), gci.data(), gci.size()) != required)
-        {
-            std::error_code ec;
-            std::filesystem::remove(staged, ec);
-            return {failure("A save could not be extracted from the selected card image."), {}};
-        }
-        auto parsed = parse_gci(gci);
-        if (!parsed || parsed.value.game != identity.game || parsed.value.maker != identity.maker ||
-            parsed.value.saveName != identity.saveName)
-        {
-            std::error_code ec;
-            std::filesystem::remove(staged, ec);
-            return {failure("The selected card image contains an invalid save entry."), {}};
-        }
-        extracted.push_back({.kind = ArtifactKind::Gci,
-            .header = std::move(parsed.value),
-            .gci = std::move(gci),
-            .sourceName = artifact.sourceName});
-    }
-    {
-        std::error_code ec;
-        std::filesystem::remove(staged, ec);
-    }
-    return {success(), std::move(extracted)};
-}
-
-ValueResult<std::vector<uint8_t>> gci_from_artifact(
-    const Artifact& artifact, const SaveIdentity& identity) {
-    if (artifact.kind != ArtifactKind::Raw) {
-        return {success(), artifact.gci};
-    }
-    auto extracted = extract_raw_saves_impl(artifact, {identity});
-    if (!extracted) {
-        return {extracted.result, {}};
-    }
-    if (extracted.value.empty()) {
-        return {failure("The card image does not contain the selected save."), {}};
-    }
-    return {success(), std::move(extracted.value.front().gci)};
-}
-
 }  // namespace
 
 std::optional<SaveIdentity> identity_for_disc(const iso::DiscInfo& info, std::string saveName) {
@@ -776,6 +789,71 @@ ValueResult<Storage> resolve_storage(
     return {success(), std::move(storage)};
 }
 
+ValueResult<std::vector<SaveIdentity>> list_saves(
+    const Storage& storage, std::string_view game, std::string_view maker) {
+    auto saves = list_card_saves(storage, game, maker);
+    if (!saves) {
+        return saves;
+    }
+    std::set<std::string> names;
+    for (const auto& identity : saves.value) {
+        names.insert(identity.saveName);
+    }
+    const std::string prefix = card_file_stem(maker, game, "");
+    const auto add_name = [&](std::string_view name) {
+        if (utils::is_valid_save_name(name) && names.emplace(name).second) {
+            saves.value.push_back({.maker = std::string{maker},
+                .game = std::string{game},
+                .saveName = std::string{name}});
+        }
+    };
+    try {
+        auto modRoot = storage.path;
+        const bool gciDirectory = storage.kind == StorageKind::GciDirectory;
+        if (!gciDirectory) {
+            modRoot += ".mods";
+        }
+        if (std::filesystem::exists(modRoot)) {
+            for (const auto& entry : std::filesystem::directory_iterator{modRoot}) {
+                const std::string name = borealis::io::fs_path_to_string(entry.path().filename());
+                if (!entry.is_directory() || !name.starts_with(prefix) ||
+                    (gciDirectory && !name.ends_with(".mods")))
+                {
+                    continue;
+                }
+                const auto saveName = std::string_view{name}.substr(
+                    prefix.size(), name.size() - prefix.size() - (gciDirectory ? 5 : 0));
+                if (!utils::is_valid_save_name(saveName)) {
+                    continue;
+                }
+                for (const auto& mod : std::filesystem::directory_iterator{entry.path()}) {
+                    if (mod.is_regular_file() && mod.path().extension() == ".json" &&
+                        utils::is_valid_mod_id(borealis::io::fs_path_to_string(mod.path().stem())))
+                    {
+                        add_name(saveName);
+                        break;
+                    }
+                }
+            }
+        }
+        const auto backups = backup_directory(storage);
+        if (std::filesystem::exists(backups)) {
+            for (const auto& entry : std::filesystem::directory_iterator{backups}) {
+                if (entry.is_regular_file()) {
+                    const std::string name =
+                        borealis::io::fs_path_to_string(entry.path().filename());
+                    add_name(backup_save_name(name, game, maker));
+                }
+            }
+        }
+    } catch (const std::exception& exception) {
+        return {
+            failure(fmt::format("Unable to list save data and backups: {}", exception.what())), {}};
+    }
+    std::ranges::sort(saves.value, {}, &SaveIdentity::saveName);
+    return saves;
+}
+
 ValueResult<GciHeader> parse_gci(const std::vector<uint8_t>& bytes) {
     if (bytes.size() < kGciHeaderSize || (bytes.size() - kGciHeaderSize) % kCardBlockSize != 0) {
         return {failure("The selected file is not a valid GCI save."), {}};
@@ -797,15 +875,6 @@ ValueResult<GciHeader> parse_gci(const std::vector<uint8_t>& bytes) {
                            .modifiedTime = read_bits<uint32_t>(bytes.data() + 0x28),
                            .blockCount = blockCount,
                        }};
-}
-
-Result rename_gci(std::vector<uint8_t>& bytes, std::string_view saveName) {
-    if (!utils::is_valid_save_name(saveName) || bytes.size() < kGciHeaderSize) {
-        return failure("The selected save filename is invalid.");
-    }
-    std::fill_n(bytes.begin() + 8, 32, uint8_t{0});
-    std::memcpy(bytes.data() + 8, saveName.data(), saveName.size());
-    return success();
 }
 
 ValueResult<Artifact> read_artifact(std::string_view location) {
@@ -845,8 +914,48 @@ ValueResult<Artifact> read_artifact(std::string_view location) {
 }
 
 ValueResult<std::vector<Artifact>> extract_raw_saves(
-    const Artifact& artifact, const std::vector<SaveIdentity>& identities) {
-    return extract_raw_saves_impl(artifact, identities);
+    const Artifact& artifact, std::string_view game, std::string_view maker) {
+    if (artifact.kind != ArtifactKind::Raw) {
+        return {failure("The selected artifact is not a raw card image."), {}};
+    }
+    const auto staged = temporary_path(".raw");
+    const auto removeStaged = [](const std::filesystem::path* path) {
+        std::error_code ec;
+        std::filesystem::remove(*path, ec);
+    };
+    const std::unique_ptr<const std::filesystem::path, decltype(removeStaged)> stagedGuard{
+        &staged, removeStaged};
+    if (std::string error; !write_bytes(staged, artifact.raw, error)) {
+        return {failure(std::move(error)), {}};
+    }
+    const Storage storage{
+        .kind = StorageKind::RawImage,
+        .path = staged,
+    };
+    auto identities = list_card_saves(storage, game, maker);
+    if (!identities) {
+        return {identities.result, {}};
+    }
+    std::vector<Artifact> extracted;
+    for (const auto& identity : identities.value) {
+        auto gci = read_current_gci(storage, identity);
+        if (!gci) {
+            return {gci.result, {}};
+        }
+        auto parsed = parse_gci(gci.value);
+        if (!parsed || parsed.value.game != identity.game || parsed.value.maker != identity.maker ||
+            parsed.value.saveName != identity.saveName)
+        {
+            return {failure("The selected card image contains an invalid save entry."), {}};
+        }
+        extracted.push_back({
+            .kind = ArtifactKind::Gci,
+            .header = std::move(parsed.value),
+            .gci = std::move(gci.value),
+            .sourceName = artifact.sourceName,
+        });
+    }
+    return {success(), std::move(extracted)};
 }
 
 ValueResult<SaveInfo> inspect_save(const Storage& storage, const SaveIdentity& identity) {
@@ -936,11 +1045,10 @@ Result import_artifact(const Storage& storage, const SaveIdentity& identity,
         return allowed;
     }
 
-    auto importedGci = gci_from_artifact(artifact, identity);
-    if (!importedGci) {
-        return importedGci.result;
+    if (artifact.kind != ArtifactKind::Gci && artifact.kind != ArtifactKind::DuskSave) {
+        return failure("The selected artifact is not an individual save.");
     }
-    auto parsed = parse_gci(importedGci.value);
+    auto parsed = parse_gci(artifact.gci);
     if (!parsed) {
         return parsed.result;
     }
@@ -948,13 +1056,15 @@ Result import_artifact(const Storage& storage, const SaveIdentity& identity,
         return failure(fmt::format("This save is for {}-{}, but the configured disc uses {}-{}.",
             parsed.value.maker, parsed.value.game, identity.maker, identity.game));
     }
-    if (const Result renamed = rename_gci(importedGci.value, identity.saveName); !renamed) {
-        return renamed;
+    if (!utils::is_valid_save_name(parsed.value.saveName) ||
+        parsed.value.saveName != identity.saveName)
+    {
+        return failure("The imported save name does not match its destination.");
     }
     if (auto backup = create_backup(storage, identity); !backup) {
         return backup.result;
     }
-    if (const Result written = write_gci(storage, identity, importedGci.value); !written) {
+    if (const Result written = write_gci(storage, identity, artifact.gci); !written) {
         return written;
     }
 
@@ -973,11 +1083,9 @@ Result import_artifact(const Storage& storage, const SaveIdentity& identity,
     return finish_write(storage, identity);
 }
 
-Result import_raw_image(const Storage& storage, const std::vector<SaveIdentity>& identities,
+Result import_raw_image(const Storage& storage, std::string_view game, std::string_view maker,
     const Artifact& artifact, ModDataAction modDataAction) {
-    if (storage.kind != StorageKind::RawImage || artifact.kind != ArtifactKind::Raw ||
-        identities.empty())
-    {
+    if (storage.kind != StorageKind::RawImage || artifact.kind != ArtifactKind::Raw) {
         return failure("The raw card image import target is invalid.");
     }
     if (const Result allowed = ensure_write_allowed(storage); !allowed) {
@@ -986,7 +1094,11 @@ Result import_raw_image(const Storage& storage, const std::vector<SaveIdentity>&
     if (!valid_raw(artifact.raw)) {
         return failure("The selected artifact is not a valid raw card image.");
     }
-    for (const auto& identity : identities) {
+    auto identities = list_saves(storage, game, maker);
+    if (!identities) {
+        return identities.result;
+    }
+    for (const auto& identity : identities.value) {
         auto backup = create_backup(storage, identity);
         if (!backup) {
             return backup.result;
@@ -999,14 +1111,14 @@ Result import_raw_image(const Storage& storage, const std::vector<SaveIdentity>&
 
     Result sidecarResult = success();
     if (modDataAction == ModDataAction::Clear) {
-        for (const auto& identity : identities) {
+        for (const auto& identity : identities.value) {
             if (const Result cleared = replace_sidecars(storage, identity, {}); !cleared) {
                 sidecarResult = cleared;
                 break;
             }
         }
     }
-    const Result finished = finish_write(storage, identities);
+    const Result finished = finish_write(storage, identities.value);
     if (!sidecarResult) {
         return sidecarResult;
     }
@@ -1092,8 +1204,6 @@ ValueResult<std::vector<BackupInfo>> list_backups(
     const Storage& storage, const SaveIdentity& identity) {
     std::vector<BackupInfo> backups;
     const auto directory = backup_directory(storage);
-    const std::string prefix =
-        card_file_stem(identity.maker, identity.game, identity.saveName) + "-";
     std::error_code ec;
     if (!std::filesystem::exists(directory, ec)) {
         return ec ?
@@ -1104,22 +1214,7 @@ ValueResult<std::vector<BackupInfo>> list_backups(
     try {
         for (const auto& entry : std::filesystem::directory_iterator{directory}) {
             const std::string name = borealis::io::fs_path_to_string(entry.path().filename());
-            const std::string_view suffix = name.starts_with(prefix) ?
-                                                std::string_view{name}.substr(prefix.size()) :
-                                                std::string_view{};
-            if (suffix.size() < 25 || suffix[8] != 'T' || suffix[15] != 'Z' ||
-                !suffix.ends_with(".dusksave"))
-            {
-                continue;
-            }
-            const auto digits = [](std::string_view value) {
-                return std::ranges::all_of(value, [](char ch) { return ch >= '0' && ch <= '9'; });
-            };
-            const auto sequence = suffix.substr(16, suffix.size() - 25);
-            if (!digits(suffix.substr(0, 8)) || !digits(suffix.substr(9, 6)) ||
-                (!sequence.empty() && (sequence.size() < 2 || sequence.front() != '-' ||
-                                          !digits(sequence.substr(1)))))
-            {
+            if (backup_save_name(name, identity.game, identity.maker) != identity.saveName) {
                 continue;
             }
             if (entry.is_regular_file()) {

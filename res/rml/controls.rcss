@@ -70,7 +70,7 @@ select-button input {
     font-size: var(--font-size-2xl);
 }
 
-select-button.group-button icon {
+select-button.group-button > icon {
     flex: 0 0 24dp;
     margin-left: auto;
     width: 24dp;
