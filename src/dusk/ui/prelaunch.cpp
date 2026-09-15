@@ -350,14 +350,13 @@ public:
 
         auto* content = append(body, "verification-progress");
 
-        mFileName = append(content, "verification-file");
+        mFileName = append(content, "file-path");
 
         mProgress = append(content, "progress");
-        mProgress->SetClass("progress-ongoing", true);
-        mProgress->SetClass("verification-progress-bar", true);
+        mProgress->SetClass("info", true);
         mProgress->SetAttribute("value", 0.f);
 
-        mDetail = append(content, "verification-detail");
+        mDetail = append(content, "small");
 
         auto* actions = append(mDialog, "modal-actions");
         mCancelButton = std::make_unique<Button>(actions, "Cancel");

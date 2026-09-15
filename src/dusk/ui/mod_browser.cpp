@@ -130,6 +130,7 @@ void open_web_url(const std::string& url) {
 
 void set_icon_button_content(Button& button, std::string_view icon, const Rml::String& label) {
     clear_children(button.root());
+    button.root()->SetClass("with-icon", true);
     append_text(append(button.root(), "icon"), material_icon(icon));
     append_text_element(button.root(), "span", label);
 }
@@ -236,7 +237,7 @@ private:
                                                  .verticalBoundary = NavGroup::Boundary::Stop,
                                              });
         auto& back = actions.add_item<Button>("Back");
-        back.root()->SetClass("catalog-icon-action", true);
+        back.root()->SetClass("compact", true);
         set_icon_button_content(back, "arrow_back", "Back");
         back.on_pressed([this] { pop(); });
         auto& previous = actions.add_item<ControlledButton>(ControlledButton::Props{
@@ -265,6 +266,11 @@ private:
                 mRebuildRequested = true;
             }
         });
+        Rml::ElementList buttons;
+        actions.root()->QuerySelectorAll(buttons, "button");
+        for (auto* button : buttons) {
+            button->SetClass("compact", true);
+        }
         if (mRestoreNav < 0) {
             if (!previous.focus()) {
                 next.focus();
@@ -390,7 +396,7 @@ public:
                                                         .icon = queue_icon(detail.mod.icon),
                                                     } {
         mRoot->SetClass("catalog-install-action", true);
-        mCaption = append(parent, "catalog-install-caption");
+        mCaption = append(parent, "small");
         on_pressed([this] { press(); });
         update();
     }
@@ -519,6 +525,7 @@ public:
             mIcon = icon;
         }
         set_text_content(mCaption, caption);
+        mRoot->SetClass("primary", state == "idle");
         for (const auto* candidate : {"idle", "queued", "downloading", "paused", "retrying",
                  "installing", "installed", "failed"})
         {
@@ -526,6 +533,7 @@ public:
             mCaption->SetClass(candidate, state == candidate);
         }
         if (mProgress != nullptr) {
+            mProgress->SetClassNames(state);
             mProgress->SetAttribute("value", progress);
             mProgress->SetProperty(
                 "display", state == "idle" || state == "installed" ? "none" : "block");
@@ -612,12 +620,14 @@ DetailContent::DetailContent(
                                                      .verticalBoundary = Boundary::Bubble,
                                                  });
     auto& back = actions.add_item<Button>("Back");
-    back.root()->SetClass("catalog-icon-action", true);
+    back.root()->SetClass("compact", true);
     set_icon_button_content(back, "arrow_back", "Back");
+    back.root()->SetClass("overlay", true);
     back.on_pressed([&window] { window.pop(); });
     auto& open = actions.add_item<Button>("Open in browser");
-    open.root()->SetClass("catalog-icon-action", true);
+    open.root()->SetClass("compact", true);
     set_icon_button_content(open, "open_in_new", "Open in browser");
+    open.root()->SetClass("overlay", true);
     open.on_pressed([url = detail.siteUrl] { open_web_url(url); });
 
     auto* identity = append(hero, "catalog-detail-identity");
@@ -829,6 +839,11 @@ void ModBrowser::build_content(Rml::Element* content) {
         fmt::format("Installed mods ({})", mods::ModLoader::instance().mods().size()));
     library.root()->SetClass("catalog-library-link", true);
     library.on_pressed([this] { pop(); });
+    for (auto* control :
+        {search.root(), category.root(), sort.root(), device.root(), library.root()})
+    {
+        control->SetClass("compact", true);
+    }
 
     auto* resultsRoot = append(content, "catalog-results");
     auto& results =
@@ -906,6 +921,11 @@ void ModBrowser::build_content(Rml::Element* content) {
                         begin_fetch(FocusTarget::Results);
                     }
                 });
+            Rml::ElementList buttons;
+            paginationRoot->QuerySelectorAll(buttons, "button");
+            for (auto* button : buttons) {
+                button->SetClass("compact", true);
+            }
         }
     } else {
         auto* status = append(viewport, "catalog-results-status");

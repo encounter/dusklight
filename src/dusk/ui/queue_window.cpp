@@ -40,7 +40,7 @@ public:
         auto* actions = actions_root();
         auto pause = std::make_unique<Button>(actions, "");
         mPause = pause.get();
-        mPause->root()->SetClass("icon-action", true);
+        mPause->root()->SetClassNames("icon-button compact");
         mPause->on_pressed([this] {
             const auto item = mods::queue::find(mId);
             if (!item) {
@@ -63,7 +63,7 @@ public:
 
         auto cancel = std::make_unique<Button>(actions, "");
         mCancel = cancel.get();
-        mCancel->root()->SetClass("icon-action", true);
+        mCancel->root()->SetClassNames("icon-button compact");
         mCancel->on_pressed([this] {
             const auto item = mods::queue::find(mId);
             if (!item) {

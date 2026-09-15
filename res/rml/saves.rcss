@@ -1,26 +1,22 @@
-window.saves content pane.save-list {
+window.saves pane.list {
     flex: 0 0 320dp;
 }
 
-window.saves content pane.save-detail {
+window.saves pane.detail {
     gap: var(--space-md);
 }
 
-window.saves .save-title {
+save-header {
     display: block;
+}
+
+save-header heading {
     font-family: var(--font-family-heading);
     font-size: var(--font-size-6xl);
-    font-weight: bold;
     line-height: 1.2;
 }
 
-window.saves .save-subtitle {
-    display: block;
-    color: rgba(var(--color-text-rgb), 55%);
-    font-size: var(--font-size-base);
-}
-
-window.saves .save-overview {
+save-overview {
     display: block;
     padding: 14dp 16dp;
     border-radius: var(--radius-panel);
@@ -28,54 +24,31 @@ window.saves .save-overview {
     box-shadow: rgba(var(--color-border-rgb), 30%) 0 0 0 1dp;
 }
 
-window.saves .save-overview.present {
+save-overview.present {
     box-shadow: rgba(var(--color-success-rgb), 40%) 0 0 0 1dp;
 }
 
-window.saves .save-overview-title {
-    display: block;
-    font-weight: bold;
-    line-height: 1.3;
-}
-
-window.saves .save-overview.present .save-overview-title {
+save-overview.present heading {
     color: var(--color-success);
 }
 
-window.saves .save-overview-meta,
-window.saves .save-help,
-window.saves .save-path {
+save-overview small {
     display: block;
-    color: rgba(var(--color-text-rgb), 62%);
-    font-size: var(--font-size-base);
-    line-height: 1.4;
-}
-
-window.saves .save-overview-meta {
-    margin-top: 2dp;
-}
-
-window.saves .save-path {
-    word-break: break-all;
+    margin-top: var(--space-2xs);
 }
 
 window.saves button:not(.icon-button) {
     text-align: left;
 }
 
-window.saves button.danger {
-    color: var(--color-error);
-    box-shadow: rgba(var(--color-error-rgb), 55%) 0 0 0 1dp;
-}
-
 @media (max-width: 720dp) {
-    window.saves content pane.save-list {
+    window.saves pane.list {
         flex: 0 0 42%;
     }
 }
 
 @media (max-height: 640dp) {
-    window.saves content pane.save-list {
+    window.saves pane.list {
         flex: 1 1 0;
     }
 }
@@ -87,16 +60,11 @@ save-mod {
     padding: var(--space-sm) 0;
 }
 
-save-mod-info {
+save-mod details {
     display: flex;
     flex-direction: column;
     flex: 1 1 0;
     min-width: 0;
     gap: var(--space-xs);
     word-break: break-all;
-}
-
-save-mod-info small {
-    color: rgba(var(--color-text-rgb), 62%);
-    font-size: var(--font-size-sm);
 }

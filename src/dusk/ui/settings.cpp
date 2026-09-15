@@ -247,10 +247,8 @@ class DataFolderPathText : public Component {
 public:
     explicit DataFolderPathText(Rml::Element* parent)
         : Component(append(parent, "data-folder-path")) {
-        auto* current = append(mRoot, "data-folder-current");
-        append_text(current, "Current data folder:");
-        append(current, "br");
-        mPath = append(current, "data-folder-value");
+        append_text_element(mRoot, "small", "Current data folder:");
+        mPath = append(mRoot, "file-path");
     }
 
     void update() override {
