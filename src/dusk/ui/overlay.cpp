@@ -39,10 +39,10 @@ const Rml::String kDocumentSource = R"RML(
 <body>
     <fps id="fps" />
     <pipeline-progress id="pipeline-progress">
-        <pipeline-status>
-            <icon class="pipeline-spinner">&#xe9d0;</icon>
-            <span id="pipeline-progress-label" />
-        </pipeline-status>
+        <status>
+            <icon />
+            <status-label id="pipeline-progress-label" />
+        </status>
         <progress id="pipeline-progress-bar" />
     </pipeline-progress>
     <speedrun-timer id="speedrun-timer">
@@ -454,6 +454,8 @@ void Overlay::update_pipeline_progress() {
     {
         return;
     }
+
+    mPipelineProgress->SetClass("compact", !any_document_visible());
 
     const auto* stats = aurora_get_stats();
     const uint32_t queuedPipelines = stats != nullptr ? stats->queuedPipelines : 0;
