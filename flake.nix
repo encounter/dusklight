@@ -67,6 +67,9 @@
         let
           pkgs = import (if system == "x86_64-darwin" then nixpkgs-darwin else nixpkgs) { inherit system; };
           inherit (pkgs.stdenv.hostPlatform) isDarwin;
+          # symgen needs a reserved ELF program-header slot so later fixups
+          # do not overwrite its manifest. GNU ld lacks this option.
+          stdenv = if isDarwin then pkgs.stdenv else pkgs.stdenvAdapters.useMoldLinker pkgs.stdenv;
           # Borealis requires WSS in addition to HTTPS and HTTP/2. Nixpkgs
           # disables WebSockets by default, even in the full curl package.
           curl = pkgs.curl.override { websocketSupport = true; };
@@ -181,7 +184,7 @@
           };
 
           dusklight =
-            pkgs.stdenv.mkDerivation {
+            stdenv.mkDerivation {
               pname = "dusklight";
               version = versionSuffix;
               __darwinAllowLocalNetworking = true;

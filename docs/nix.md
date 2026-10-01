@@ -32,7 +32,8 @@ Code mods, the embedded symbol manifest, Luau, cosmetics, and the randomizer are
 enabled. Linux curl explicitly includes HTTPS, HTTP/2, and WebSockets. macOS
 uses the native URLSession backend.
 Debug information stays embedded: the portable debug-splitting step can damage
-the appended ELF symbol-manifest segment when using the Nix linker.
+the appended ELF symbol-manifest segment. Linux uses mold to reserve the ELF
+program-header slot required for safe symbol embedding and later Nix fixups.
 Dependencies are fixed-output downloads; CMake runs with
 `FETCHCONTENT_FULLY_DISCONNECTED=ON`. Funchook's nested Capstone
 download is replaced with its pinned local source. Keep Dawn, nod, RmlUi, Tracy,
