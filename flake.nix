@@ -193,7 +193,7 @@
                   --replace-fail 'FetchContent_MakeAvailable(xxhash)' \
                     'if (NOT TARGET xxHash::xxhash)
                 FetchContent_MakeAvailable(xxhash)
-                endif ()' 
+                endif ()'
               '';
 
                 nativeBuildInputs = [
@@ -251,7 +251,7 @@
                 ];
 
                 cmakeBuildType = "RelWithDebInfo";
-                ninjaFlags = [ "dusklight" "dusklight_mods" "nix_network_smoke" ] ++ testTargets;
+                ninjaFlags = [ "dusklight" "dusklight_mods" "nix_network_smoke" "nix_funchook_smoke" ] ++ testTargets;
                 doCheck = true;
                 checkPhase = ''
                   runHook preCheck
@@ -259,6 +259,7 @@
                   ctest --test-dir extern/borealis --output-on-failure -j "$NIX_BUILD_CORES" -E '^WebSocketBackendTest\.'
                   python3 ../nix/test-websocket.py extern/borealis/tests/borealis_ws_backend_test
                   nix/nix_network_smoke
+                  nix/nix_funchook_smoke
                   runHook postCheck
                 '';
                 preConfigure = ''

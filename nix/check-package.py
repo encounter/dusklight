@@ -50,4 +50,5 @@ with tempfile.TemporaryDirectory() as cwd:
                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=30, check=True)
     assert "--mods" in result.stdout and "--backend" in result.stdout, result.stdout
     print(result.stdout)
+subprocess.run([str(root / "nix-support/nix_funchook_smoke")], check=True, timeout=30)
 print("Installed resources, bundled native mods, symbol manifest, dynamic dependencies and CLI verified")
