@@ -252,6 +252,10 @@
                   runHook postCheck
                 '';
                 preConfigure = ''
+                  # base64pp generates its export header in its source tree.
+                  cp -R ${fetchContentDirs.BASE64PP} "$NIX_BUILD_TOP/base64pp"
+                  chmod -R u+w "$NIX_BUILD_TOP/base64pp"
+                  cmakeFlagsArray+=("-DFETCHCONTENT_SOURCE_DIR_BASE64PP=$NIX_BUILD_TOP/base64pp")
                   cmakeFlagsArray+=("-DCMAKE_INSTALL_PREFIX=$out/${if isDarwin then "Applications" else "bin"}")
                 '';
 
