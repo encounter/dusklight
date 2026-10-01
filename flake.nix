@@ -255,8 +255,11 @@
                 doCheck = true;
                 checkPhase = ''
                   runHook preCheck
-                  ctest --test-dir extern/aurora --output-on-failure -j "$NIX_BUILD_CORES"
-                  ctest --test-dir extern/borealis --output-on-failure -j "$NIX_BUILD_CORES" -E '^WebSocketBackendTest\.'
+                  # gtest_discover_tests starts each case in a separate process.
+                  # Some fixtures use process-local counters for temporary paths,
+                  # so parallel cases would delete each other's files.
+                  ctest --test-dir extern/aurora --output-on-failure -j 1
+                  ctest --test-dir extern/borealis --output-on-failure -j 1 -E '^WebSocketBackendTest\.'
                   python3 ../nix/test-websocket.py extern/borealis/tests/borealis_ws_backend_test
                   nix/nix_network_smoke
                   nix/nix_funchook_smoke
