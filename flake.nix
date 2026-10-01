@@ -193,7 +193,8 @@
                   pkgs.python3
                   pkgs.python3Packages.markupsafe
                 ]
-                ++ lib.optionals (!isDarwin) [ pkgs.autoPatchelfHook ];
+                ++ lib.optionals (!isDarwin) [ pkgs.autoPatchelfHook ]
+                ++ lib.optionals isDarwin [ pkgs.makeWrapper ];
 
                 buildInputs = [
                   pkgs.sdl3
@@ -251,7 +252,7 @@
                   runHook postCheck
                 '';
                 preConfigure = ''
-                  cmakeFlags+=("-DCMAKE_INSTALL_PREFIX=$out/${if isDarwin then "Applications" else "bin"}")
+                  cmakeFlagsArray+=("-DCMAKE_INSTALL_PREFIX=$out/${if isDarwin then "Applications" else "bin"}")
                 '';
 
                 cmakeFlags = [
@@ -276,6 +277,8 @@
                 installPhase = ''
                   runHook preInstall
                   cmake --install .
+                '' + lib.optionalString isDarwin ''
+                  makeWrapper "$out/Applications/Dusklight.app/Contents/MacOS/Dusklight" "$out/bin/dusklight"
                 '' + lib.optionalString (!isDarwin) ''
                   install -Dm644 "$src/platforms/freedesktop/dev.twilitrealm.dusk.desktop" \
                     "$out/share/applications/dev.twilitrealm.dusk.desktop"
@@ -301,7 +304,7 @@
 
                 meta = {
                   description = "Dusklight — native PC port of the Twilight Princess decompilation";
-                  homepage = "https://github.com/zeldaret/tp";
+                  homepage = "https://github.com/TwilitRealm/dusklight";
                   platforms = supportedSystems;
                   mainProgram = "dusklight";
                 };
@@ -413,7 +416,7 @@
           checks.package = pkgs.runCommand "dusklight-package-check" {
             nativeBuildInputs = [ pkgs.python3 ] ++ lib.optionals (!isDarwin) [ pkgs.binutils pkgs.glibc.bin ];
           } ''
-            ${pkgs.python3}/bin/python3 ${./nix/check-package.py} ${dusklight}
+            ${pkgs.python3}/bin/python3 ${./nix}/check-package.py ${dusklight}
             touch $out
           '';
 

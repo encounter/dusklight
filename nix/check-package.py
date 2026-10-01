@@ -6,6 +6,7 @@ import pathlib
 import subprocess
 import sys
 import tempfile
+import runpy
 
 root = pathlib.Path(sys.argv[1])
 darwin = sys.platform == "darwin"
@@ -24,6 +25,7 @@ for mod_id in ("dev.twilitrealm.luau", "dev.twilitrealm.cosmetics", "dev.twilitr
     else:
         output = subprocess.check_output(["ldd", str(libraries[0])], text=True)
         assert "not found" not in output, output
+runpy.run_path(str(pathlib.Path(__file__).with_name("check-manifest.py")))["check_manifest"](executable)
 # The manifest is loaded by name-based code hooks; losing it silently breaks mods.
 if darwin:
     sections = subprocess.check_output(["/usr/bin/otool", "-l", str(executable)], text=True)
@@ -44,7 +46,7 @@ else:
     assert (root / "share/icons/hicolor/256x256/apps/dev.twilitrealm.dusk.png").is_file()
 # --help exercises the final, fixed-up executable, including CLI ABI integration.
 with tempfile.TemporaryDirectory() as cwd:
-    result = subprocess.run([str(executable), "--help"], cwd=cwd, text=True,
+    result = subprocess.run([str(root / "bin/dusklight"), "--help"], cwd=cwd, text=True,
                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=30, check=True)
     assert "--mods" in result.stdout and "--backend" in result.stdout, result.stdout
     print(result.stdout)

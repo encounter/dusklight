@@ -21,7 +21,8 @@ nix flake check "git+file://$PWD?submodules=1"
 
 Linux installs the executable at `result/bin/dusklight`, with built-in resources
 and mods next to it, plus desktop and icon files under `result/share`. macOS
-installs `result/Applications/Dusklight.app`. User data stays in the normal
+installs `result/Applications/Dusklight.app` and a `result/bin/dusklight` launcher
+for `nix run`. User data stays in the normal
 writable preference directory or the directory selected with `--user-dir`.
 The package does not include a game disc or extracted game data; import a legally
 obtained disc through the application. On non-NixOS Linux, host graphics drivers
