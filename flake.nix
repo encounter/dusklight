@@ -110,13 +110,17 @@
             cp -R ${pkgs.fetchzip { url = "https://github.com/gdabah/distorm/archive/ab59d6e193948cfa5d1482fb6c7e64870e9e93b9.tar.gz"; hash = "sha256-Fhvxag2UN5wXEySP1n1pCahMQR/SfssywikeLmiASwQ="; }}/. $out/distorm/
             cp -R ${pkgs.fetchzip { url = "https://github.com/aquynh/capstone/archive/refs/tags/4.0.2.tar.gz"; hash = "sha256-XMwQ7UaPC8YYu4yxsE4bbR3leYPfBHu5iixSLz05r3g="; }} $out/capstone
             chmod -R u+w $out/capstone
-            sed -i '/cmake_policy(SET CMP0048 OLD)/d' $out/capstone/CMakeLists.txt
+            ${pkgs.cmake}/bin/cmake -DDIR=$out/capstone -P ${./cmake/PatchCapstone.cmake}
+            # Source overrides bypass FetchContent's PATCH_COMMAND, including
+            # Dusklight's macOS executable-memory hook implementation.
+            ${pkgs.cmake}/bin/cmake -DSOURCE_DIR=$out -P ${./cmake/PatchFunchook.cmake}
             ${pkgs.python3}/bin/python3 ${./nix/prepare-funchook.py} $out
           '';
 
           fetchContentDirs = {
             DAWN_PREBUILT = dawn;
             NOD_PREBUILT = nod;
+            XXHASH = pkgs.xxhash.src;
 
 
             PICOSHA2 = pkgs.fetchzip {
@@ -184,6 +188,12 @@
               src = ./.;
               postPatch = ''
                 echo 'add_subdirectory(nix)' >> CMakeLists.txt
+                # Cosmetics re-declares xxHash even when Aurora supplied it.
+                substituteInPlace mods/cosmetics/CMakeLists.txt \
+                  --replace-fail 'FetchContent_MakeAvailable(xxhash)' \
+                    'if (NOT TARGET xxHash::xxhash)
+                FetchContent_MakeAvailable(xxhash)
+                endif ()' 
               '';
 
                 nativeBuildInputs = [

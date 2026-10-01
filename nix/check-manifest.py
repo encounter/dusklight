@@ -42,8 +42,6 @@ def check_manifest(path):
                     segment = read(offset, size)
                     vmaddr, _, fileoff, filesize = struct.unpack_from("<QQQQ", segment, 24)
                     mappings.append((vmaddr, fileoff, filesize))
-                    if segment[8:24].split(b"\0", 1)[0] == b"__TEXT":
-                        image_base = vmaddr
                     count = struct.unpack_from("<I", segment, 64)[0]
                     for i in range(count):
                         start = 72 + i * 80
