@@ -1,4 +1,6 @@
 """Check the installed package without a display, game disc, or user data."""
+import ctypes
+import re
 import json
 import pathlib
 import subprocess
@@ -32,7 +34,12 @@ else:
     assert " symdb " in sections, "Missing embedded symbol manifest"
     output = subprocess.check_output(["ldd", str(executable)], text=True)
     assert "not found" not in output, output
-    assert "libvulkan.so" in output, "Vulkan loader missing from runtime closure"
+    dynamic = subprocess.check_output(["readelf", "-d", str(executable)], text=True)
+    rpaths = re.findall(r"(?:RUNPATH|RPATH).*\[(.*?)\]", dynamic)
+    loaders = [pathlib.Path(directory) / "libvulkan.so.1" for rpath in rpaths
+               for directory in rpath.split(":") if "vulkan-loader" in directory]
+    assert loaders, "Vulkan loader missing from runtime search path"
+    ctypes.CDLL(str(loaders[0]))
     assert (root / "share/applications/dev.twilitrealm.dusk.desktop").is_file()
     assert (root / "share/icons/hicolor/256x256/apps/dev.twilitrealm.dusk.png").is_file()
 # --help exercises the final, fixed-up executable, including CLI ABI integration.

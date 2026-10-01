@@ -2,10 +2,12 @@
   description = "Dusklight — native PC port of the Twilight Princess decompilation";
 
   inputs.nixpkgs.url = "github:nixos/nixpkgs?ref=nixos-unstable";
+  # Unstable no longer supports Intel macOS; 26.05 receives fixes through 2026.
+  inputs.nixpkgs-darwin.url = "github:NixOS/nixpkgs/nixpkgs-26.05-darwin";
   inputs.self.submodules = true;
 
   outputs =
-    { self, nixpkgs }:
+    { self, nixpkgs, nixpkgs-darwin }:
     let
       inherit (nixpkgs) lib;
 
@@ -63,7 +65,7 @@
       perSystem =
         system:
         let
-          pkgs = import nixpkgs { inherit system; };
+          pkgs = import (if system == "x86_64-darwin" then nixpkgs-darwin else nixpkgs) { inherit system; };
           inherit (pkgs.stdenv.hostPlatform) isDarwin;
           # Borealis requires WSS in addition to HTTPS and HTTP/2. Nixpkgs
           # disables WebSockets by default, even in the full curl package.
@@ -104,6 +106,7 @@
           funchookSource = pkgs.runCommand "funchook-1.1.3-source" { } ''
             cp -R ${pkgs.fetchzip { url = "https://github.com/kubo/funchook/archive/refs/tags/v1.1.3.tar.gz"; hash = "sha256-zlHREpnDLHrx2CkAsR3BcFltFZzTOS8UKR8feJpK7bA="; }} $out
             chmod -R u+w $out
+            mkdir -p $out/distorm
             cp -R ${pkgs.fetchzip { url = "https://github.com/gdabah/distorm/archive/ab59d6e193948cfa5d1482fb6c7e64870e9e93b9.tar.gz"; hash = "sha256-Fhvxag2UN5wXEySP1n1pCahMQR/SfssywikeLmiASwQ="; }}/. $out/distorm/
             cp -R ${pkgs.fetchzip { url = "https://github.com/aquynh/capstone/archive/refs/tags/4.0.2.tar.gz"; hash = "sha256-XMwQ7UaPC8YYu4yxsE4bbR3leYPfBHu5iixSLz05r3g="; }} $out/capstone
             chmod -R u+w $out/capstone
