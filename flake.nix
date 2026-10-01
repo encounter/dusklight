@@ -284,6 +284,9 @@
                   "-DBOREALIS_BUILD_TESTS=ON"
                   "-DSYMGEN_PATH=${symgen}/bin/symgen"
                   "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
+                  # clang-scan-deps bypasses Nix's compiler wrapper/header paths.
+                  # No targets in this build use C++ modules.
+                  "-DCMAKE_CXX_SCAN_FOR_MODULES=OFF"
                   "-DBUILD_SHARED_LIBS=OFF"
                 ]
                 ++ lib.optionals (!isDarwin) [ "-DBOREALIS_HTTP_BACKEND=curl" ]
@@ -332,7 +335,7 @@
           ] ++ map (name: "borealis_${name}_test") [
             "version" "task" "url" "presentation" "log" "io" "file_select" "data"
             "disc" "crash" "sentry" "discord" "http" "net" "ws" "ws_backend" "update" "cli"
-          ];
+          ] ++ lib.optionals isDarwin [ "borealis_ios_import_test" ];
 
           # Tooling common to every supported host (Linux and macOS).
           commonDevTools = [

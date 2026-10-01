@@ -26,7 +26,7 @@ for `nix run`. User data stays in the normal
 writable preference directory or the directory selected with `--user-dir`.
 The package does not include a game disc or extracted game data; import a legally
 obtained disc through the application. On non-NixOS Linux, host graphics drivers
-may need a suitable NixGL environment.
+may need a suitable [NixGL environment](https://github.com/nix-community/nixGL).
 
 Code mods, the embedded symbol manifest, Luau, cosmetics, and the randomizer are
 enabled. Linux curl explicitly includes HTTPS, HTTP/2, and WebSockets. macOS
@@ -39,7 +39,8 @@ updating the Aurora or Borealis submodules.
 The Nix workflow builds every advertised platform. Each package build runs the
 Aurora and Borealis tests, including six real WebSocket backend scenarios against
 a loopback server. Package checks verify installed resources, bundled native
-libraries, the symbol manifest, dynamic dependencies, the CLI, and macOS code
+libraries, the symbol manifest and its runtime mapping, native hook installation
+and removal, dynamic dependencies, the CLI, and macOS code
 signatures after fixups. A separate Actions step exercises HTTPS through the same
 packaged Borealis backend. No game assets or secrets are uploaded. These checks
 do not cover gameplay, GPU rendering, disc import, interactive mod browsing, or
