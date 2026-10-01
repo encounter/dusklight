@@ -188,11 +188,24 @@
               src = ./.;
               postPatch = ''
                 echo 'add_subdirectory(nix)' >> CMakeLists.txt
+                # The portable debug archive step invokes objcopy even with
+                # dontStrip and corrupts the appended ELF manifest segment.
+                # Keep debug info in the Nix package and let its fixup hooks run.
+                substituteInPlace CMakeLists.txt \
+                  --replace-fail 'if (CMAKE_BUILD_TYPE STREQUAL Debug OR CMAKE_BUILD_TYPE STREQUAL RelWithDebInfo AND NOT DUSK_PACKAGE_INSTALL)' \
+                    'if (FALSE) # Nix retains embedded debug info.'
                 # Cosmetics re-declares xxHash even when Aurora supplied it.
                 substituteInPlace mods/cosmetics/CMakeLists.txt \
                   --replace-fail 'FetchContent_MakeAvailable(xxhash)' \
                     'if (NOT TARGET xxHash::xxhash)
                 FetchContent_MakeAvailable(xxhash)
+                endif ()'
+                # Flake snapshots omit .git; keep library version metadata useful.
+                substituteInPlace extern/borealis/CMakeLists.txt \
+                  --replace-fail 'borealis_git_describe(''${CMAKE_CURRENT_SOURCE_DIR} BOREALIS_LIB_DESCRIBE)' \
+                    'borealis_git_describe(''${CMAKE_CURRENT_SOURCE_DIR} BOREALIS_LIB_DESCRIBE)
+                if (NOT BOREALIS_LIB_DESCRIBE)
+                  set(BOREALIS_LIB_DESCRIBE "v''${PROJECT_VERSION}")
                 endif ()'
               '';
 
@@ -259,8 +272,8 @@
                   # Some fixtures use process-local counters for temporary paths,
                   # so parallel cases would delete each other's files.
                   ctest --test-dir extern/aurora --output-on-failure -j 1
-                  ctest --test-dir extern/borealis --output-on-failure -j 1 -E '^WebSocketBackendTest\.'
-                  python3 ../nix/test-websocket.py extern/borealis/tests/borealis_ws_backend_test
+                  ctest --test-dir extern/borealis --output-on-failure -j 1 -E '^(${if isDarwin then "WebSocketBackendTest\\." else "WebSocketBackendTest\\.|HttpTest\\.Live"})'
+                  OPENSSL=${lib.getExe pkgs.openssl} python3 ../nix/test-network.py extern/borealis/tests/borealis_ws_backend_test${lib.optionalString (!isDarwin) " extern/borealis/tests/borealis_http_test"}
                   nix/nix_network_smoke
                   nix/nix_funchook_smoke
                   runHook postCheck

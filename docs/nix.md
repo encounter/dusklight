@@ -30,15 +30,22 @@ may need a suitable [NixGL environment](https://github.com/nix-community/nixGL).
 
 Code mods, the embedded symbol manifest, Luau, cosmetics, and the randomizer are
 enabled. Linux curl explicitly includes HTTPS, HTTP/2, and WebSockets. macOS
-uses the native URLSession backend. Dependencies are fixed-output downloads;
-CMake runs with `FETCHCONTENT_FULLY_DISCONNECTED=ON`. Funchook's nested Capstone
+uses the native URLSession backend.
+Debug information stays embedded: the portable debug-splitting step can damage
+the appended ELF symbol-manifest segment when using the Nix linker.
+Dependencies are fixed-output downloads; CMake runs with
+`FETCHCONTENT_FULLY_DISCONNECTED=ON`. Funchook's nested Capstone
 download is replaced with its pinned local source. Keep Dawn, nod, RmlUi, Tracy,
 Luau, and other vendored versions aligned with their CMake declarations when
 updating the Aurora or Borealis submodules.
 
 The Nix workflow builds every advertised platform. Each package build runs the
 Aurora and Borealis tests, including six real WebSocket backend scenarios against
-a loopback server. Package checks verify installed resources, bundled native
+a loopback server. Linux also exercises WSS, HTTPS range/resume, and HEAD requests
+with an ephemeral fixture CA trusted only by the test processes. macOS retains
+the two optional HTTP integration skips; URLSession uses platform certificate
+trust, and CI checks its HTTPS backend against a public endpoint instead.
+Package checks verify installed resources, bundled native
 libraries, the symbol manifest and its runtime mapping, native hook installation
 and removal, dynamic dependencies, the CLI, and macOS code
 signatures after fixups. A separate Actions step exercises HTTPS through the same
