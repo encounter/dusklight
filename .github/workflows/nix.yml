@@ -1,0 +1,54 @@
+name: Nix
+
+on:
+  push:
+    paths-ignore:
+      - '*.md'
+      - '*LICENSE'
+      - 'docs/**'
+  pull_request:
+    paths-ignore:
+      - '*.md'
+      - '*LICENSE'
+      - 'docs/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nix-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Nix (${{ matrix.system }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - system: x86_64-linux
+            runner: ubuntu-24.04
+          - system: aarch64-linux
+            runner: ubuntu-24.04-arm
+          - system: aarch64-darwin
+            runner: macos-15
+          - system: x86_64-darwin
+            runner: macos-15-intel
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Evaluate all advertised systems
+        run: nix flake check --all-systems --no-build 'git+file://.'
+      - name: Build full package and run tests
+        run: nix build --print-build-logs --out-link result 'git+file://.#packages.${{ matrix.system }}.default'
+      - name: Verify installed package
+        run: nix build --print-build-logs --no-link 'git+file://.#checks.${{ matrix.system }}.package'
+      - name: Exercise HTTPS in the packaged network backend
+        run: result/nix-support/nix_network_smoke https://example.com/
