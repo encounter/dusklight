@@ -29,7 +29,7 @@ if darwin:
     subprocess.run(["/usr/bin/codesign", "--verify", "--deep", "--strict", str(app)], check=True)
 else:
     sections = subprocess.check_output(["readelf", "-S", "--wide", str(executable)], text=True)
-    assert ".symdb" in sections, "Missing embedded symbol manifest"
+    assert " symdb " in sections, "Missing embedded symbol manifest"
     output = subprocess.check_output(["ldd", str(executable)], text=True)
     assert "not found" not in output, output
     assert "libvulkan.so" in output, "Vulkan loader missing from runtime closure"

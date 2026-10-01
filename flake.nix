@@ -177,6 +177,7 @@
             pkgs.stdenv.mkDerivation {
               pname = "dusklight";
               version = versionSuffix;
+              __darwinAllowLocalNetworking = true;
               src = ./.;
               postPatch = ''
                 echo 'add_subdirectory(nix)' >> CMakeLists.txt
@@ -404,8 +405,7 @@
           packages = {
             default = dusklight;
             dusklight = dusklight;
-          }
-          ;
+          };
           checks.default = dusklight;
           checks.package = pkgs.runCommand "dusklight-package-check" {
             nativeBuildInputs = [ pkgs.python3 ] ++ lib.optionals (!isDarwin) [ pkgs.binutils pkgs.glibc.bin ];

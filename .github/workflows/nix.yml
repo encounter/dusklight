@@ -45,10 +45,10 @@ jobs:
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
       - name: Evaluate all advertised systems
-        run: nix flake check --all-systems --no-build 'git+file://.'
+        run: nix flake check --all-systems --no-build "git+file://$PWD?submodules=1"
       - name: Build full package and run tests
-        run: nix build --print-build-logs --out-link result 'git+file://.#packages.${{ matrix.system }}.default'
+        run: nix build --print-build-logs --out-link result "git+file://$PWD?submodules=1#packages.${{ matrix.system }}.default"
       - name: Verify installed package
-        run: nix build --print-build-logs --no-link 'git+file://.#checks.${{ matrix.system }}.package'
+        run: nix build --print-build-logs --no-link "git+file://$PWD?submodules=1#checks.${{ matrix.system }}.package"
       - name: Exercise HTTPS in the packaged network backend
         run: result/nix-support/nix_network_smoke https://example.com/
